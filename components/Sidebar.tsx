@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageSquare, Inbox, BookOpen, PlusCircle } from 'lucide-react';
+import { MessageSquare, Inbox, BookOpen, Sparkles } from 'lucide-react';
 
 export type Tab = 'chat' | 'inbox' | 'notes';
 
@@ -11,20 +11,33 @@ interface SidebarProps {
 }
 
 const items: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: 'chat', label: '聊天', icon: MessageSquare },
+  { id: 'chat', label: '对话', icon: MessageSquare },
   { id: 'inbox', label: '收件箱', icon: Inbox },
   { id: 'notes', label: '笔记', icon: BookOpen },
 ];
 
 export default function Sidebar({ active, onChange, inboxCount = 0 }: SidebarProps) {
   return (
-    <aside className="flex h-screen w-56 flex-col border-r border-gray-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <BookOpen className="h-5 w-5 text-blue-600" />
-        <span className="font-semibold text-gray-800">知识库</span>
+    <aside className="glass flex h-screen w-64 flex-col">
+      {/* Logo */}
+      <div className="flex items-center gap-3 px-6 py-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent)]">
+          <Sparkles className="h-5 w-5 text-[var(--bg-primary)]" />
+        </div>
+        <div>
+          <h1 className="font-[family-name:var(--font-serif)] text-lg font-semibold leading-tight tracking-wide text-[var(--text-primary)]">
+            知识库
+          </h1>
+          <p className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-tertiary)]">
+            Knowledge Base
+          </p>
+        </div>
       </div>
 
-      <nav className="flex-1 p-2">
+      <div className="divider-gradient mx-4" />
+
+      {/* Nav */}
+      <nav className="flex-1 p-3">
         {items.map((item) => {
           const isActive = active === item.id;
           const Icon = item.icon;
@@ -32,32 +45,36 @@ export default function Sidebar({ active, onChange, inboxCount = 0 }: SidebarPro
             <button
               key={item.id}
               onClick={() => onChange(item.id)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm transition-all duration-200 ${
                 isActive
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
-              <Icon className="h-4 w-4" />
-              <span className="flex-1 text-left">{item.label}</span>
+              <Icon className={`h-4 w-4 transition-colors ${isActive ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'}`} />
+              <span className="flex-1 text-left font-medium">{item.label}</span>
               {item.id === 'inbox' && inboxCount > 0 && (
-                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+                <span className="rounded-md bg-[var(--error)] px-2 py-0.5 text-[10px] font-bold text-white">
                   {inboxCount}
                 </span>
+              )}
+              {isActive && (
+                <div className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_6px_var(--accent)]" />
               )}
             </button>
           );
         })}
       </nav>
 
-      <div className="border-t border-gray-100 p-3">
-        <button
-          onClick={() => onChange('chat')}
-          className="flex w-full items-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          新知识
-        </button>
+      {/* Footer */}
+      <div className="p-4">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">Status</p>
+          <div className="mt-1 flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-[var(--success)] shadow-[0_0_4px_var(--success)]" />
+            <span className="text-xs text-[var(--text-secondary)]">系统正常</span>
+          </div>
+        </div>
       </div>
     </aside>
   );
