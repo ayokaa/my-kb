@@ -1,32 +1,20 @@
+import { streamText } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+
+const minimax = createOpenAI({
+  name: 'minimax',
+  baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
+  apiKey: process.env.MINIMAX_API_KEY || '',
+});
+
 export async function POST(req: Request) {
   const { messages } = await req.json();
-  const lastMessage = messages.at(-1)?.content || '';
 
-  const mockResponse = `收到你的问题："${lastMessage}"
-
-这是 Mock 回答，用于验证流式输出是否正常工作。
-
-实际接入时，这里会是 Agent 基于知识库检索后的推理结果。`;
-
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      for (const char of mockResponse) {
-        controller.enqueue(encoder.encode(`0:${JSON.stringify(char)}\n`));
-        await new Promise((r) => setTimeout(r, 20));
-      }
-
-      controller.enqueue(encoder.encode('d:{"finishReason":"stop"}\n'));
-      controller.close();
-    },
+  const result = streamText({
+    model: minimax('MiniMax-M2.5'),
+    system: '你是用户的个人知识库助手。基于已有知识回答，不确定时坦诚告知。',
+    messages,
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return result.toDataStreamResponse();
 }
