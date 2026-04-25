@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check, X, Loader2, ExternalLink, Calendar, Tag, Inbox, RefreshCw } from 'lucide-react';
+import { Check, X, Loader2, ExternalLink, Calendar, Tag, Inbox, RefreshCw, Rss } from 'lucide-react';
 
 interface InboxEntry {
   title: string;
@@ -53,12 +53,22 @@ export default function InboxPanel() {
         });
         const data = await res.json();
         if (data.ok) {
-          setResult(`已加入知识库 · ${data.note.title}`);
+          setResult(`已加入处理队列 · ${entry.title}`);
         } else {
           setResult(`失败 · ${data.error}`);
         }
       } else {
-        setResult(`已忽略 · ${entry.title}`);
+        const res = await fetch('/api/inbox/archive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setResult(`已忽略 · ${entry.title}`);
+        } else {
+          setResult(`归档失败 · ${data.error}`);
+        }
       }
       setEntries((prev) => prev.filter((e) => e.filePath !== entry.filePath));
       setSelected(null);
@@ -74,6 +84,9 @@ export default function InboxPanel() {
     if (entry.rawMetadata.original_filename) return `File · ${entry.rawMetadata.original_filename}`;
     return entry.sourceType;
   };
+
+  const isRssEntry = (entry: InboxEntry) => Boolean(entry.rawMetadata?.rss_source || entry.rawMetadata?.rss_link);
+  const originalUrl = (entry: InboxEntry) => String(entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url || '');
 
   return (
     <div className="flex h-full gap-5">
@@ -112,7 +125,7 @@ export default function InboxPanel() {
             >
               <p className="line-clamp-2 text-sm font-medium text-[var(--text-primary)]">{entry.title}</p>
               <p className="mt-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-                <Tag className="h-3 w-3" />
+                {isRssEntry(entry) ? <Rss className="h-3 w-3 text-orange-400" /> : <Tag className="h-3 w-3" />}
                 {sourceLabel(entry)}
               </p>
             </button>
@@ -141,9 +154,9 @@ export default function InboxPanel() {
                       <Tag className="h-3 w-3" />
                       {sourceLabel(selected)}
                     </span>
-                    {!!selected.rawMetadata.source_url && (
+                    {!!originalUrl(selected) && (
                       <a
-                        href={String(selected.rawMetadata.source_url)}
+                        href={originalUrl(selected)}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-[var(--accent)] transition-opacity hover:opacity-80"
@@ -180,11 +193,55 @@ export default function InboxPanel() {
               )}
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <div className="prose prose-invert prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-[family-name:var(--font-mono)] text-sm leading-[1.8] text-[var(--text-secondary)]">
-                  {selected.content}
-                </pre>
-              </div>
+              {isRssEntry(selected) ? (
+                <div className="space-y-6">
+                  {/* 原文链接 */}
+                  <a
+                    href={originalUrl(selected)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-4 transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-dim)]"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/10">
+                      <Rss className="h-5 w-5 text-orange-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--accent)]">
+                        打开原文阅读
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">
+                        {originalUrl(selected)}
+                      </p>
+                    </div>
+                    <ExternalLink className="h-4 w-4 shrink-0 text-[var(--text-tertiary)] group-hover:text-[var(--accent)]" />
+                  </a>
+
+                  {/* Feed 摘要 */}
+                  {selected.content && (
+                    <div>
+                      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                        Feed 摘要
+                      </h4>
+                      <p className="text-sm leading-relaxed text-[var(--text-secondary)] line-clamp-6 break-words">
+                        {selected.content}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 提示 */}
+                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      点击「加入知识库」后，系统将自动爬取原文并生成结构化笔记。
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <pre className="whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] text-sm leading-[1.8] text-[var(--text-secondary)]">
+                    {selected.content}
+                  </pre>
+                </div>
+              )}
             </div>
           </>
         ) : (

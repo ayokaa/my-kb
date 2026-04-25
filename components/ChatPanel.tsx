@@ -202,7 +202,7 @@ export default function ChatPanel() {
                     : 'rounded-2xl rounded-bl-md border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                 }`}
               >
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                <div className="whitespace-pre-wrap break-words">{m.content}</div>
               </div>
             </div>
           </div>
