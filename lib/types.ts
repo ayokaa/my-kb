@@ -71,3 +71,29 @@ export interface InvertedIndexEntry {
   noteTitle: string;
   noteSummary: string;
 }
+
+export interface InvertedIndex {
+  entries: InvertedIndexEntry[];
+}
+
+export interface AliasMapping {
+  canonical: string;
+  aliases: string[];
+}
+
+export interface Storage {
+  loadNote(id: string): Promise<Note>;
+  saveNote(note: Note): Promise<void>;
+  listNotes(): Promise<Note[]>;
+  deleteNote(id: string): Promise<void>;
+  loadConversation(date: string): Promise<Conversation>;
+  saveConversation(conv: Conversation): Promise<void>;
+  loadIndex(): Promise<InvertedIndex>;
+  saveIndex(index: InvertedIndex): Promise<void>;
+  loadAliases(): Promise<AliasMapping[]>;
+  saveAliases(aliases: AliasMapping[]): Promise<void>;
+  writeInbox(entry: InboxEntry): Promise<void>;
+  listInbox(): Promise<InboxEntry[]>;
+  archiveInbox(fileName: string): Promise<void>;
+  commit(message: string): Promise<void>;
+}

@@ -1,4 +1,5 @@
-import pdf from 'pdf-parse';
+import * as pdfParse from 'pdf-parse';
+const pdf = pdfParse as any;
 
 export async function extractPDF(filePath: string): Promise<{ title: string; content: string; pages: number }> {
   const data = await pdf(filePath);

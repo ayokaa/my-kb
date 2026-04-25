@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import { readFile, writeFile, readdir, mkdir, rename, unlink } from 'fs/promises';
 import { join, dirname, basename } from 'path';
 import yaml from 'js-yaml';
-import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping } from './types';
+import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
 import { parseNote, stringifyNote } from './parsers';
 
 const defaultExecAsync = promisify(exec);
@@ -156,7 +156,7 @@ export class FileSystemStorage implements Storage {
   async saveAliases(aliases: AliasMapping[]): Promise<void> {
     const path = join(this.root, 'meta', 'aliases.yml');
     const data = Object.fromEntries(aliases.map(a => [a.canonical, a.aliases]));
-    await this.atomicWrite(path, yaml.dump(data, { allowUnicode: true }));
+    await this.atomicWrite(path, yaml.dump(data, { allowUnicode: true } as any as any));
   }
 
   // ===== Inbox =====
@@ -178,7 +178,7 @@ export class FileSystemStorage implements Storage {
       ...entry.rawMetadata,
     };
 
-    const content = `---\n${yaml.dump(fm, { allowUnicode: true })}---\n\n${entry.content}`;
+    const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
     await this.atomicWrite(path, content);
     entry.filePath = path;
   }
@@ -291,7 +291,7 @@ export class FileSystemStorage implements Storage {
     }
 
     return {
-      sourceType: (fm.source_type as string) || 'text',
+      sourceType: ((fm.source_type as string) || 'text') as SourceType,
       sourcePath: fm.source_path as string | undefined,
       title: (fm.title as string) || basename(path, '.md'),
       content,
@@ -339,7 +339,7 @@ export class FileSystemStorage implements Storage {
 
     const lines: string[] = [
       '---',
-      yaml.dump(fm, { allowUnicode: true }).trim(),
+      yaml.dump(fm, { allowUnicode: true } as any).trim(),
       '---',
       '',
     ];

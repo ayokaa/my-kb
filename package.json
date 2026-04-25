@@ -17,6 +17,7 @@
     "ai": "^3.0.0",
     "feedsmith": "^2.9.3",
     "js-yaml": "^4.1.1",
+    "lucide-react": "^1.11.0",
     "next": "14.2.0",
     "openai": "^4.104.0",
     "pdf-parse": "^2.4.5",
@@ -24,6 +25,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
