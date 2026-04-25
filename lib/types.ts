@@ -1,0 +1,73 @@
+export type NoteStatus = 'seed' | 'growing' | 'evergreen' | 'stale' | 'archived';
+export type LinkWeight = 'strong' | 'weak' | 'context';
+export type SourceType = 'text' | 'web' | 'image' | 'audio' | 'pdf';
+
+export interface NoteLink {
+  target: string;
+  weight: LinkWeight;
+  context?: string;
+}
+
+export interface TimelineEntry {
+  date: string;
+  event: string;
+}
+
+export interface QAEntry {
+  question: string;
+  answer: string;
+  source?: string;
+}
+
+export interface NoteFrontmatter {
+  id: string;
+  title: string;
+  tags: string[];
+  status: NoteStatus;
+  created: string;
+  updated: string;
+  sources: string[];
+}
+
+export interface Note extends NoteFrontmatter {
+  summary: string;
+  personalContext: string;
+  keyFacts: string[];
+  timeline: TimelineEntry[];
+  links: NoteLink[];
+  qas: QAEntry[];
+  content: string;
+  filePath?: string;
+}
+
+export interface ConversationTurn {
+  role: 'user' | 'agent';
+  content: string;
+  timestamp?: string;
+}
+
+export interface Conversation {
+  date: string;
+  topics: string[];
+  status: 'open' | 'resolved';
+  turns: ConversationTurn[];
+  agentActions: string[];
+  filePath?: string;
+}
+
+export interface InboxEntry {
+  sourceType: SourceType;
+  sourcePath?: string;
+  title: string;
+  content: string;
+  extractedAt?: string;
+  rawMetadata: Record<string, unknown>;
+  filePath?: string;
+}
+
+export interface InvertedIndexEntry {
+  tag: string;
+  noteId: string;
+  noteTitle: string;
+  noteSummary: string;
+}
