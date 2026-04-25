@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchRSS, rssItemToInbox } from '../rss';
+import { fetchRSS, rssItemToInbox, parseOPML } from '../rss';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 describe('fetchRSS', () => {
   it('parses RSS 2.0 feed', async () => {
@@ -89,4 +91,40 @@ describe('rssItemToInbox', () => {
     expect(entry.rawMetadata.rss_source).toBe('My Blog');
     expect(entry.rawMetadata.rss_link).toBe('https://example.com/test');
   });
+});
+
+describe('parseOPML', () => {
+  it('parses feeder.opml fixture', () => {
+    const opml = readFileSync(join(__dirname, 'fixtures', 'feeder.opml'), 'utf-8');
+    const feeds = parseOPML(opml);
+
+    expect(feeds.length).toBe(35);
+    expect(feeds[0]).toEqual({
+      title: "Simon Willison's Weblog",
+      xmlUrl: 'https://simonwillison.net/atom/everything/',
+      htmlUrl: 'http://simonwillison.net/',
+    });
+    expect(feeds.some(f => f.title === 'Overreacted')).toBe(true);
+    expect(feeds.some(f => f.xmlUrl === 'https://dynomight.net/feed.xml')).toBe(true);
+  });
+
+  it('returns empty array for invalid XML', () => {
+    expect(parseOPML('<notopml></notopml>')).toEqual([]);
+  });
+});
+
+describe('fetchRSS integration — real feeds', () => {
+  it('fetches Simon Willison\'s Atom feed', async () => {
+    const items = await fetchRSS('https://simonwillison.net/atom/everything/');
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0].title).toBeTruthy();
+    expect(items[0].link).toMatch(/^https?:\/\//);
+  }, 15000);
+
+  it('fetches Overreacted RSS feed', async () => {
+    const items = await fetchRSS('https://overreacted.io/rss.xml');
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0].title).toBeTruthy();
+    expect(items[0].link).toMatch(/^https?:\/\//);
+  }, 15000);
 });

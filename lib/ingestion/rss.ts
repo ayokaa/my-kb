@@ -1,6 +1,30 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { InboxEntry } from '../types';
 
+export interface OPMLFeed {
+  title: string;
+  xmlUrl: string;
+  htmlUrl: string;
+}
+
+export function parseOPML(xml: string): OPMLFeed[] {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+  });
+  const data = parser.parse(xml);
+  const outlines = data.opml?.body?.outline;
+  if (!outlines) return [];
+  const items = Array.isArray(outlines) ? outlines : [outlines];
+  return items
+    .filter((o: any) => o.type === 'rss' && o.xmlUrl)
+    .map((o: any) => ({
+      title: o.title || o.text || 'Untitled',
+      xmlUrl: o.xmlUrl,
+      htmlUrl: o.htmlUrl || '',
+    }));
+}
+
 export interface RSSItem {
   title: string;
   link: string;
