@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+import { parseFeed, parseOpml } from 'feedsmith';
 import type { InboxEntry } from '../types';
 
 export interface OPMLFeed {
@@ -8,21 +8,19 @@ export interface OPMLFeed {
 }
 
 export function parseOPML(xml: string): OPMLFeed[] {
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: '',
-  });
-  const data = parser.parse(xml);
-  const outlines = data.opml?.body?.outline;
-  if (!outlines) return [];
-  const items = Array.isArray(outlines) ? outlines : [outlines];
-  return items
-    .filter((o: any) => o.type === 'rss' && o.xmlUrl)
-    .map((o: any) => ({
-      title: o.title || o.text || 'Untitled',
-      xmlUrl: o.xmlUrl,
-      htmlUrl: o.htmlUrl || '',
-    }));
+  try {
+    const opml = parseOpml(xml);
+    const outlines = opml.body?.outlines ?? [];
+    return outlines
+      .filter((o: any) => o.type === 'rss' && o.xmlUrl)
+      .map((o: any) => ({
+        title: o.title || o.text || 'Untitled',
+        xmlUrl: o.xmlUrl,
+        htmlUrl: o.htmlUrl || '',
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export interface RSSItem {
@@ -31,6 +29,23 @@ export interface RSSItem {
   pubDate?: string;
   description?: string;
   content?: string;
+}
+
+function extractText(val: any): string {
+  if (typeof val === 'string') return val;
+  if (val && typeof val === 'object' && 'value' in val) return val.value;
+  if (val && typeof val === 'object' && '#text' in val) return val['#text'];
+  return String(val ?? '');
+}
+
+function getLink(entry: any): string {
+  // Atom: links array
+  if (entry.links && Array.isArray(entry.links)) {
+    const alternate = entry.links.find((l: any) => l.rel === 'alternate' || !l.rel);
+    if (alternate?.href) return alternate.href;
+  }
+  // RSS: direct link
+  return entry.link || '';
 }
 
 export async function fetchRSS(url: string): Promise<RSSItem[]> {
@@ -43,47 +58,57 @@ export async function fetchRSS(url: string): Promise<RSSItem[]> {
   }
 
   const xml = await res.text();
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: '@_',
-  });
+  const { format, feed } = parseFeed(xml);
 
-  const data = parser.parse(xml);
-
-  // RSS 2.0
-  const channel = data.rss?.channel;
-  if (channel?.item) {
-    const items = Array.isArray(channel.item) ? channel.item : [channel.item];
+  if (format === 'rss') {
+    const items = feed.items ?? [];
     return items.map((item: any) => ({
-      title: item.title || 'Untitled',
+      title: extractText(item.title) || 'Untitled',
       link: item.link || '',
       pubDate: item.pubDate,
-      description: item.description,
-      content: item['content:encoded'] || item.description,
+      description: extractText(item.description),
+      content: extractText(item.content),
     }));
   }
 
-  // Atom
-  const feed = data.feed;
-  if (feed?.entry) {
-    const entries = Array.isArray(feed.entry) ? feed.entry : [feed.entry];
+  if (format === 'atom') {
+    const entries = feed.entries ?? [];
     return entries.map((entry: any) => ({
-      title: entry.title?.['#text'] || entry.title || 'Untitled',
-      link: entry.link?.['@_href'] || entry.link || '',
-      pubDate: entry.updated || entry.published,
-      description: entry.summary,
-      content: entry.content?.['#text'] || entry.summary,
+      title: extractText(entry.title) || 'Untitled',
+      link: getLink(entry),
+      pubDate: entry.published || entry.updated,
+      description: extractText(entry.summary),
+      content: extractText(entry.content),
     }));
   }
 
-  return [];
+  if (format === 'json') {
+    const items = feed.items ?? [];
+    return items.map((item: any) => ({
+      title: item.title || 'Untitled',
+      link: item.url || item.external_url || '',
+      pubDate: item.date_published || item.date_modified,
+      description: item.summary || '',
+      content: item.content_html || item.content_text || '',
+    }));
+  }
+
+  // RDF or unknown
+  const items = feed.items ?? [];
+  return items.map((item: any) => ({
+    title: extractText(item.title) || 'Untitled',
+    link: item.link || '',
+    pubDate: item.date,
+    description: extractText(item.description),
+    content: extractText(item.content),
+  }));
 }
 
 export function rssItemToInbox(item: RSSItem, sourceName: string): InboxEntry {
   return {
     sourceType: 'web',
     title: item.title,
-    content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
+    content: `${extractText(item.description)}\n\n${extractText(item.content)}`.trim(),
     extractedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
     rawMetadata: {
       rss_source: sourceName,

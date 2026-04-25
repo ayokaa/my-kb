@@ -119,12 +119,12 @@ describe('fetchRSS integration — real feeds', () => {
     expect(items.length).toBeGreaterThan(0);
     expect(items[0].title).toBeTruthy();
     expect(items[0].link).toMatch(/^https?:\/\//);
-  }, 15000);
+  }, 30000);
 
   it('fetches Overreacted RSS feed', async () => {
     const items = await fetchRSS('https://overreacted.io/rss.xml');
     expect(items.length).toBeGreaterThan(0);
     expect(items[0].title).toBeTruthy();
     expect(items[0].link).toMatch(/^https?:\/\//);
-  }, 15000);
+  }, 30000);
 });
