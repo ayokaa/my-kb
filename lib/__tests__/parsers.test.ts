@@ -117,6 +117,60 @@ describe('stringifyNote', () => {
     expect(reparsed.qas).toEqual(original.qas);
     expect(reparsed.content).toBe(original.content);
   });
+
+  it('handles empty fields by skipping sections', () => {
+    const emptyNote = parseNote(`---
+id: empty
+title: Empty
+---
+
+# Empty
+`);
+    const serialized = stringifyNote(emptyNote);
+    expect(serialized).not.toContain('一句话摘要');
+    expect(serialized).not.toContain('与我相关');
+    expect(serialized).not.toContain('关键事实');
+    expect(serialized).not.toContain('时间线');
+    expect(serialized).not.toContain('关联');
+    expect(serialized).not.toContain('常见问题');
+    expect(serialized).not.toContain('详细内容');
+  });
+});
+
+describe('parseQAs edge cases', () => {
+  it('skips malformed QA without A', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 常见问题
+**Q**: Question without answer
+`);
+    expect(note.qas).toHaveLength(0);
+  });
+
+  it('handles multiple QAs', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 常见问题
+**Q**: First?
+**A**: Yes.
+
+**Q**: Second?
+**A**: No.
+`);
+    expect(note.qas).toHaveLength(2);
+    expect(note.qas[0].question).toBe('First?');
+    expect(note.qas[1].question).toBe('Second?');
+  });
 });
 
 describe('edge cases', () => {
@@ -143,5 +197,109 @@ id: test
 `;
     const note = parseNote(noTitle);
     expect(note.title).toBe(''); // frontmatter missing
+  });
+
+  it('throws on missing frontmatter', () => {
+    expect(() => parseNote('no frontmatter here')).toThrow('Invalid markdown: missing frontmatter');
+    expect(() => parseNote('---\nonly one')).toThrow('Invalid markdown: missing frontmatter');
+  });
+
+  it('handles unknown sections by merging into content', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 自定义区块
+一些内容
+
+## 另一个未知
+更多内容
+`);
+    expect(note.content).toContain('## 自定义区块');
+    expect(note.content).toContain('## 另一个未知');
+  });
+
+  it('handles malformed links gracefully', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 关联
+- not-a-link-format
+- [[valid]]
+- plain text
+`);
+    expect(note.links).toHaveLength(3);
+    expect(note.links[0]).toEqual({ target: 'not-a-link-format', weight: 'weak' });
+    expect(note.links[1]).toEqual({ target: 'valid', weight: 'weak', context: '' });
+    expect(note.links[2]).toEqual({ target: 'plain text', weight: 'weak' });
+  });
+
+  it('handles timeline without pipe separator', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 时间线
+- 2024-01-01 | event with pipe
+- 2024-01-02 no pipe here
+`);
+    expect(note.timeline[1]).toEqual({ date: '2024-01-02 no pipe here', event: '' });
+  });
+
+  it('handles timeline line not starting with dash', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 时间线
+2024-01-01 | no dash
+`);
+    expect(note.timeline[0]).toEqual({ date: '2024-01-01', event: 'no dash' });
+  });
+
+  it('handles QA without source', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 常见问题
+**Q**: What?
+**A**: Yes.
+`);
+    expect(note.qas[0].source).toBeUndefined();
+  });
+
+  it('stringifyNote skips source line when QA has no source', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 常见问题
+**Q**: What?
+**A**: Yes.
+`);
+    const serialized = stringifyNote(note);
+    expect(serialized).toContain('**Q**: What?');
+    expect(serialized).toContain('**A**: Yes.');
+    expect(serialized).not.toContain('来源:');
   });
 });
