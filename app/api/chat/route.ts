@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: minimax('MiniMax-M2.5'),
+    model: minimax('MiniMax-M2.7'),
     system: '你是用户的个人知识库助手。基于已有知识回答，不确定时坦诚告知。',
     messages,
   });
