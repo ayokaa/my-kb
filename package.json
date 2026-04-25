@@ -12,11 +12,14 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
+    "@mozilla/readability": "^0.6.0",
     "@types/js-yaml": "^4.0.9",
     "ai": "^3.0.0",
+    "fast-xml-parser": "^5.7.2",
     "js-yaml": "^4.1.1",
     "next": "14.2.0",
     "openai": "^4.104.0",
+    "pdf-parse": "^2.4.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
