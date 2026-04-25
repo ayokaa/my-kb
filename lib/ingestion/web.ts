@@ -1,12 +1,18 @@
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 
+const FETCH_TIMEOUT = 8000; // 8 seconds
+
 export async function fetchWebContent(url: string): Promise<{ title: string; content: string; excerpt?: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
   const res = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (compatible; AgentKB/1.0)',
     },
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
 
   if (!res.ok) {
     throw new Error(`Failed to fetch ${url}: ${res.status}`);

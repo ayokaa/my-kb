@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { InboxEntry, Note, NoteLink, TimelineEntry, QAEntry } from '../types';
+import { fetchWebContent } from '../ingestion/web';
 
 const client = new OpenAI({
   apiKey: process.env.MINIMAX_API_KEY || '',
@@ -48,14 +49,28 @@ export interface ProcessResult {
 }
 
 export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResult> {
+  // For RSS or web entries, fetch original article content in background
+  let content = entry.content;
+  const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
+  if (originalUrl) {
+    try {
+      const webContent = await fetchWebContent(originalUrl);
+      content = webContent.content || entry.content;
+    } catch (err) {
+      console.warn(`[Ingest] Failed to fetch original content from ${originalUrl}:`, (err as Error).message);
+      // Fallback to existing feed / stored content
+    }
+  }
+
   const sourceInfo = [
     entry.sourceType && `来源类型: ${entry.sourceType}`,
     entry.rawMetadata?.source_url && `来源URL: ${entry.rawMetadata.source_url}`,
     entry.rawMetadata?.rss_source && `RSS源: ${entry.rawMetadata.rss_source}`,
+    entry.rawMetadata?.rss_link && `RSS链接: ${entry.rawMetadata.rss_link}`,
     entry.rawMetadata?.original_filename && `原始文件: ${entry.rawMetadata.original_filename}`,
   ].filter(Boolean).join('\n');
 
-  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${entry.content.slice(0, 8000)}`;
+  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 8000)}`;
 
   const response = await client.chat.completions.create({
     model: MODEL,
