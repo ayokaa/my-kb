@@ -1,5 +1,8 @@
 import { FileSystemStorage } from '@/lib/storage';
 import { extractPDF } from '@/lib/ingestion/pdf';
+import { writeFile } from 'fs/promises';
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
 
 export async function POST(req: Request) {
   const formData = await req.formData();
@@ -17,9 +20,10 @@ export async function POST(req: Request) {
     const fileType = file.type;
 
     // Save original file to attachments/
-    const attachmentDir = 'knowledge/attachments';
-    const attachmentPath = `${attachmentDir}/${Date.now()}-${fileName}`;
-    await Bun.write(attachmentPath, bytes);
+    const attachmentDir = join(process.cwd(), 'knowledge', 'attachments');
+    const attachmentPath = join(attachmentDir, `${Date.now()}-${fileName}`);
+    await mkdir(attachmentDir, { recursive: true });
+    await writeFile(attachmentPath, Buffer.from(bytes));
 
     // Extract text based on file type
     let title = fileName;
