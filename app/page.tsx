@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Sidebar, { type Tab } from '@/components/Sidebar';
 import ChatPanel from '@/components/ChatPanel';
 import InboxPanel from '@/components/InboxPanel';
+import RSSPanel from '@/components/RSSPanel';
 import { BookOpen } from 'lucide-react';
 
 export default function HomePage() {
@@ -23,6 +24,7 @@ export default function HomePage() {
       <main className="flex-1 overflow-hidden p-5">
         {tab === 'chat' && <ChatPanel />}
         {tab === 'inbox' && <InboxPanel />}
+        {tab === 'rss' && <RSSPanel />}
         {tab === 'notes' && (
           <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent-dim)]">

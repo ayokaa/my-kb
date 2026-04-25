@@ -1,8 +1,8 @@
 'use client';
 
-import { MessageSquare, Inbox, BookOpen, Sparkles } from 'lucide-react';
+import { MessageSquare, Inbox, BookOpen, Sparkles, Rss } from 'lucide-react';
 
-export type Tab = 'chat' | 'inbox' | 'notes';
+export type Tab = 'chat' | 'inbox' | 'notes' | 'rss';
 
 interface SidebarProps {
   active: Tab;
@@ -13,6 +13,7 @@ interface SidebarProps {
 const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'chat', label: '对话', icon: MessageSquare },
   { id: 'inbox', label: '收件箱', icon: Inbox },
+  { id: 'rss', label: '订阅', icon: Rss },
   { id: 'notes', label: '笔记', icon: BookOpen },
 ];
 
