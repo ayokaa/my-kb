@@ -36,3 +36,7 @@ next-env.d.ts
 # knowledge base (private data)
 knowledge/
 attachments/
+
+# playwright
+test-results/
+playwright-report/

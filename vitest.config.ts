@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    exclude: ['node_modules/', '.next/', 'e2e/'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json'],
