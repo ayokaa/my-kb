@@ -1,30 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { POST } from '../route';
-import { writeFileSync, mkdirSync, rmSync } from 'fs';
-import { join } from 'path';
 
-const inboxDir = join(process.cwd(), 'knowledge', 'inbox');
-const notesDir = join(process.cwd(), 'knowledge', 'notes');
-
-vi.mock('@/lib/cognition/ingest', () => ({
-  processInboxEntry: vi.fn().mockResolvedValue({
-    note: {
-      id: 'test-article',
-      title: 'Test Article',
-      tags: ['test'],
-      status: 'seed',
-      created: '2024-01-01T00:00:00Z',
-      updated: '2024-01-01T00:00:00Z',
-      sources: ['web'],
-      summary: 'A test summary',
-      personalContext: '',
-      keyFacts: ['Fact 1'],
-      timeline: [],
-      links: [],
-      qas: [],
-      content: 'Test content',
-    },
-  }),
+vi.mock('@/lib/queue', () => ({
+  enqueue: vi.fn().mockReturnValue('task-mock-123'),
 }));
 
 describe('/api/inbox/process', () => {
@@ -37,29 +15,17 @@ describe('/api/inbox/process', () => {
     expect(res.status).toBe(400);
   });
 
-  it('processes inbox file and creates note', async () => {
-    mkdirSync(inboxDir, { recursive: true });
-    mkdirSync(notesDir, { recursive: true });
-    const fileName = '123-test-article.md';
-    writeFileSync(
-      join(inboxDir, fileName),
-      '---\nsource_type: web\ntitle: Test Article\nextracted_at: 2024-01-01T00:00:00Z\n---\n\nTest content',
-      'utf-8'
-    );
-
+  it('enqueues ingest task and returns 202', async () => {
     const req = new Request('http://localhost/api/inbox/process', {
       method: 'POST',
-      body: JSON.stringify({ fileName }),
+      body: JSON.stringify({ fileName: '123-test-article.md' }),
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     const data = await res.json();
     expect(data.ok).toBe(true);
-    expect(data.note.id).toBe('test-article');
-
-    // cleanup
-    rmSync(join(inboxDir, fileName), { force: true });
-    rmSync(join(process.cwd(), 'knowledge', 'archive', 'inbox', fileName), { force: true });
+    expect(data.taskId).toBe('task-mock-123');
+    expect(data.message).toBe('已加入处理队列');
   });
 });
