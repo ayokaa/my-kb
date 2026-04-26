@@ -229,7 +229,22 @@ export class FileSystemStorage implements Storage {
         console.warn(`[Storage] Skip corrupted inbox "${file}":`, (err as Error).message);
       }
     }
-    return entries.sort((a, b) => (a.filePath || '').localeCompare(b.filePath || ''));
+    return entries.sort((a, b) => {
+      const getTime = (entry: InboxEntry): number => {
+        if (entry.extractedAt) {
+          const t = new Date(entry.extractedAt).getTime();
+          if (!isNaN(t)) return t;
+        }
+        // fallback: extract timestamp from filename like 1234567890-slug.md
+        const name = entry.filePath?.split('/').pop()?.split('-')[0];
+        if (name) {
+          const t = parseInt(name, 10);
+          if (!isNaN(t)) return t;
+        }
+        return 0;
+      };
+      return getTime(b) - getTime(a);
+    });
   }
 
   async archiveInbox(fileName: string): Promise<void> {

@@ -20,6 +20,6 @@ export default defineConfig({
   webServer: {
     command: 'bash -c "KNOWLEDGE_ROOT=knowledge-test npm run dev"',
     url: 'http://localhost:3000',
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
   },
 });

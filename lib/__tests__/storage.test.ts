@@ -152,6 +152,25 @@ describe('FileSystemStorage', () => {
       expect(entries).toHaveLength(1);
       expect(warnLogs.some(l => l.includes('bad'))).toBe(true);
     });
+
+    it('sorts inbox entries by extractedAt descending (newest first)', async () => {
+      await storage.writeInbox({ sourceType: 'text', title: 'Old', content: 'old', rawMetadata: { extracted_at: '2025-01-01T00:00:00.000Z' } });
+      await storage.writeInbox({ sourceType: 'text', title: 'Middle', content: 'mid', rawMetadata: { extracted_at: '2025-06-01T00:00:00.000Z' } });
+      await storage.writeInbox({ sourceType: 'text', title: 'New', content: 'new', rawMetadata: { extracted_at: '2025-12-01T00:00:00.000Z' } });
+
+      const entries = await storage.listInbox();
+      expect(entries.map(e => e.title)).toEqual(['New', 'Middle', 'Old']);
+    });
+
+    it('falls back to filename timestamp when extractedAt is missing', async () => {
+      // Manually write files with specific timestamps in filename
+      mkdirSync(join(tmpDir, 'inbox'), { recursive: true });
+      writeFileSync(join(tmpDir, 'inbox', '1000000000-old.md'), '---\nsource_type: text\ntitle: Old Fallback\n---\n\nold');
+      writeFileSync(join(tmpDir, 'inbox', '2000000000-new.md'), '---\nsource_type: text\ntitle: New Fallback\n---\n\nnew');
+
+      const entries = await storage.listInbox();
+      expect(entries.map(e => e.title)).toEqual(['New Fallback', 'Old Fallback']);
+    });
   });
 
   describe('archiveInbox', () => {
