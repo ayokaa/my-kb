@@ -1,6 +1,8 @@
 import { test as base, expect } from '@playwright/test';
-import { rm, mkdir, writeFile } from 'fs/promises';
+import { rm, mkdir, writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
+import { stringifyNote } from '../lib/parsers';
+import type { Note } from '../lib/types';
 
 export async function resetTestData() {
   const root = join(process.cwd(), 'knowledge-test');
@@ -19,6 +21,30 @@ export async function resetTestData() {
     join(root, 'meta', 'rss-sources.yml'),
     '[]\n'
   );
+}
+
+export async function createTestNote(note: Partial<Note> & { id: string; title: string }) {
+  const root = join(process.cwd(), 'knowledge-test');
+  const fullNote: Note = {
+    id: note.id,
+    title: note.title,
+    tags: note.tags ?? [],
+    status: note.status ?? 'seed',
+    created: note.created ?? new Date().toISOString(),
+    updated: note.updated ?? new Date().toISOString(),
+    sources: note.sources ?? [],
+    summary: note.summary ?? '',
+    personalContext: note.personalContext ?? '',
+    keyFacts: note.keyFacts ?? [],
+    timeline: note.timeline ?? [],
+    links: note.links ?? [],
+    qas: note.qas ?? [],
+    content: note.content ?? '',
+    filePath: join(root, 'notes', `${note.id}.md`),
+  };
+  const content = stringifyNote(fullNote);
+  await writeFile(fullNote.filePath, content);
+  return fullNote;
 }
 
 export const test = base.extend({
