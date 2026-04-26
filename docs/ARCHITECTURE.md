@@ -25,7 +25,7 @@ Raw content enters the system through four paths:
 | Source | Entry Point | Handler |
 |--------|-------------|---------|
 | Web link | `POST /api/ingest` | `fetchWebContent` (Playwright + Readability) |
-| RSS feed | `lib/rss/cron.ts` | `fetchRSS` + `ingestFeedItems` |
+| RSS feed | `lib/rss/cron.ts` | Enqueues `rss_fetch` task → `fetchRSS` + `ingestFeedItems` |
 | File upload | `POST /api/upload` | `extractPDF` or direct text read |
 | Plain text | `POST /api/ingest` | Direct write |
 
@@ -41,8 +41,9 @@ When the user clicks **Approve** in the Inbox panel:
 
 ### 3. Queue → Notes
 
-The queue worker (`lib/queue.ts`) processes tasks serially:
+The queue worker (`lib/queue.ts`) processes tasks serially. Supported task types:
 
+**`ingest`** — Convert an inbox entry to a structured note:
 1. Reads the archived inbox file.
 2. Checks for duplicate source URLs in existing notes (skips if found).
 3. Calls `processInboxEntry()` → `callLLM()` (MiniMax API).
@@ -50,11 +51,28 @@ The queue worker (`lib/queue.ts`) processes tasks serially:
 5. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
 6. `saveQueueState()` records task completion.
 
+**`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
+1. Calls `fetchRSS(url)` to retrieve and parse the feed.
+2. Calls `processFeedItems()` which applies `lastPubDate` filtering and deduplication.
+3. Writes new items to `knowledge/inbox/` as Markdown files.
+4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
+
+**Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
+
 If the process crashes and restarts, `loadQueueState()` restores pending tasks and auto-restarts the worker.
 
-### 4. Notes → Chat
+### 4. Notes → Chat (RAG)
 
-The chat endpoint (`POST /api/chat`) streams responses from MiniMax. Currently it does **not** search the knowledge base before responding; it is a standalone conversational agent. KB-augmented chat is a future enhancement.
+The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RAG) before calling the LLM:
+
+1. Tokenizes the last user message (Chinese character-level + English word-level).
+2. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > content).
+3. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
+4. Assembles the top results into a structured context string.
+5. Injects the context into the system prompt sent to MiniMax.
+6. Streams the LLM response back to the client.
+
+This provides grounded, knowledge-aware answers rather than generic conversational responses.
 
 ---
 
@@ -72,22 +90,26 @@ components/         — React UI (all Client Components)
 ├── InboxPanel.tsx
 ├── NotesPanel.tsx
 ├── RSSPanel.tsx
-└── TasksPanel.tsx
+├── TasksPanel.tsx
+└── SearchPanel.tsx
 
 lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
 ├── parsers.ts      — Note Markdown ↔ object serialization
-├── queue.ts        — Task queue + worker + persistence
+├── queue.ts        — Task queue + worker + persistence (ingest, rss_fetch)
+├── search/
+│   ├── index.ts    — Inverted index (tokenize, build, add, remove)
+│   └── engine.ts   — Search scoring, link diffusion, context assembly
 ├── cognition/
-│   └── ingest.ts   — **Only module allowed to call LLM**
+│   └── ingest.ts   — **Only module allowed to call LLM for note generation**
 ├── ingestion/
 │   ├── web.ts      — Playwright + Readability extraction
 │   ├── rss.ts      — RSS/Atom/JSON Feed parsing
 │   └── pdf.ts      — PDF text extraction
 └── rss/
     ├── manager.ts  — Subscription CRUD + incremental ingest
-    └── cron.ts     — node-cron wrapper
+    └── cron.ts     — node-cron wrapper (enqueues tasks)
 ```
 
 **Rule:** `lib/ingestion/*` only fetches raw data. It never touches the LLM. `lib/cognition/ingest.ts` is the sole LLM gateway.
@@ -244,5 +266,5 @@ All storage paths in the codebase read `process.env.KNOWLEDGE_ROOT` (with fallba
 | **Playwright over fetch** | Required for modern client-rendered sites. |
 | **Inbox review step** | LLM calls cost money and can produce garbage. Human approval prevents polluting the knowledge base. |
 | **YAML frontmatter** | Human-readable metadata that any Markdown editor can display. |
-| **Inverted index in Markdown** | Keeps everything in the same format; no separate index file to maintain. |
+| **Inverted index (JSON)** | Keyword-based search index stored as `search-index.json`. Updated incrementally on note save/delete. |
 | **E2E data isolation via env var** | Single `KNOWLEDGE_ROOT` point of control; no mocking or dependency injection needed. |

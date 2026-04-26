@@ -9,12 +9,12 @@
 **my-kb** 是一个基于 Next.js 的个人 AI 知识库应用。用户可以通过聊天、网页链接、RSS 订阅、文件上传等方式收集信息，系统利用大语言模型（LLM）将原始内容自动加工成结构化的知识笔记，并以 Markdown 文件形式持久化存储在本地文件系统中。
 
 核心功能：
-- **AI 对话**：基于已有知识的流式聊天助手
+- **AI 对话（RAG）**：基于已有知识的流式聊天助手，通过倒排索引检索相关知识并注入上下文
 - **知识入库（Ingest）**：支持文本、链接、PDF/TXT/MD 文件、RSS 订阅的自动抓取与入库
 - **收件箱审核（Inbox）**：待处理内容经过人工确认后，由 LLM 生成结构化笔记
 - **笔记管理（Notes）**：按状态（种子/生长中/常青/陈旧/归档）管理笔记，支持标签搜索
-- **RSS 订阅**：定时自动检查订阅源，将新文章写入收件箱
-- **任务队列**：后台异步处理 inbox 到 note 的转换
+- **RSS 订阅**：定时自动检查订阅源，将新文章写入收件箱（通过任务队列异步执行）
+- **任务队列**：后台异步处理 inbox 到 note 的转换，以及 RSS fetch。支持失败任务手动重试
 
 ---
 
@@ -159,7 +159,7 @@ npm run test:e2e
 - **`lib/types.ts`**：所有核心业务类型（`Note`, `InboxEntry`, `Conversation`, `Storage` 接口等）。
 - **`lib/storage.ts`**：`FileSystemStorage` 类，实现 `Storage` 接口，所有数据持久化均通过此类完成。
 - **`lib/parsers.ts`**：`parseNote` / `stringifyNote`，定义了 Note 的 Markdown 格式规范。
-- **`lib/queue.ts`**：任务队列与后台 Worker。队列状态在 `knowledge/meta/queue.json` 中持久化（原子写入：tmp+rename），进程重启后自动恢复 pending 任务并重跑 Worker。
+- **`lib/queue.ts`**：任务队列与后台 Worker。支持 `ingest`（inbox → note）和 `rss_fetch`（RSS 抓取 → inbox）两种任务类型。队列状态在 `knowledge/meta/queue.json` 中持久化（原子写入：tmp+rename），进程重启后自动恢复 pending 任务并重跑 Worker。失败任务可通过 `retryTask(id)` 重置并重新执行。
 - **`lib/cognition/ingest.ts`**：唯一调用 LLM 进行内容加工的地方。
 - **`lib/ingestion/`**：各类原始内容的抓取/解析器，不依赖 LLM。
 - **`lib/rss/`**：RSS 订阅管理与定时轮询。
@@ -236,7 +236,15 @@ Markdown 正文
 
 ### 任务队列持久化
 
-- `knowledge/meta/queue.json`：任务队列的运行时状态。包含 `tasks` 数组（完整任务历史）和 `pendingIds` 数组。模块加载时自动恢复，enqueue / task start / task complete 时触发原子写入（tmp+rename）。
+- `knowledge/meta/queue.json`：任务队列的运行时状态。包含 `tasks` 数组（完整任务历史，类型为 `ingest` 或 `rss_fetch`）和 `pendingIds` 数组。模块加载时自动恢复，enqueue / task start / task complete 时触发原子写入（tmp+rename）。
+- 失败的任务保留在 `tasks` 中，`status: 'failed'`，可通过 `retryTask(id)` 重置为 `pending` 并重新入队。
+
+### 检索系统（RAG）
+
+- `knowledge/meta/search-index.json`：倒排索引，持久化存储。
+- `lib/search/index.ts`：分词（中文按字+保留整词，英文按空格）、索引构建、增量更新（`addNoteToIndex`、`removeNoteFromIndex`）。
+- `lib/search/engine.ts`：Zone 加权评分（tag 3.0 > qa 2.5 > title 2.0 > summary 1.8 > content 0.8）、关联扩散（1-hop，30% 衰减）、上下文组装。
+- `app/api/chat/route.ts`：聊天时自动检索相关知识，将结果注入 system prompt。
 
 ---
 
@@ -314,6 +322,8 @@ npm run test:e2e
 | 更换 LLM 提供商 | `lib/cognition/ingest.ts` 和 `app/api/chat/route.ts` 中的 OpenAI 客户端配置 |
 | 新增入库来源类型 | `lib/ingestion/` 下新增解析器，并在 `app/api/ingest/route.ts` 或 `app/api/upload/route.ts` 中接入 |
 | 调整 RSS 轮询频率 | `app/layout.tsx` 中 `startRSSCron(60)` 的参数（分钟） |
+| 修改检索/搜索逻辑 | `lib/search/engine.ts` 或 `lib/search/index.ts` |
+| 修改聊天 RAG 行为 | `app/api/chat/route.ts` 中的上下文组装逻辑 |
 | 修改 UI 主题色 | `app/globals.css` 中的 `:root` CSS 变量 |
 | 新增组件 | `components/{Name}.tsx`，并在 `app/page.tsx` 中引用 |
 | 调整任务队列逻辑 | `lib/queue.ts` |

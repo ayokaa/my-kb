@@ -138,7 +138,7 @@ Delete a note. The note is moved to `knowledge/archive/` and the inverted index 
 
 ### `POST /api/rss`
 
-Fetch an RSS feed and ingest items into the inbox.
+Queue an RSS fetch task. The fetch and ingest happen asynchronously in the background worker.
 
 **Request body:**
 ```json
@@ -149,7 +149,10 @@ Fetch an RSS feed and ingest items into the inbox.
 }
 ```
 
-**Response:** `{ "ok": true, "count": 3, "entries": [...] }`
+**Response:** `202 Accepted`
+```json
+{ "ok": true, "taskId": "task-...", "message": "RSS fetch queued" }
+```
 
 ---
 
@@ -195,11 +198,14 @@ Remove a subscription.
 
 ### `POST /api/rss/subscriptions/check`
 
-Manually trigger RSS check. If `url` is provided, checks only that feed; otherwise checks all subscriptions.
+Manually trigger RSS check. Enqueues one `rss_fetch` task per subscription (or per URL if specified).
 
 **Request body:** `{ "url": "..." }` (optional)
 
-**Response:** `{ "ok": true, "results": [...] }`
+**Response:**
+```json
+{ "ok": true, "queued": 3, "taskIds": ["task-...", "task-...", "task-..."] }
+```
 
 ---
 
@@ -243,7 +249,7 @@ List tasks.
   "tasks": [
     {
       "id": "task-...",
-      "type": "ingest",
+      "type": "ingest" | "rss_fetch",
       "status": "pending" | "running" | "done" | "failed",
       "createdAt": "...",
       "startedAt": "...",
@@ -254,6 +260,19 @@ List tasks.
   ]
 }
 ```
+
+### `POST /api/tasks`
+
+Retry a failed task.
+
+**Request body:**
+```json
+{ "id": "task-...", "action": "retry" }
+```
+
+**Response:** `{ "task": { ... } }`
+
+**Error:** `400` if task is not found or not in `failed` status.
 
 ---
 

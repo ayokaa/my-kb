@@ -18,7 +18,7 @@
 - **Inbox Review**: Pending content is confirmed by the user (or auto-approved) before processing
 - **LLM Processing**: Calls the MiniMax API to extract tags, summaries, key facts, timelines, links, and other structured information
 - **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
-- **Chat**: Streamed AI conversation powered by existing notes
+- **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt
 
 ## Tech Stack
 
@@ -34,9 +34,10 @@
 - **Styling**: Tailwind CSS + custom CSS variables (dark theme)
 - **AI Streaming**: `ai` SDK + OpenAI-compatible MiniMax API
 - **Web Scraping**: Playwright (Chromium headless) + Readability
-- **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark)
+- **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
+- **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (90 unit tests) + Playwright (20 E2E tests)
+- **Testing**: Vitest (152 unit tests) + Playwright (20 E2E tests)
 
 ## Quick Start
 
