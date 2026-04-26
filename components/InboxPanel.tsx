@@ -168,9 +168,15 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--text-tertiary)]">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3 shrink-0" />
-                      <span className="break-words">{selected.extractedAt
-                        ? new Date(selected.extractedAt).toLocaleString('zh-CN')
-                        : '未知时间'}</span>
+                      <span className="break-words">{(() => {
+                        const pub = selected.rawMetadata?.rss_pubDate;
+                        if (pub) {
+                          try { return new Date(String(pub)).toLocaleString('zh-CN'); } catch { /* fallback */ }
+                        }
+                        return selected.extractedAt
+                          ? new Date(selected.extractedAt).toLocaleString('zh-CN')
+                          : '未知时间';
+                      })()}</span>
                     </span>
                     <span className="flex items-center gap-1">
                       <Tag className="h-3 w-3 shrink-0" />

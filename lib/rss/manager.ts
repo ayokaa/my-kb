@@ -153,6 +153,7 @@ export async function checkFeed(url: string): Promise<CheckResult> {
         sourceType: 'web',
         title: item.title,
         content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
+        extractedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
         rawMetadata: {
           rss_source: name,
           rss_link: item.link,
