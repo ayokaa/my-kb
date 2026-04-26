@@ -13,10 +13,11 @@ interface InboxEntry {
 }
 
 interface InboxPanelProps {
+  count?: number;
   onChange?: () => void;
 }
 
-export default function InboxPanel({ onChange }: InboxPanelProps) {
+export default function InboxPanel({ count, onChange }: InboxPanelProps) {
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [selected, setSelected] = useState<InboxEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function InboxPanel({ onChange }: InboxPanelProps) {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch('/api/inbox');
+      const res = await fetch('/api/inbox', { cache: 'no-store' });
       const data = await res.json();
       setEntries(data.entries || []);
       if (data.entries?.length > 0 && !selected) {
@@ -103,7 +104,7 @@ export default function InboxPanel({ onChange }: InboxPanelProps) {
             <Inbox className="h-4 w-4 text-[var(--accent)]" />
             <h2 className="font-[family-name:var(--font-serif)] text-base font-semibold tracking-wide">待审核</h2>
             <span className="rounded-md bg-[var(--accent-dim)] px-2 py-0.5 text-xs font-medium text-[var(--accent)]">
-              {entries.length}
+              {count ?? entries.length}
             </span>
           </div>
           <button onClick={load} disabled={loading} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]">
