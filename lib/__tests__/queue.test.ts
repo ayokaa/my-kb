@@ -207,13 +207,11 @@ describe('enqueue / getTask / listPending', () => {
       await waitForStatus(id, 'done', 3000);
     } catch {
       const task = getTask(id);
+      throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
+    } finally {
       readFile.mockImplementation(prevReadFile as any);
       FileSystemStorage.mockImplementation(prevImpl as any);
-      throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
     }
-
-    readFile.mockImplementation(prevReadFile as any);
-    FileSystemStorage.mockImplementation(prevImpl as any);
 
     const task = getTask(id);
     expect(task?.result).toEqual({ skipped: true, reason: 'duplicate source' });
