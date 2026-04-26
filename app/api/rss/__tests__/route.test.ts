@@ -16,6 +16,28 @@ describe('/api/rss', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 400 for non-HTTP URL (SSRF protection)', async () => {
+    const req = new Request('http://localhost/api/rss', {
+      method: 'POST',
+      body: JSON.stringify({ url: 'file:///etc/passwd' }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain('Invalid');
+  });
+
+  it('returns 400 for invalid URL string', async () => {
+    const req = new Request('http://localhost/api/rss', {
+      method: 'POST',
+      body: JSON.stringify({ url: 'not-a-url' }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
   it('queues RSS fetch and returns 202', async () => {
     const req = new Request('http://localhost/api/rss', {
       method: 'POST',

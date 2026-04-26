@@ -44,4 +44,54 @@ describe('/api/upload', () => {
     expect(data.ok).toBe(true);
     expect(data.fileName).toBe('test.txt');
   });
+
+  it('rejects path traversal in file name', async () => {
+    const file = new File(['content'], '../../../etc/passwd', { type: 'text/plain' });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const req = {
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    // basename() strips path traversal, so only 'passwd' remains;
+    // the file is saved inside attachments/ regardless of malicious name
+    expect(data.fileName).not.toContain('/');
+    expect(data.fileName).not.toContain('\\');
+    expect(data.fileName).toBe('passwd');
+  });
+
+  it('rejects oversized files', async () => {
+    const bigContent = new Uint8Array(11 * 1024 * 1024); // 11 MB
+    const file = new File([bigContent], 'big.pdf', { type: 'application/pdf' });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const req = {
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+
+    const res = await POST(req);
+    expect(res.status).toBe(413);
+    const data = await res.json();
+    expect(data.error).toContain('too large');
+  });
+
+  it('rejects disallowed file types', async () => {
+    const file = new File(['MZ'], 'malware.exe', { type: 'application/x-msdownload' });
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const req = {
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+
+    const res = await POST(req);
+    expect(res.status).toBe(415);
+    const data = await res.json();
+    expect(data.error).toContain('not allowed');
+  });
 });

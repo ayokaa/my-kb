@@ -8,7 +8,7 @@ process.env.KNOWLEDGE_ROOT = tmpDir;
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import yaml from 'js-yaml';
 import { writeFile } from 'fs/promises';
-import { parseInboxRaw, enqueue, getTask, listPending, retryTask } from '../queue';
+import { parseInboxRaw, enqueue, getTask, listPending, listTasks, retryTask } from '../queue';
 
 vi.mock('fs/promises', () => {
   const mocks = {
@@ -146,5 +146,22 @@ describe('enqueue / getTask / listPending', () => {
   it('retryTask returns null for non-failed task', () => {
     const id = enqueue('ingest', { fileName: 'new.md' });
     expect(retryTask(id)).toBeNull();
+  });
+
+  it('saveQueueState handles rapid concurrent enqueues without data loss', async () => {
+    const before = listTasks().length;
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      ids.push(enqueue('ingest', { fileName: `concurrent-${i}.md` }));
+    }
+    // Wait for all async saveQueueState calls to settle
+    await new Promise((r) => setTimeout(r, 300));
+
+    const allTasks = listTasks();
+    // All 10 tasks plus any from previous tests should be present
+    expect(allTasks.length).toBeGreaterThanOrEqual(before + 10);
+    for (const id of ids) {
+      expect(getTask(id)).toBeDefined();
+    }
   });
 });

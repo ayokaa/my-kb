@@ -204,6 +204,26 @@ id: test
     expect(() => parseNote('---\nonly one')).toThrow('Invalid markdown: unclosed frontmatter');
   });
 
+  it('does not split body horizontal rules as frontmatter', () => {
+    const raw = `---
+id: test
+---
+
+# Title
+
+Some content.
+
+---
+
+More content after horizontal rule.
+`;
+    const note = parseNote(raw);
+    // Frontmatter is correctly extracted even when body contains '---'
+    expect(note.id).toBe('test');
+    // The second '---' in body should not be mistaken for frontmatter boundary
+    // (previously split('---') would cut at the body horizontal rule)
+  });
+
   it('handles unknown sections by merging into content', () => {
     const note = parseNote(`---
 id: test

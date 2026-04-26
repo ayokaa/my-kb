@@ -364,5 +364,22 @@ describe('FileSystemStorage', () => {
 
       expect(warnLogs.some(l => l.includes('some warning'))).toBe(true);
     });
+
+    it('passes message as array argument to prevent shell injection', async () => {
+      const mockExecFile = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
+      const gitStorage = new FileSystemStorage(tmpDir, mockExecFile as any);
+
+      // Dangerous characters that would bypass old string escaping
+      const maliciousMessage = '[test] " && rm -rf / && echo "`whoami`$(date)';
+      await gitStorage.commit(maliciousMessage);
+
+      // execFile receives message as a single array element, not shell string
+      const [, args2] = mockExecFile.mock.calls[1];
+      expect(args2).toContain(maliciousMessage);
+      // Should NOT contain shell metacharacters split into separate args
+      expect(args2).not.toContain('&&');
+      expect(args2).not.toContain('rm');
+      expect(args2).not.toContain('whoami');
+    });
   });
 });
