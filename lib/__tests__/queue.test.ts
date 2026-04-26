@@ -24,13 +24,31 @@ vi.mock('fs/promises', () => {
 });
 
 vi.mock('@/lib/cognition/ingest', () => ({
-  processInboxEntry: vi.fn(),
+  processInboxEntry: vi.fn().mockResolvedValue({
+    note: {
+      id: 'test-note',
+      title: 'Test',
+      tags: [],
+      status: 'seed',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      sources: [],
+      summary: '',
+      personalContext: '',
+      keyFacts: [],
+      timeline: [],
+      links: [],
+      qas: [],
+      content: '',
+    },
+  }),
 }));
 
 vi.mock('@/lib/storage', () => ({
   FileSystemStorage: vi.fn(function () {
     return {
       listNotes: vi.fn().mockResolvedValue([]),
+      listNoteSources: vi.fn().mockResolvedValue([]),
       saveNote: vi.fn().mockResolvedValue(undefined),
       archiveInbox: vi.fn().mockResolvedValue(undefined),
     };
@@ -159,16 +177,46 @@ describe('enqueue / getTask / listPending', () => {
     expect(retryTask('non-existent')).toBeNull();
   });
 
-  it('retryTask returns null for non-failed task', async () => {
-    const id = enqueue('ingest', { fileName: 'new.md' });
-    // Wait briefly so worker may start, but task won't fail because
-    // readFile mock rejects immediately — actually it will fail.
-    // We just need to ensure it hasn't reached 'failed' yet when we call retryTask.
-    await new Promise((r) => setTimeout(r, 10));
-    // If it already failed, retryTask would not return null.
-    // Use a fresh task ID and call immediately.
+  it('retryTask returns null for non-failed task', () => {
     const freshId = enqueue('ingest', { fileName: 'fresh.md' });
     expect(retryTask(freshId)).toBeNull();
+  });
+
+  it('skips duplicate source during ingest', async () => {
+    const { readFile } = await import('fs/promises');
+    const prevReadFile = readFile.getMockImplementation();
+    readFile.mockImplementation(async (path: string) => {
+      if (typeof path === 'string' && path.includes('dup.md')) {
+        return makeInboxMd('RSS Article', { rss_link: 'https://example.com/feed' });
+      }
+      throw new Error('no file');
+    });
+
+    const { FileSystemStorage } = await import('@/lib/storage');
+    const prevImpl = FileSystemStorage.getMockImplementation();
+    FileSystemStorage.mockImplementation(function () {
+      return {
+        listNoteSources: vi.fn().mockResolvedValue([{ id: 'existing', sources: ['https://example.com/feed'] }]),
+        archiveInbox: vi.fn().mockResolvedValue(undefined),
+        saveNote: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const id = enqueue('ingest', { fileName: 'dup.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } catch {
+      const task = getTask(id);
+      readFile.mockImplementation(prevReadFile as any);
+      FileSystemStorage.mockImplementation(prevImpl as any);
+      throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
+    }
+
+    readFile.mockImplementation(prevReadFile as any);
+    FileSystemStorage.mockImplementation(prevImpl as any);
+
+    const task = getTask(id);
+    expect(task?.result).toEqual({ skipped: true, reason: 'duplicate source' });
   });
 
   it('saveQueueState handles rapid concurrent enqueues without data loss', async () => {
