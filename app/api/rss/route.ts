@@ -1,16 +1,14 @@
 import { enqueue } from '@/lib/queue';
-
-function isValidHttpUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { isValidHttpUrl } from '@/lib/ingestion/rss';
 
 export async function POST(req: Request) {
-  const { url, name, maxItems = 5 } = await req.json();
+  let body: { url?: unknown; name?: unknown; maxItems?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const { url, name, maxItems = 5 } = body;
 
   if (!url || typeof url !== 'string') {
     return Response.json({ error: 'RSS URL required' }, { status: 400 });
@@ -21,9 +19,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const taskId = enqueue('rss_fetch', { url, name, maxItems });
+    const taskId = enqueue('rss_fetch', { url, name: typeof name === 'string' ? name : undefined, maxItems: typeof maxItems === 'number' ? maxItems : 5 });
     return Response.json({ ok: true, taskId, message: 'RSS fetch queued' }, { status: 202 });
-  } catch (err: any) {
-    return Response.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    console.error('[RSS] Failed to enqueue RSS fetch:', err);
+    return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

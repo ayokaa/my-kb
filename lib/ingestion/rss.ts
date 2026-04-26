@@ -1,6 +1,33 @@
 import { parseFeed, parseOpml } from 'feedsmith';
 import type { InboxEntry } from '../types';
 
+function isPrivateIp(hostname: string): boolean {
+  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
+    if (a === 127) return true;
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 0) return true;
+    return false;
+  }
+  if (hostname === '::1' || hostname === '[::1]') return true;
+  if (hostname === 'localhost') return true;
+  return false;
+}
+
+export function isValidHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    return !isPrivateIp(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export interface OPMLFeed {
   title: string;
   xmlUrl: string;
