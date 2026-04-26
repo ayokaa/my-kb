@@ -114,11 +114,32 @@ describe('fetchWebContent', () => {
       return Promise.resolve(callCount === 1 ? (deadBrowser as any) : (healthyBrowser as any));
     });
 
-    await fetchWebContent('https://example.com/crash');
+    const result = await fetchWebContent('https://example.com/crash');
 
     // Should have launched twice: first fails health check, then retry succeeds
     expect(chromium.launch).toHaveBeenCalledTimes(2);
     expect(mockPageClose).toHaveBeenCalled();
+    expect(result.title).toBe('Test Article');
+    expect(result.content).toContain('recovered');
+  });
+
+  it('prevents concurrent launch race', async () => {
+    resetBrowserForTesting();
+    let launchCount = 0;
+    vi.mocked(chromium.launch).mockImplementation(async () => {
+      launchCount++;
+      await new Promise((r) => setTimeout(r, 50));
+      return mockBrowser(mockPage('<html><body>race</body></html>'));
+    });
+
+    const [a, b] = await Promise.all([
+      fetchWebContent('https://example.com/a'),
+      fetchWebContent('https://example.com/b'),
+    ]);
+
+    expect(launchCount).toBe(1);
+    expect(a.title).toBe('Test Article');
+    expect(b.title).toBe('Test Article');
   });
 
   it('closes browser on closeBrowser()', async () => {

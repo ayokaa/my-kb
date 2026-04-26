@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 const FETCH_TIMEOUT = 20000;
 
 let browserPromise: Promise<Browser> | null = null;
+let launchPromise: Promise<Browser> | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (browserPromise) {
@@ -18,32 +19,40 @@ async function getBrowser(): Promise<Browser> {
       browserPromise = null;
     }
   }
-  browserPromise = chromium.launch({ headless: true });
-  browserPromise.catch(() => {
-    // Reset on failure so next call can retry
-    browserPromise = null;
-  });
-  const browser = await browserPromise;
-  if (!browser.isConnected()) {
-    // Launch succeeded but instance is unhealthy — retry once
-    browserPromise = null;
-    browserPromise = chromium.launch({ headless: true });
-    browserPromise.catch(() => {
-      browserPromise = null;
-    });
-    return await browserPromise;
+
+  if (!launchPromise) {
+    launchPromise = (async () => {
+      let p = chromium.launch({ headless: true });
+      p.catch(() => {
+        browserPromise = null;
+      });
+      let browser = await p;
+      if (!browser.isConnected()) {
+        browserPromise = null;
+        p = chromium.launch({ headless: true });
+        p.catch(() => {
+          browserPromise = null;
+        });
+        browser = await p;
+      }
+      browserPromise = p;
+      return browser;
+    })();
   }
-  return browser;
+
+  try {
+    return await launchPromise;
+  } finally {
+    launchPromise = null;
+  }
 }
 
 // Graceful shutdown on process termination
-process.on('SIGTERM', async () => {
-  await closeBrowser();
-  process.exit(0);
+process.on('SIGTERM', () => {
+  closeBrowser().finally(() => process.exit(0));
 });
-process.on('SIGINT', async () => {
-  await closeBrowser();
-  process.exit(0);
+process.on('SIGINT', () => {
+  closeBrowser().finally(() => process.exit(0));
 });
 
 export async function closeBrowser(): Promise<void> {
