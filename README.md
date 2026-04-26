@@ -37,7 +37,7 @@
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
 - **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (152 unit tests) + Playwright (20 E2E tests)
+- **Testing**: Vitest (185 unit tests) + Playwright (28 E2E tests)
 
 ## Quick Start
 

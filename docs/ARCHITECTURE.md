@@ -44,12 +44,14 @@ When the user clicks **Approve** in the Inbox panel:
 The queue worker (`lib/queue.ts`) processes tasks serially. Supported task types:
 
 **`ingest`** — Convert an inbox entry to a structured note:
-1. Reads the archived inbox file.
-2. Checks for duplicate source URLs in existing notes (skips if found).
-3. Calls `processInboxEntry()` → `callLLM()` (MiniMax API).
-4. LLM returns structured JSON: title, tags, summary, keyFacts, timeline, links, QAs, content.
-5. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
-6. `saveQueueState()` records task completion.
+1. Verifies the inbox file still exists (`stat` check); if missing, marks task `failed` with `Inbox file not found`.
+2. Reads the archived inbox file.
+3. Checks for duplicate source URLs in existing notes (skips if found).
+4. Calls `processInboxEntry()` → `callLLM()` (MiniMax API).
+5. LLM returns structured JSON: title, tags, summary, keyFacts, timeline, links, QAs, content.
+6. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
+7. `archiveInbox()` moves the source file to `knowledge/archive/inbox/` (idempotent — silently skips if already missing).
+8. `saveQueueState()` records task completion.
 
 **`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
 1. Calls `fetchRSS(url)` to retrieve and parse the feed.
@@ -212,7 +214,10 @@ Each subscription stores the latest `pubDate` it has processed:
 
 ### Race Condition Protection
 
-A `processingFeeds: Set<string>` lock prevents two overlapping cron runs from ingesting the same feed concurrently.
+Two layers of defense prevent overlapping execution:
+
+1. **Cron-level `isRunning` lock** (`lib/rss/cron.ts`): If a previous cron tick is still enqueueing tasks, subsequent ticks are skipped. This prevents `node-cron` "missed execution" pile-up when many subscriptions are checked.
+2. **Feed-level `processingFeeds: Set<string>`** (`lib/rss/manager.ts`): Prevents two concurrent `rss_fetch` tasks from ingesting the same feed URL at the same time.
 
 ---
 
@@ -253,7 +258,15 @@ All storage paths in the codebase read `process.env.KNOWLEDGE_ROOT` (with fallba
 | `lib/rss/manager.ts` | `META_DIR = join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge', 'meta')` |
 | `app/api/upload/route.ts` | `UPLOAD_DIR = join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge', 'attachments')` |
 
-`playwright.config.ts` launches the dev server with `KNOWLEDGE_ROOT=knowledge-test`. The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledge-test/` before each test, ensuring a clean slate.
+`playwright.config.ts` launches the dev server on port `3001` with `KNOWLEDGE_ROOT=knowledge-test`:
+
+```
+npx next dev -p 3001   # test server
+```
+
+Using a dedicated port (`3001`) prevents Playwright from accidentally reusing a user's regular dev server on `:3000`, which would serve the production `knowledge/` directory instead of the isolated `knowledge-test/` directory.
+
+The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledge-test/` before each test, ensuring a clean slate. It also provides `createTestNote()` for seeding structured notes directly without going through the LLM pipeline.
 
 ---
 

@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-04-27
+
+### Fixed
+
+- **`archiveInbox` idempotency**: `storage.archiveInbox()` now checks if the source file exists before attempting `rename()`. If the file is already missing (e.g. manually deleted or removed by `resetTestData()` during E2E), it returns silently instead of throwing `ENOENT`. (`f0f6cd5`)
+- **`runIngestTask` missing-file handling**: The queue worker now calls `stat()` on the inbox file before `readFile()`. If the file is missing, the task is marked `failed` with a clear error message (`Inbox file not found: {fileName}`) instead of crashing the worker with an unhandled `ENOENT`. (`f0f6cd5`)
+- **RSS cron missed-execution pile-up**: `lib/rss/cron.ts` now guards the callback with an `isRunning` lock. If a previous tick is still enqueueing feed checks, subsequent ticks are skipped with a log message instead of overlapping and producing `missed execution` warnings. (`21110d2`)
+- **Playwright dev-server collision**: `playwright.config.ts` now launches the test server on port `3001` (`npx next dev -p 3001`) with `baseURL: http://localhost:3001`. This prevents Playwright from accidentally reusing a user's regular dev server on `:3000` (which uses the production `knowledge/` directory instead of `knowledge-test/`). (`b9cca0c`)
+
+### Added
+
+- **E2E coverage expansion**: 20 → 28 tests (+8) across existing spec files:
+  - `notes.spec.ts` (+3): note detail view, search + status filtering, delete with confirmation dialog.
+  - `upload.spec.ts` (+2): Markdown and plain-text file upload via the ingest panel.
+  - `rss.spec.ts` (+1): subscription removal via UI.
+  - `tasks.spec.ts` (+1): failed task visibility after worker error.
+  - `inbox.spec.ts` (+1): RSS entry detail renders "Open original" link and feed summary.
+- **`e2e/fixtures.ts` `createTestNote()` helper**: Directly writes a structured Markdown note to `knowledge-test/notes/` using `stringifyNote()`, enabling E2E tests to seed notes without going through the LLM pipeline.
+- **RSS Panel accessibility**: Delete-subscription button now has `aria-label="删除订阅"` for reliable E2E targeting and screen-reader support. (`eed491d`)
+- **Unit tests for cron lock**: `lib/rss/__tests__/cron.test.ts` (4 tests) covers interval expression, enqueue behavior, overlap-skipping logic, and duplicate-start prevention. (`21110d2`)
+- **Unit tests for missing-file resilience**: `lib/__tests__/storage.test.ts` and `lib/__tests__/queue.test.ts` each gained one test verifying graceful handling when an inbox file disappears mid-processing. (`f0f6cd5`)
+
+### Changed
+
+- **Test counts**: 179 Vitest unit tests (+6), 28 Playwright E2E tests (+8).
+
 ## 2026-04-26
 
 ### Added
