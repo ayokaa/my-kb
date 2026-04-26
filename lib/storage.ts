@@ -181,6 +181,22 @@ export class FileSystemStorage implements Storage {
     const fileName = `${timestamp}-${slug || 'untitled'}.md`;
     const path = this.inboxPath(fileName);
 
+    // Deduplication guard: skip if inbox already has the same rss_link
+    const rssLink = entry.rawMetadata?.rss_link as string | undefined;
+    if (rssLink) {
+      try {
+        const existing = await this.listInbox();
+        const duplicate = existing.find(e => e.rawMetadata?.rss_link === rssLink);
+        if (duplicate) {
+          console.log(`[Storage] Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
+          entry.filePath = duplicate.filePath;
+          return;
+        }
+      } catch {
+        // Ignore list errors, proceed with write
+      }
+    }
+
     const fm = {
       source_type: entry.sourceType,
       source_path: entry.sourcePath,

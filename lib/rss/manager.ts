@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
-import { fetchRSS, parseOPML, type RSSItem } from '../ingestion/rss';
+import { fetchRSS, parseOPML, sortRSSItems, type RSSItem } from '../ingestion/rss';
 import { FileSystemStorage } from '../storage';
 
 export interface RSSSubscription {
@@ -60,18 +60,43 @@ async function processFeedItems(
     let count = 0;
     let latestPubDate = lastPubDate || '';
 
-    for (const item of items) {
+      // Sort items by pubDate descending to ensure lastPubDate is updated correctly
+    const sortedItems = sortRSSItems(items);
+
+    // Pre-check existing inbox links for deduplication
+    const existingLinks = new Set<string>();
+    try {
+      const inboxEntries = await storage.listInbox();
+      for (const entry of inboxEntries) {
+        const link = entry.rawMetadata?.rss_link as string | undefined;
+        if (link) existingLinks.add(link);
+      }
+    } catch {
+      // Ignore list errors
+    }
+
+    for (const item of sortedItems) {
       if (maxItems !== undefined && count >= maxItems) break;
 
       const itemPubDate = item.pubDate || '';
 
-      // With lastPubDate: skip items that are not newer
-      if (lastPubDate && itemPubDate && itemPubDate <= lastPubDate) {
-        continue;
+      // With lastPubDate: skip items that are not newer (use Date comparison for reliability)
+      if (lastPubDate && itemPubDate) {
+        const lastDate = new Date(lastPubDate);
+        const itemDate = new Date(itemPubDate);
+        if (!isNaN(lastDate.getTime()) && !isNaN(itemDate.getTime()) && itemDate.getTime() <= lastDate.getTime()) {
+          continue;
+        }
       }
 
       // Without lastPubDate (first check): ingest at most 5 items
       if (!lastPubDate && count >= 5) break;
+
+      // Deduplication: skip if inbox already has this rss_link
+      if (item.link && existingLinks.has(item.link)) {
+        console.log(`[RSS] Skip duplicate inbox entry: ${item.title}`);
+        continue;
+      }
 
       await storage.writeInbox({
         sourceType: 'web',
@@ -84,6 +109,9 @@ async function processFeedItems(
           rss_pubDate: item.pubDate,
         },
       });
+
+      // Add to dedup set so we don't write the same link again in this batch
+      if (item.link) existingLinks.add(item.link);
 
       count++;
       if (itemPubDate && itemPubDate > latestPubDate) {

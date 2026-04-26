@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchRSS, rssItemToInbox, parseOPML } from '../rss';
+import { fetchRSS, rssItemToInbox, parseOPML, sortRSSItems } from '../rss';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -110,6 +110,40 @@ describe('parseOPML', () => {
 
   it('returns empty array for invalid XML', () => {
     expect(parseOPML('<notopml></notopml>')).toEqual([]);
+  });
+});
+
+describe('sortRSSItems', () => {
+  it('sorts items by pubDate descending', () => {
+    const items = [
+      { title: 'Old', link: 'https://example.com/old', pubDate: '2024-01-01T00:00:00Z' },
+      { title: 'New', link: 'https://example.com/new', pubDate: '2024-03-01T00:00:00Z' },
+      { title: 'Mid', link: 'https://example.com/mid', pubDate: '2024-02-01T00:00:00Z' },
+    ];
+    const sorted = sortRSSItems(items);
+    expect(sorted.map(i => i.title)).toEqual(['New', 'Mid', 'Old']);
+  });
+
+  it('places items without pubDate at the end', () => {
+    const items = [
+      { title: 'NoDate', link: 'https://example.com/nodate' },
+      { title: 'HasDate', link: 'https://example.com/hasdate', pubDate: '2024-01-01T00:00:00Z' },
+    ];
+    const sorted = sortRSSItems(items);
+    expect(sorted.map(i => i.title)).toEqual(['HasDate', 'NoDate']);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(sortRSSItems([])).toEqual([]);
+  });
+
+  it('does not mutate original array', () => {
+    const items = [
+      { title: 'A', link: 'https://example.com/a', pubDate: '2024-01-01T00:00:00Z' },
+      { title: 'B', link: 'https://example.com/b', pubDate: '2024-02-01T00:00:00Z' },
+    ];
+    sortRSSItems(items);
+    expect(items[0].title).toBe('A');
   });
 });
 

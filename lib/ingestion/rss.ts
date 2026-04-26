@@ -104,6 +104,24 @@ export async function fetchRSS(url: string): Promise<RSSItem[]> {
   }));
 }
 
+function parsePubDate(dateStr: string | undefined): Date | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Sort RSS items by pubDate descending (newest first). Items without pubDate go to the end. */
+export function sortRSSItems(items: RSSItem[]): RSSItem[] {
+  return [...items].sort((a, b) => {
+    const da = parsePubDate(a.pubDate);
+    const db = parsePubDate(b.pubDate);
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return db.getTime() - da.getTime();
+  });
+}
+
 export function rssItemToInbox(item: RSSItem, sourceName: string): InboxEntry {
   return {
     sourceType: 'web',
