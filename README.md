@@ -1,142 +1,154 @@
-# my-kb — AI 驱动的个人知识库
+# my-kb — AI-Powered Personal Knowledge Base
 
-> 通过聊天、网页链接、RSS 订阅、文件上传等方式收集信息，由 LLM 自动加工成结构化的知识笔记，并以 Markdown 文件持久化存储。
+> Collect information through chat, web links, RSS feeds, and file uploads. An LLM automatically processes raw content into structured knowledge notes, persisted as Markdown files on your local filesystem.
 
-## 核心工作流
+## Core Workflow
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  信息摄入  │ ──→ │  收件箱   │ ──→ │  LLM加工  │ ──→ │  知识笔记  │
-│ (Web/RSS/ │     │ (人工审核)│     │(自动/手动)│     │(Markdown)│
-│  PDF/Text)│     └──────────┘     └──────────┘     └──────────┘
-└──────────┘                                            │
-     ↑──────────────────────────────────────────────────┘
-     └────────────────  对话检索与问答  ──────────────────→
+│  Ingest  │ ──→ │  Inbox   │ ──→ │  Queue   │ ──→ │  Notes   │
+│(Web/RSS/ │     │ (human   │     │ (LLM     │     │(structured│
+│PDF/Text) │     │  review) │     │  worker) │     │ Markdown)│
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+       │                                                    │
+       └────────────────── Chat ←───────────────────────────┘
 ```
 
-- **信息摄入**：支持网页链接、RSS 订阅、PDF/TXT/MD 文件、纯文本
-- **收件箱审核**：待处理内容经过人工确认（或自动）后进入加工流程
-- **LLM 加工**：调用 MiniMax API 提取标签、摘要、关键事实、时间线、关联等结构化信息
-- **知识笔记**：以 Markdown + YAML Frontmatter 格式存储于本地文件系统
-- **对话检索**：基于已有笔记进行流式 AI 对话
+- **Ingest**: Web links, RSS feeds, PDF/TXT/MD files, plain text
+- **Inbox Review**: Pending content is confirmed by the user (or auto-approved) before processing
+- **LLM Processing**: Calls the MiniMax API to extract tags, summaries, key facts, timelines, links, and other structured information
+- **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
+- **Chat**: Streamed AI conversation powered by existing notes
 
-## 技术栈
+## Tech Stack
 
 ![Next.js](https://img.shields.io/badge/Next.js-16.2-000?logo=next.js)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?logo=tailwindcss)
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright)
 ![Vitest](https://img.shields.io/badge/Vitest-Unit-6E9F18?logo=vitest)
 
-- **框架**：Next.js 16 App Router + React 19
-- **语言**：TypeScript 5 (strict mode)
-- **样式**：Tailwind CSS + 自定义 CSS 变量（深色主题）
-- **AI 流**：`ai` SDK + OpenAI-compatible MiniMax API
-- **网页抓取**：Playwright（Chromium 无头浏览器）+ Readability
-- **RSS**：`feedsmith` + 增量更新（`lastPubDate` 水位线）
-- **存储**：纯文件系统（`knowledge/` 目录），原子写入
-- **测试**：Vitest（86 单元测试）+ Playwright（6 E2E 测试）
+- **Framework**: Next.js 16 App Router + React 19
+- **Language**: TypeScript 5 (strict mode)
+- **Styling**: Tailwind CSS + custom CSS variables (dark theme)
+- **AI Streaming**: `ai` SDK + OpenAI-compatible MiniMax API
+- **Web Scraping**: Playwright (Chromium headless) + Readability
+- **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark)
+- **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
+- **Testing**: Vitest (86 unit tests) + Playwright (6 E2E tests)
 
-## 快速开始
+## Quick Start
 
-### 1. 克隆与安装
+### 1. Clone & Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/ayokaa/my-kb.git
 cd my-kb
 npm install
 ```
 
-### 2. 配置环境变量
+### 2. Configure Environment Variables
 
 ```bash
 cp .env.example .env.local
-# 编辑 .env.local，填入你的 MiniMax API 密钥
+# Edit .env.local and fill in your MiniMax API key
 ```
 
-必需变量：
-- `MINIMAX_API_KEY` — MiniMax API 密钥（用于笔记生成和聊天）
+Required:
+- `MINIMAX_API_KEY` — MiniMax API key (used for note generation and chat)
 
-可选变量：
-- `MINIMAX_BASE_URL` — 默认 `https://api.minimaxi.com/v1`
+Optional:
+- `MINIMAX_BASE_URL` — defaults to `https://api.minimaxi.com/v1`
 
-### 3. 启动开发服务器
+### 3. Start Development Server
 
 ```bash
 npm run dev
 ```
 
-打开 http://localhost:3000
+Open http://localhost:3000
 
-### 4. 运行测试
+### 4. Run Tests
 
 ```bash
-# 单元测试（Vitest）
+# Unit tests (Vitest)
 npm run test
 
-# 单元测试 + 覆盖率报告
+# Unit tests + coverage report
 npm run test:coverage
 
-# E2E 测试（Playwright）
+# E2E tests (Playwright)
 npm run test:e2e
 
-# 全部测试
+# All tests
 npm run test:all
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 my-kb/
 ├── app/                    # Next.js App Router
-│   ├── api/                # API 路由
-│   ├── layout.tsx          # 根布局（启动 RSS cron）
-│   └── page.tsx            # 主页面（标签页切换）
-├── components/             # React 组件（Client Components）
+│   ├── api/                # API routes
+│   ├── layout.tsx          # Root layout (bootstraps RSS cron)
+│   └── page.tsx            # Main page (tab switcher)
+├── components/             # React UI (Client Components)
 │   ├── Sidebar.tsx
 │   ├── ChatPanel.tsx
 │   ├── InboxPanel.tsx
 │   ├── NotesPanel.tsx
 │   ├── RSSPanel.tsx
 │   └── TasksPanel.tsx
-├── lib/                    # 核心业务逻辑
-│   ├── types.ts            # 类型定义
-│   ├── storage.ts          # 文件系统存储
-│   ├── parsers.ts          # Markdown 解析/序列化
-│   ├── queue.ts            # 任务队列（内存 + JSON 持久化）
-│   ├── cognition/          # LLM 调用
-│   ├── ingestion/          # 内容抓取（Web/RSS/PDF）
-│   └── rss/                # RSS 订阅管理
-├── e2e/                    # Playwright E2E 测试
-├── knowledge/              # 数据存储（.gitignore，本地 only）
-│   ├── notes/              # 结构化笔记
-│   ├── inbox/              # 待审核条目
-│   ├── meta/               # 元数据（索引、队列、RSS订阅）
-│   └── attachments/        # 上传的原始文件
-└── AGENTS.md               # AI 协作规范（面向编程助手）
+├── lib/                    # Core business logic
+│   ├── types.ts            # Type definitions
+│   ├── storage.ts          # Filesystem storage
+│   ├── parsers.ts          # Markdown parse/serialize
+│   ├── queue.ts            # Task queue (memory + JSON persistence)
+│   ├── cognition/          # LLM calls
+│   ├── ingestion/          # Content scraping (Web/RSS/PDF)
+│   └── rss/                # RSS subscription management
+├── e2e/                    # Playwright E2E tests
+├── knowledge/              # Data storage (.gitignore, local only)
+│   ├── notes/              # Structured notes
+│   ├── inbox/              # Pending review entries
+│   ├── meta/               # Metadata (index, queue, RSS subscriptions)
+│   └── attachments/        # Uploaded original files
+├── docs/                   # Documentation
+│   ├── API.md              # REST API reference
+│   └── ARCHITECTURE.md     # System design & data flow
+├── CHANGELOG.md
+├── AGENTS.md               # AI assistant conventions
+└── LICENSE
 ```
 
-## 数据存储
+## Data Storage
 
-所有数据以 Markdown / YAML 文件形式存储在 `knowledge/` 目录中，不依赖数据库：
+All data is stored as Markdown / YAML files in the `knowledge/` directory. No database is required:
 
-- **笔记**：`knowledge/notes/{id}.md` — YAML Frontmatter + Markdown 正文
-- **收件箱**：`knowledge/inbox/{timestamp}-{slug}.md`
-- **元数据**：`knowledge/meta/` — 倒排索引、RSS 订阅列表、任务队列状态
+- **Notes**: `knowledge/notes/{id}.md` — YAML Frontmatter + Markdown body
+- **Inbox**: `knowledge/inbox/{timestamp}-{slug}.md`
+- **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state
 
-`knowledge/` 和 `.env*.local` 已被 `.gitignore` 排除，确保个人数据不会进入版本控制。
+Both `knowledge/` and `.env*.local` are excluded by `.gitignore` to ensure personal data never enters version control.
 
-## 关键设计决策
+## Key Design Decisions
 
-| 决策 | 说明 |
-|------|------|
-| **文件系统存储** | 笔记即文件，可用任意 Markdown 编辑器打开，天然支持 Git 版本管理 |
-| **Playwright 抓取** | 现代网站多为客户端渲染，纯 `fetch` 只能拿到空壳 HTML。Playwright 执行 JS 后提取正文 |
-| **内存队列 + JSON 持久化** | 任务量不大，无需引入 Redis。进程重启时自动恢复 pending 任务 |
-| **RSS 增量更新** | 以 `lastPubDate` 为水位线，避免重复抓取，首次只取最近 5 条 |
-| **收件箱审核** | LLM 加工前可人工确认，避免垃圾信息入库；也支持 API 直接入库 |
+| Decision | Rationale |
+|----------|-----------|
+| **Filesystem storage** | Notes are documents; Markdown is the native format. Git provides versioning for free. |
+| **Playwright scraping** | Modern sites are client-side rendered. Pure `fetch` only retrieves an empty HTML shell. Playwright executes JS before extracting content. |
+| **Memory queue + JSON persistence** | Workload is small (single user, a few dozen tasks per day). Avoids Redis operational overhead. |
+| **RSS incremental updates** | Uses `lastPubDate` as a watermark to avoid re-fetching duplicates. First check is limited to 5 items. |
+| **Inbox review step** | LLM calls cost money and can produce noise. Human approval prevents polluting the knowledge base. |
+
+## Documentation
+
+- [`AGENTS.md`](./AGENTS.md) — AI assistant coding conventions
+- [`docs/API.md`](./docs/API.md) — REST API reference
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — System architecture & data flow
+- [`CHANGELOG.md`](./CHANGELOG.md) — Change history
 
 ## License
 
-MIT
+[MIT](./LICENSE)
