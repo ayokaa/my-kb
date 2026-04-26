@@ -82,6 +82,17 @@ export class FileSystemStorage implements Storage {
     const dst = this.archiveNotePath(id);
     await mkdir(dirname(dst), { recursive: true });
     await rename(src, dst);
+
+    // Clean up inverted index
+    try {
+      const index = await this.loadIndex();
+      const filtered = index.entries.filter((e) => e.noteId !== id);
+      if (filtered.length !== index.entries.length) {
+        await this.saveIndex({ entries: filtered });
+      }
+    } catch {
+      // Index cleanup failure is non-critical
+    }
   }
 
   // ===== Conversation =====

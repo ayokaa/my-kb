@@ -16,6 +16,8 @@ import {
   ChevronRight,
   RefreshCw,
   ArrowUpRight,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 
 interface NoteLink {
@@ -105,6 +107,9 @@ export default function NotesPanel() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteResult, setDeleteResult] = useState('');
 
   async function load() {
     setLoading(true);
@@ -116,6 +121,8 @@ export default function NotesPanel() {
       if (list.length > 0 && !selected) {
         setSelected(list[0]);
       }
+      setShowDeleteConfirm(false);
+      setDeleteResult('');
     } catch {
       setNotes([]);
     }
@@ -127,6 +134,33 @@ export default function NotesPanel() {
     if (target) {
       setSelected(target);
     }
+  }
+
+  async function handleDelete(note: Note) {
+    setDeletingId(note.id);
+    setDeleteResult('');
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.ok) {
+        const currentIndex = filtered.findIndex((n) => n.id === note.id);
+        const newNotes = notes.filter((n) => n.id !== note.id);
+        setNotes(newNotes);
+        setShowDeleteConfirm(false);
+        if (newNotes.length > 0) {
+          const nextIndex = Math.min(currentIndex, newNotes.length - 1);
+          const nextNote = filtered.filter((n) => n.id !== note.id)[nextIndex] || newNotes[0];
+          setSelected(nextNote);
+        } else {
+          setSelected(null);
+        }
+      } else {
+        setDeleteResult(`删除失败 · ${data.error}`);
+      }
+    } catch (err: any) {
+      setDeleteResult(`错误 · ${err.message}`);
+    }
+    setDeletingId(null);
   }
 
   useEffect(() => {
@@ -217,7 +251,8 @@ export default function NotesPanel() {
             {filtered.map((note) => (
               <button
                 key={note.id}
-                onClick={() => setSelected(note)}
+                onClick={() => { setSelected(note); setShowDeleteConfirm(false); setDeleteResult(''); }}
+                
                 className={`w-full rounded-xl border p-4 text-left transition-all duration-200 ${
                   selected?.id === note.id
                     ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
@@ -305,7 +340,46 @@ export default function NotesPanel() {
                       ))}
                     </div>
                   </div>
+                  <div className="flex shrink-0 gap-2">
+                    {!showDeleteConfirm && (
+                      <button
+                        onClick={() => { setShowDeleteConfirm(true); setDeleteResult(''); }}
+                        disabled={deletingId === selected.id}
+                        className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs text-[var(--text-tertiary)] hover:text-[var(--error)] disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        删除
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {showDeleteConfirm && (
+                  <div className="mt-3 flex items-center gap-3 rounded-md bg-red-900/10 px-3 py-2">
+                    <span className="flex-1 text-xs text-[var(--text-secondary)]">
+                      确定删除《{selected.title}》？
+                    </span>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={deletingId === selected.id}
+                      className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => handleDelete(selected)}
+                      disabled={deletingId === selected.id}
+                      className="btn-danger flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40"
+                    >
+                      {deletingId === selected.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      确认删除
+                    </button>
+                  </div>
+                )}
+                {deleteResult && (
+                  <p className="mt-3 break-words rounded-md bg-red-900/20 px-3 py-2 text-xs text-[var(--error)]">
+                    {deleteResult}
+                  </p>
+                )}
               </div>
 
               {/* Body */}

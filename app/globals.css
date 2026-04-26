@@ -110,6 +110,20 @@
     background: var(--bg-hover);
   }
 
+  .btn-danger {
+    background: rgba(220, 38, 38, 0.15);
+    color: #f87171;
+    font-weight: 500;
+    border: 1px solid rgba(220, 38, 38, 0.25);
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+  }
+
+  .btn-danger:hover {
+    background: rgba(220, 38, 38, 0.25);
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.2);
+  }
+
   .input-dark {
     background: var(--bg-elevated);
     border: 1px solid var(--border);
