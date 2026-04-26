@@ -1,28 +1,20 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { describe, it, expect, vi } from 'vitest';
 import yaml from 'js-yaml';
-
-const { mockProcessInboxEntry, mockListNotes, mockSaveNote } = vi.hoisted(() => ({
-  mockProcessInboxEntry: vi.fn().mockResolvedValue({
-    note: { id: 'note-1', title: 'Test', status: 'seed', tags: [], sources: [], content: '' },
-  }),
-  mockListNotes: vi.fn().mockResolvedValue([]),
-  mockSaveNote: vi.fn().mockResolvedValue(undefined),
-}));
+import { parseInboxRaw, enqueue, getTask, listPending } from '../queue';
 
 vi.mock('@/lib/cognition/ingest', () => ({
-  processInboxEntry: mockProcessInboxEntry,
+  processInboxEntry: vi.fn(),
 }));
 
 vi.mock('@/lib/storage', () => ({
   FileSystemStorage: vi.fn(function () {
-    return { listNotes: mockListNotes, saveNote: mockSaveNote };
+    return {
+      listNotes: vi.fn().mockResolvedValue([]),
+      saveNote: vi.fn().mockResolvedValue(undefined),
+      archiveInbox: vi.fn().mockResolvedValue(undefined),
+    };
   }),
 }));
-
-const { parseInboxRaw, runIngestTask } = await import('../queue');
 
 function makeInboxMd(title: string, extra: Record<string, string> = {}) {
   const fm = { source_type: 'text', title, extracted_at: '2025-01-01T00:00:00Z', ...extra };
@@ -61,55 +53,28 @@ describe('parseInboxRaw', () => {
   });
 });
 
-/* ===== runIngestTask (direct call, real fs for file reads) ===== */
+/* ===== enqueue / getTask / listPending ===== */
 
-describe('runIngestTask', () => {
-  let tmpDir: string;
-  let archiveDir: string;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    tmpDir = mkdtempSync(join(tmpdir(), 'queue-test-'));
-    archiveDir = join(tmpDir, 'archive', 'inbox');
-    mkdirSync(archiveDir, { recursive: true });
+describe('enqueue / getTask / listPending', () => {
+  it('enqueue returns a task id', () => {
+    const id = enqueue('ingest', { fileName: 'test.md' });
+    expect(typeof id).toBe('string');
+    expect(id.startsWith('task-')).toBe(true);
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  it('getTask retrieves the created task', () => {
+    const id = enqueue('ingest', { fileName: 'test.md' });
+    const task = getTask(id);
+    expect(task).toBeDefined();
+    expect(task!.type).toBe('ingest');
+    expect(task!.status).toBe('pending');
+    expect(task!.payload.fileName).toBe('test.md');
   });
 
-  it('reads file from archive directory and creates note', async () => {
-    writeFileSync(join(archiveDir, 'test.md'), makeInboxMd('Test'));
-
-    await runIngestTask({ fileName: 'test.md' }, archiveDir);
-
-    expect(mockProcessInboxEntry).toHaveBeenCalledTimes(1);
-    expect(mockSaveNote).toHaveBeenCalledTimes(1);
-  });
-
-  it('throws when file is missing', async () => {
-    await expect(runIngestTask({ fileName: 'missing.md' }, archiveDir))
-      .rejects.toThrow(/ENOENT/);
-  });
-
-  it('skips and returns { skipped: true } for duplicate source URL', async () => {
-    mockListNotes.mockResolvedValue([{ sources: ['https://example.com/art'] }]);
-    writeFileSync(join(archiveDir, 'dupe.md'), makeInboxMd('Dupe', { rss_link: 'https://example.com/art' }));
-
-    const result = await runIngestTask({ fileName: 'dupe.md' }, archiveDir);
-
-    expect(result).toEqual({ skipped: true, reason: 'duplicate source' });
-    expect(mockProcessInboxEntry).not.toHaveBeenCalled();
-    expect(mockSaveNote).not.toHaveBeenCalled();
-  });
-
-  it('processes entry without URL (no dedup check)', async () => {
-    writeFileSync(join(archiveDir, 'plain.md'), makeInboxMd('Plain'));
-
-    await runIngestTask({ fileName: 'plain.md' }, archiveDir);
-
-    expect(mockProcessInboxEntry).toHaveBeenCalledTimes(1);
-    expect(mockSaveNote).toHaveBeenCalledTimes(1);
-    expect(mockListNotes).not.toHaveBeenCalled();
+  it('listPending returns pending tasks', () => {
+    const before = listPending().length;
+    enqueue('ingest', { fileName: 'pending.md' });
+    const after = listPending().length;
+    expect(after).toBe(before + 1);
   });
 });

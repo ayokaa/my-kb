@@ -5,10 +5,14 @@ vi.mock('@/lib/storage', () => ({
   FileSystemStorage: vi.fn(function() {
     return {
       listInbox: vi.fn().mockResolvedValue([
-        { title: 'Test Article', content: 'Hello world', sourceType: 'web', rawMetadata: {} },
+        { title: 'Test Article', content: 'Hello world', sourceType: 'web', rawMetadata: {}, filePath: '/knowledge/inbox/1-test.md' },
       ]),
     };
   }),
+}));
+
+vi.mock('@/lib/queue', () => ({
+  listPending: vi.fn().mockReturnValue([]),
 }));
 
 describe('/api/inbox', () => {
