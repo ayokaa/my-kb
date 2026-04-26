@@ -1,41 +1,38 @@
+import { chromium } from 'playwright';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 
-const FETCH_TIMEOUT = 15000; // 15 seconds
+const FETCH_TIMEOUT = 20000;
 
 export async function fetchWebContent(url: string): Promise<{ title: string; content: string; excerpt?: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle', timeout: FETCH_TIMEOUT });
 
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; AgentKB/1.0)',
-    },
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeout));
+    const title = await page.title();
+    const html = await page.content();
 
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${url}: ${res.status}`);
-  }
+    // Parse with Readability on the fully-rendered DOM
+    const dom = new JSDOM(html, { url });
+    const article = new Readability(dom.window.document).parse();
 
-  const html = await res.text();
-  const dom = new JSDOM(html, { url });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
+    if (article) {
+      return {
+        title: article.title || title || url,
+        content: article.textContent || '',
+        excerpt: article.excerpt || '',
+      };
+    }
 
-  if (!article) {
-    // Fallback: return plain text from body
-    const bodyText = dom.window.document.body?.textContent?.trim() || '';
+    // Fallback: plain body text
+    const bodyText = await page.evaluate(() => document.body?.innerText?.trim() || '');
     return {
-      title: dom.window.document.title || url,
+      title: title || url,
       content: bodyText.slice(0, 10000),
       excerpt: bodyText.slice(0, 200),
     };
+  } finally {
+    await browser.close();
   }
-
-  return {
-    title: article.title || url,
-    content: article.textContent || '',
-    excerpt: article.excerpt || '',
-  };
 }
