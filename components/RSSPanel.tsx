@@ -58,7 +58,9 @@ export default function RSSPanel() {
         setNewName('');
         load();
       }
-    } catch {}
+    } catch (err) {
+      console.error('[RSSPanel] Failed to add subscription:', err);
+    }
   }
 
   async function removeSubscription(url: string) {
@@ -69,7 +71,9 @@ export default function RSSPanel() {
         body: JSON.stringify({ url }),
       });
       load();
-    } catch {}
+    } catch (err) {
+      console.error('[RSSPanel] Failed to remove subscription:', err);
+    }
   }
 
   async function checkAll() {
@@ -80,7 +84,9 @@ export default function RSSPanel() {
       const data = await res.json();
       setCheckResults(data.results || []);
       load();
-    } catch {}
+    } catch (err) {
+      console.error('[RSSPanel] Failed to check subscriptions:', err);
+    }
     setChecking(false);
   }
 
@@ -98,7 +104,9 @@ export default function RSSPanel() {
       if (res.ok) {
         load();
       }
-    } catch {}
+    } catch (err) {
+      console.error('[RSSPanel] Failed to import OPML:', err);
+    }
     setImporting(false);
   }
 
