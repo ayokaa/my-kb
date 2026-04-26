@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
   const fileType = file.type;
   const isExplicitlyAllowed = ALLOWED_TYPES.includes(fileType);
-  const isTextByExtension = file.name.endsWith('.md') || file.name.endsWith('.txt') || file.name.endsWith('.pdf');
+  const isTextByExtension = file.name.endsWith('.md') || file.name.endsWith('.txt');
   if (!isExplicitlyAllowed && !isTextByExtension) {
     return Response.json({ error: 'File type not allowed' }, { status: 415 });
   }
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     let title = fileName;
     let content = '';
 
-    if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+    if (fileType === 'application/pdf') {
       const pdf = await extractPDF(attachmentPath);
       title = pdf.title;
       content = pdf.content;
@@ -76,7 +76,8 @@ export async function POST(req: Request) {
     });
 
     return Response.json({ ok: true, fileName, title });
-  } catch (err: any) {
-    return Response.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    console.error('[Upload] Failed to process upload:', err);
+    return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }
