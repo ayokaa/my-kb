@@ -6,6 +6,15 @@ import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
 import { parseNote, stringifyNote } from './parsers';
 
+let invertedIndexModule: typeof import('./search/inverted-index') | null = null;
+
+async function getSearchIndexModule(): Promise<typeof import('./search/inverted-index')> {
+  if (!invertedIndexModule) {
+    invertedIndexModule = await import('./search/inverted-index');
+  }
+  return invertedIndexModule;
+}
+
 const defaultExecFileAsync = promisify(execFile);
 type ExecFileAsyncType = typeof defaultExecFileAsync;
 
@@ -61,7 +70,8 @@ export class FileSystemStorage implements Storage {
     const endMarker = raw.indexOf('\n---', 3);
     if (endMarker === -1) return {};
     const fmRaw = raw.slice(3, endMarker).trim();
-    return yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown> ?? {};
+    const parsed = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA });
+    return (parsed as Record<string, unknown> | null) ?? {};
   }
 
   /** Light-weight scan: reads only frontmatter sources from all notes. */
@@ -74,17 +84,20 @@ export class FileSystemStorage implements Storage {
       return [];
     }
 
-    const results: Array<{ id: string; sources: string[] }> = [];
-    for (const file of files.filter(f => f.endsWith('.md'))) {
-      const id = basename(file, '.md');
-      try {
-        const fm = await this.loadNoteFrontmatter(id);
-        results.push({ id, sources: Array.isArray(fm.sources) ? fm.sources.map(String) : [] });
-      } catch {
-        // skip corrupted frontmatter
-      }
-    }
-    return results;
+    const entries = await Promise.all(
+      files
+        .filter((f) => f.endsWith('.md'))
+        .map(async (file) => {
+          const id = basename(file, '.md');
+          try {
+            const fm = await this.loadNoteFrontmatter(id);
+            return { id, sources: Array.isArray(fm.sources) ? fm.sources.map(String) : [] };
+          } catch {
+            return null;
+          }
+        })
+    );
+    return entries.filter(Boolean) as Array<{ id: string; sources: string[] }>;
   }
 
   async saveNote(note: Note): Promise<void> {
@@ -94,12 +107,12 @@ export class FileSystemStorage implements Storage {
 
     // Update search index
     try {
-      const { buildNoteIndex, mergeIndexes, removeNoteFromIndex, serializeIndex } = await import('./search/inverted-index');
+      const { buildNoteIndex, mergeIndexes, removeNoteFromIndex, serializeIndex } = await getSearchIndexModule();
       const indexPath = this.searchIndexPath();
       let existing: Awaited<ReturnType<typeof import('./search/inverted-index').deserializeIndex>> = null;
       try {
         const raw = await readFile(indexPath, 'utf-8');
-        existing = (await import('./search/inverted-index')).deserializeIndex(raw);
+        existing = (await getSearchIndexModule()).deserializeIndex(raw);
       } catch {
         // File may not exist
       }
@@ -112,7 +125,14 @@ export class FileSystemStorage implements Storage {
       indexMap = mergeIndexes([indexMap, noteIndex]);
 
       // Derive noteIds from existing index instead of reading all notes (N+1 fix)
-      const noteIds = Array.from(new Set([...(existing?.noteIds ?? []), note.id]));
+      let noteIds: string[];
+      if (existing) {
+        noteIds = Array.from(new Set([...existing.noteIds, note.id]));
+      } else {
+        // Index missing/corrupted — rebuild noteIds from disk (recovery path)
+        const allNotes = await this.listNotes();
+        noteIds = Array.from(new Set([...allNotes.map((n) => n.id), note.id]));
+      }
       await this.atomicWrite(indexPath, serializeIndex(indexMap, noteIds));
     } catch (err) {
       console.warn('[Storage] Failed to update search index:', (err as Error).message);
@@ -159,12 +179,12 @@ export class FileSystemStorage implements Storage {
 
     // Clean up search index
     try {
-      const { removeNoteFromIndex, serializeIndex } = await import('./search/inverted-index');
+      const { removeNoteFromIndex, serializeIndex } = await getSearchIndexModule();
       const indexPath = this.searchIndexPath();
       let existing: Awaited<ReturnType<typeof import('./search/inverted-index').deserializeIndex>> = null;
       try {
         const raw = await readFile(indexPath, 'utf-8');
-        existing = (await import('./search/inverted-index')).deserializeIndex(raw);
+        existing = (await getSearchIndexModule()).deserializeIndex(raw);
       } catch {
         // File may not exist
       }

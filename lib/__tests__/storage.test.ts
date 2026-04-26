@@ -64,6 +64,22 @@ describe('FileSystemStorage', () => {
       listNotesSpy.mockRestore();
     });
 
+    it('rebuilds noteIds from disk when search index is missing', async () => {
+      await storage.saveNote(createTestNote('note-a'));
+      await storage.saveNote(createTestNote('note-b'));
+
+      // Delete search index to simulate corruption/loss
+      const indexPath = join(tmpDir, 'meta', 'search-index.json');
+      rmSync(indexPath);
+
+      await storage.saveNote(createTestNote('note-c'));
+
+      const { deserializeIndex } = await import('@/lib/search/inverted-index');
+      const raw = await (await import('fs/promises')).readFile(indexPath, 'utf-8');
+      const parsed = deserializeIndex(raw);
+      expect(parsed.noteIds.sort()).toEqual(['note-a', 'note-b', 'note-c']);
+    });
+
     it('creates directories automatically', async () => {
       const note = createTestNote('deep/nested');
       await storage.saveNote(note);
