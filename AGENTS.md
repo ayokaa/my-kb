@@ -22,7 +22,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 框架 | Next.js 14.2.0 (App Router) + React 18 |
+| 框架 | Next.js 16.2.4 (App Router) + React 19 |
 | 语言 | TypeScript 5 (strict mode, target: es2015) |
 | 样式 | Tailwind CSS 3.4 + 自定义 CSS 变量（深色主题） |
 | 字体 | Cormorant Garamond (衬线标题) + JetBrains Mono (等宽正文) |

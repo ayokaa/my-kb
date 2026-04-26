@@ -22,14 +22,14 @@
 
 ## 技术栈
 
-![Next.js](https://img.shields.io/badge/Next.js-14.2-000?logo=next.js)
+![Next.js](https://img.shields.io/badge/Next.js-16.2-000?logo=next.js)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind-3.4-06B6D4?logo=tailwindcss)
 ![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright)
 ![Vitest](https://img.shields.io/badge/Vitest-Unit-6E9F18?logo=vitest)
 
-- **框架**：Next.js 14 App Router + React 18
+- **框架**：Next.js 16 App Router + React 19
 - **语言**：TypeScript 5 (strict mode)
 - **样式**：Tailwind CSS + 自定义 CSS 变量（深色主题）
 - **AI 流**：`ai` SDK + OpenAI-compatible MiniMax API
