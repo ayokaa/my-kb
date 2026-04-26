@@ -1,6 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
+import OpenAI from 'openai';
 
 const mockCreate = vi.fn();
+
+class MockStreamingTextResponse extends Response {
+  constructor(stream: ReadableStream) {
+    super(stream, { headers: { 'content-type': 'text/plain' } });
+  }
+}
+
+const { mockOpenAIStream, mockStreamingTextResponse } = vi.hoisted(() => ({
+  mockOpenAIStream: vi.fn().mockReturnValue(new ReadableStream()),
+  mockStreamingTextResponse: vi.fn().mockImplementation(function (stream: ReadableStream) {
+    return new MockStreamingTextResponse(stream);
+  }),
+}));
+
+vi.mock('ai', () => ({
+  OpenAIStream: mockOpenAIStream,
+  StreamingTextResponse: mockStreamingTextResponse,
+}));
 
 vi.mock('openai', () => ({
   default: vi.fn(function () {
@@ -17,6 +36,18 @@ vi.mock('openai', () => ({
 describe('/api/chat', () => {
   beforeEach(() => {
     mockCreate.mockReset();
+    mockOpenAIStream.mockClear();
+    mockStreamingTextResponse.mockClear();
+  });
+
+  it('initializes OpenAI client with baseURL and apiKey', async () => {
+    await import('../route');
+    expect(vi.mocked(OpenAI)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseURL: expect.any(String),
+        apiKey: expect.any(String),
+      })
+    );
   });
 
   it('streams response via OpenAI SDK', async () => {
@@ -42,6 +73,8 @@ describe('/api/chat', () => {
 
     const res = await POST(req);
     expect(res.status).toBe(200);
+    expect(mockOpenAIStream).toHaveBeenCalledWith(stream);
+    expect(mockStreamingTextResponse).toHaveBeenCalled();
   });
 
   it('returns 400 for invalid body', async () => {
