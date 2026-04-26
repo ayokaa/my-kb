@@ -23,7 +23,7 @@ const SYSTEM_PROMPT = `你是一个个人知识库助手。请将用户提供的
 
 要求：
 1. 用中文输出所有分析内容（原始内容中的专有名词、引用、代码保持原样）
-2. 提取关键概念作为标签（3-7个）
+2. 提取关键概念作为标签（3-7个，不要重复）
 3. 生成一句话摘要（不超过30字）
 4. 分析"与我相关"的角度：为什么这条信息对我有价值
 5. 提取关键事实（3-5条，每条简明扼要）
@@ -110,7 +110,7 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
   const note: Note = {
     id,
     title: parsed.title || entry.title,
-    tags: Array.isArray(parsed.tags) ? parsed.tags.map(String) : [],
+    tags: Array.isArray(parsed.tags) ? Array.from(new Set(parsed.tags.map(String))) : [],
     status: 'seed',
     created: now,
     updated: now,
