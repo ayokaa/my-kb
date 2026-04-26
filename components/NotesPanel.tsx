@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   BookOpen,
   Search,
@@ -414,10 +416,32 @@ export default function NotesPanel() {
                         <BookOpen className="h-3 w-3 text-[var(--accent)]" />
                         详细内容
                       </h4>
-                      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-                        <pre className="whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] text-sm leading-[1.8] text-[var(--text-secondary)]">
+                      <div className="markdown-content rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ node, ...props }) => (
+                              <a {...props} target="_blank" rel="noopener noreferrer" className="break-all text-[var(--accent)] underline transition-opacity hover:opacity-80" />
+                            ),
+                            p: ({ node, ...props }) => <p {...props} className="mb-3 text-sm leading-relaxed text-[var(--text-secondary)]" />,
+                            h1: ({ node, ...props }) => <h1 {...props} className="mb-3 mt-5 text-xl font-semibold text-[var(--text-primary)]" />,
+                            h2: ({ node, ...props }) => <h2 {...props} className="mb-2 mt-4 text-lg font-semibold text-[var(--text-primary)]" />,
+                            h3: ({ node, ...props }) => <h3 {...props} className="mb-2 mt-3 text-base font-semibold text-[var(--text-primary)]" />,
+                            ul: ({ node, ...props }) => <ul {...props} className="mb-3 ml-4 list-disc text-sm text-[var(--text-secondary)]" />,
+                            ol: ({ node, ...props }) => <ol {...props} className="mb-3 ml-4 list-decimal text-sm text-[var(--text-secondary)]" />,
+                            li: ({ node, ...props }) => <li {...props} className="mb-1" />,
+                            code: ({ node, ...props }) => <code {...props} className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-primary)]" />,
+                            pre: ({ node, ...props }) => <pre {...props} className="my-3 overflow-x-auto rounded-lg bg-[var(--bg-hover)] p-3 font-mono text-sm break-words" />,
+                            blockquote: ({ node, ...props }) => <blockquote {...props} className="my-3 border-l-2 border-[var(--accent)] pl-3 italic text-[var(--text-secondary)]" />,
+                            strong: ({ node, ...props }) => <strong {...props} className="font-semibold text-[var(--text-primary)]" />,
+                            hr: ({ node, ...props }) => <hr {...props} className="my-4 border-[var(--border)]" />,
+                            table: ({ node, ...props }) => <table {...props} className="mb-3 w-full text-sm text-[var(--text-secondary)]" />,
+                            th: ({ node, ...props }) => <th {...props} className="border border-[var(--border)] bg-[var(--bg-hover)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-primary)]" />,
+                            td: ({ node, ...props }) => <td {...props} className="border border-[var(--border)] px-3 py-2" />,
+                          }}
+                        >
                           {selected.content}
-                        </pre>
+                        </ReactMarkdown>
                       </div>
                     </div>
                   )}
