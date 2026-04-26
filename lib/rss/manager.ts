@@ -38,6 +38,19 @@ async function saveSources(sources: RSSSubscription[]) {
 // Prevent concurrent ingest for the same feed URL
 const processingFeeds = new Set<string>();
 
+function normalizePubDate(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+function isNewerPubDate(itemPubDate: string, lastPubDate: string): boolean {
+  const itemDate = new Date(itemPubDate);
+  const lastDate = new Date(lastPubDate);
+  if (isNaN(itemDate.getTime()) || isNaN(lastDate.getTime())) return true;
+  return itemDate.getTime() > lastDate.getTime();
+}
+
 /** Write feed items to inbox with lastPubDate filtering.
  *  - If lastPubDate is set: only items with pubDate > lastPubDate are ingested.
  *  - If lastPubDate is absent (first time): ingest up to 5 most-recent items.
@@ -52,19 +65,19 @@ async function processFeedItems(
 ): Promise<{ count: number; latestPubDate: string }> {
   if (processingFeeds.has(url)) {
     console.log(`[RSS] Skip concurrent ingest for ${url}`);
-    return { count: 0, latestPubDate: lastPubDate || '' };
+    return { count: 0, latestPubDate: normalizePubDate(lastPubDate) };
   }
   processingFeeds.add(url);
 
   try {
     const storage = new FileSystemStorage();
     let count = 0;
-    let latestPubDate = lastPubDate || '';
+    let latestPubDate = normalizePubDate(lastPubDate);
 
-      // Sort items by pubDate descending to ensure lastPubDate is updated correctly
+    // Sort items by pubDate descending to ensure lastPubDate is updated correctly
     const sortedItems = sortRSSItems(items);
 
-    // Pre-check existing inbox links for deduplication
+    // Pre-check existing inbox + archive links for deduplication
     const existingLinks = new Set<string>();
     try {
       const inboxEntries = await storage.listInbox();
@@ -77,15 +90,19 @@ async function processFeedItems(
     }
 
     for (const item of sortedItems) {
-      if (maxItems !== undefined && count >= maxItems) break;
-
       const itemPubDate = item.pubDate || '';
+      const normalizedItemDate = normalizePubDate(itemPubDate);
+
+      // Update latestPubDate for all valid pubDates, even if skipped
+      if (normalizedItemDate && (!latestPubDate || isNewerPubDate(normalizedItemDate, latestPubDate))) {
+        latestPubDate = normalizedItemDate;
+      }
+
+      if (maxItems !== undefined && count >= maxItems) break;
 
       // With lastPubDate: skip items that are not newer (use Date comparison for reliability)
       if (lastPubDate && itemPubDate) {
-        const lastDate = new Date(lastPubDate);
-        const itemDate = new Date(itemPubDate);
-        if (!isNaN(lastDate.getTime()) && !isNaN(itemDate.getTime()) && itemDate.getTime() <= lastDate.getTime()) {
+        if (!isNewerPubDate(itemPubDate, lastPubDate)) {
           continue;
         }
       }
@@ -115,9 +132,6 @@ async function processFeedItems(
       if (item.link) existingLinks.add(item.link);
 
       count++;
-      if (itemPubDate && itemPubDate > latestPubDate) {
-        latestPubDate = itemPubDate;
-      }
     }
 
     return { count, latestPubDate };
