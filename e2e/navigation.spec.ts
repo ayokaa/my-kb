@@ -27,9 +27,9 @@ test.describe('Navigation', () => {
     await page.getByText('订阅').click();
     await expect(page.getByText('RSS 订阅')).toBeVisible();
 
-    // Switch to Notes (placeholder)
+    // Switch to Notes
     await page.getByText('笔记').click();
-    await expect(page.getByText('笔记列表')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '笔记' })).toBeVisible();
 
     // Back to Chat
     await page.getByText('对话').click();
