@@ -91,7 +91,7 @@ export default function InboxPanel() {
   return (
     <div className="flex h-full gap-5">
       {/* List */}
-      <div className="flex w-80 flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]">
+      <div className="flex w-80 min-w-0 flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]">
         <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
           <div className="flex items-center gap-2">
             <Inbox className="h-4 w-4 text-[var(--accent)]" />
@@ -123,10 +123,10 @@ export default function InboxPanel() {
                   : 'border-transparent bg-[var(--bg-elevated)] hover:border-[var(--border-hover)]'
               }`}
             >
-              <p className="line-clamp-2 text-sm font-medium text-[var(--text-primary)]">{entry.title}</p>
+              <p className="line-clamp-2 break-words text-sm font-medium text-[var(--text-primary)]">{entry.title}</p>
               <p className="mt-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-                {isRssEntry(entry) ? <Rss className="h-3 w-3 text-orange-400" /> : <Tag className="h-3 w-3" />}
-                {sourceLabel(entry)}
+                {isRssEntry(entry) ? <Rss className="h-3 w-3 shrink-0 text-orange-400" /> : <Tag className="h-3 w-3 shrink-0" />}
+                <span className="truncate">{sourceLabel(entry)}</span>
               </p>
             </button>
           ))}
@@ -134,34 +134,34 @@ export default function InboxPanel() {
       </div>
 
       {/* Detail */}
-      <div className="flex flex-1 flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]">
+      <div className="flex min-w-0 flex-1 flex-col rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)]">
         {selected ? (
           <>
             <div className="border-b border-[var(--border)] px-6 py-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-[family-name:var(--font-serif)] text-xl font-semibold leading-snug tracking-wide text-[var(--text-primary)]">
+                  <h3 className="break-words font-[family-name:var(--font-serif)] text-xl font-semibold leading-snug tracking-wide text-[var(--text-primary)]">
                     {selected.title}
                   </h3>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-[var(--text-tertiary)]">
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {selected.extractedAt
+                      <Calendar className="h-3 w-3 shrink-0" />
+                      <span className="break-words">{selected.extractedAt
                         ? new Date(selected.extractedAt).toLocaleString('zh-CN')
-                        : '未知时间'}
+                        : '未知时间'}</span>
                     </span>
                     <span className="flex items-center gap-1">
-                      <Tag className="h-3 w-3" />
-                      {sourceLabel(selected)}
+                      <Tag className="h-3 w-3 shrink-0" />
+                      <span className="break-words">{sourceLabel(selected)}</span>
                     </span>
                     {!!originalUrl(selected) && (
                       <a
                         href={originalUrl(selected)}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[var(--accent)] transition-opacity hover:opacity-80"
+                        className="inline-flex items-center gap-1 break-all text-[var(--accent)] transition-opacity hover:opacity-80"
                       >
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink className="h-3 w-3 shrink-0" />
                         原文
                       </a>
                     )}
@@ -187,14 +187,14 @@ export default function InboxPanel() {
                 </div>
               </div>
               {result && (
-                <p className={`mt-3 rounded-md px-3 py-2 text-xs ${result.startsWith('已加入') ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : result.startsWith('已忽略') ? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]' : 'bg-red-900/20 text-[var(--error)]'}`}>
+                <p className={`mt-3 break-words rounded-md px-3 py-2 text-xs ${result.startsWith('已加入') ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : result.startsWith('已忽略') ? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]' : 'bg-red-900/20 text-[var(--error)]'}`}>
                   {result}
                 </p>
               )}
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
               {isRssEntry(selected) ? (
-                <div className="space-y-6">
+                <div className="min-w-0 space-y-6">
                   {/* 原文链接 */}
                   <a
                     href={originalUrl(selected)}
@@ -236,7 +236,7 @@ export default function InboxPanel() {
                   </div>
                 </div>
               ) : (
-                <div className="prose prose-invert prose-sm max-w-none">
+                <div className="prose prose-invert prose-sm min-w-0 max-w-none">
                   <pre className="whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] text-sm leading-[1.8] text-[var(--text-secondary)]">
                     {selected.content}
                   </pre>
