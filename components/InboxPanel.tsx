@@ -23,6 +23,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
   const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [result, setResult] = useState('');
+  const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
 
   async function load() {
     setLoading(true);
@@ -48,8 +49,12 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
     const fileName = entry.filePath?.split('/').pop();
     if (!fileName) return;
 
+    // Prevent double-processing the same file
+    if (processedFiles.has(fileName)) return;
+
     setProcessingId(fileName);
     setResult('');
+    setProcessedFiles((prev) => new Set(prev).add(fileName));
     try {
       if (action === 'approve') {
         const res = await fetch('/api/inbox/process', {
@@ -135,10 +140,14 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
             </div>
           )}
 
-          {entries.map((entry) => (
+          {entries.map((entry) => {
+            const fileName = entry.filePath?.split('/').pop();
+            const isProcessed = fileName ? processedFiles.has(fileName) : false;
+            if (isProcessed) return null;
+            return (
             <button
               key={entry.filePath}
-              onClick={() => setSelected(entry)}
+              onClick={() => { setSelected(entry); setResult(''); }}
               className={`w-full rounded-xl border p-4 text-left transition-all duration-200 ${
                 selected?.filePath === entry.filePath
                   ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
@@ -151,7 +160,8 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                 <span className="truncate">{sourceLabel(entry)}</span>
               </p>
             </button>
-          ))}
+          );
+          })}
         </div>
       </div>
 
@@ -198,7 +208,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                 <div className="flex shrink-0 gap-2">
                   <button
                     onClick={() => processEntry(selected, 'reject')}
-                    disabled={processingId === selected.filePath?.split('/').pop()}
+                    disabled={!!processingId || processedFiles.has(selected.filePath?.split('/').pop() || '')}
                     className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-40"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -206,7 +216,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                   </button>
                   <button
                     onClick={() => processEntry(selected, 'approve')}
-                    disabled={processingId === selected.filePath?.split('/').pop()}
+                    disabled={!!processingId || processedFiles.has(selected.filePath?.split('/').pop() || '')}
                     className="btn-primary flex items-center gap-1.5 px-4 py-2 text-xs disabled:opacity-40"
                   >
                     {processingId === selected.filePath?.split('/').pop() ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}

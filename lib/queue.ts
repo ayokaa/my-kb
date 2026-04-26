@@ -23,6 +23,12 @@ const tasks = new Map<string, Task>();
 const pendingIds: string[] = [];
 let workerRunning = false;
 
+/** Set a custom archive dir for testing */
+let _testArchiveDir: string | undefined;
+export function _setArchiveDir(dir: string | undefined) {
+  _testArchiveDir = dir;
+}
+
 function generateId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -57,6 +63,14 @@ export function listPending(): Task[] {
   return listTasks().filter((t) => t.status === 'pending' || t.status === 'running');
 }
 
+/** Reset all queue state — only for testing */
+export function _resetQueue() {
+  tasks.clear();
+  pendingIds.length = 0;
+  workerRunning = false;
+  _testArchiveDir = undefined;
+}
+
 /* ---------- Worker ---------- */
 
 async function startWorker() {
@@ -74,7 +88,7 @@ async function startWorker() {
 
     try {
       if (task.type === 'ingest') {
-        const result = await runIngestTask(task.payload);
+        const result = await runIngestTask(task.payload, _testArchiveDir);
         task.status = 'done';
         task.result = result || { ok: true };
         console.log(`[Queue] Task ${id} completed`, result?.skipped ? '(skipped)' : '');
@@ -93,7 +107,7 @@ async function startWorker() {
 
 /* ---------- Task handlers ---------- */
 
-function parseInboxRaw(raw: string, path: string): InboxEntry {
+export function parseInboxRaw(raw: string, path: string): InboxEntry {
   const parts = raw.split('---');
   if (parts.length < 3) {
     return {
@@ -122,9 +136,11 @@ function parseInboxRaw(raw: string, path: string): InboxEntry {
   };
 }
 
-async function runIngestTask(payload: { fileName: string }) {
+export async function runIngestTask(payload: { fileName: string }, archiveDir?: string) {
   const { fileName } = payload;
-  const filePath = join(process.cwd(), 'knowledge', 'inbox', fileName);
+  // The process route already archived the file, so read from archive directory
+  const base = archiveDir || join(process.cwd(), 'knowledge', 'archive', 'inbox');
+  const filePath = join(base, fileName);
 
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxRaw(raw, filePath);
@@ -138,13 +154,12 @@ async function runIngestTask(payload: { fileName: string }) {
     const notes = await storage.listNotes();
     const hasDuplicate = notes.some((note) => note.sources.includes(originalUrl));
     if (hasDuplicate) {
-      console.log(`[Queue] Duplicate source detected: ${originalUrl}, archiving ${fileName}`);
-      await storage.archiveInbox(fileName);
+      console.log(`[Queue] Duplicate source detected: ${originalUrl}, skipping ${fileName}`);
       return { skipped: true, reason: 'duplicate source' };
     }
   }
 
   const { note } = await processInboxEntry(entry);
   await storage.saveNote(note);
-  await storage.archiveInbox(fileName);
+  // File is already in archive, no need to archive again
 }
