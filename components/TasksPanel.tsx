@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ListChecks, Loader2, CheckCircle2, XCircle2, Clock, RefreshCw } from 'lucide-react';
+import { ListChecks, Loader2, CheckCircle2, XCircle, Clock, RefreshCw } from 'lucide-react';
 
 interface Task {
   id: string;
@@ -19,7 +19,7 @@ const STATUS_CONFIG: Record<Task['status'], { label: string; icon: React.Element
   pending: { label: '等待中', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
   running: { label: '执行中', icon: Loader2, color: 'text-[var(--accent)]', bg: 'bg-[var(--accent-dim)]' },
   done: { label: '已完成', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-  failed: { label: '失败', icon: XCircle2, color: 'text-[var(--error)]', bg: 'bg-red-500/10' },
+  failed: { label: '失败', icon: XCircle, color: 'text-[var(--error)]', bg: 'bg-red-500/10' },
 };
 
 function formatDate(iso: string) {
