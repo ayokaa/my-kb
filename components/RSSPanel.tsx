@@ -214,6 +214,7 @@ export default function RSSPanel() {
             </div>
             <button
               onClick={() => removeSubscription(sub.url)}
+              aria-label="删除订阅"
               className="ml-3 shrink-0 rounded-lg p-2 text-[var(--text-tertiary)] transition-colors hover:bg-red-900/20 hover:text-[var(--error)]"
             >
               <Trash2 className="h-3.5 w-3.5" />
