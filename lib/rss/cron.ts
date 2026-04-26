@@ -3,6 +3,7 @@ import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
 
 let started = false;
+let isRunning = false;
 
 export function startRSSCron(intervalMinutes = 60) {
   if (started) return;
@@ -12,6 +13,11 @@ export function startRSSCron(intervalMinutes = 60) {
   const cronExpr = `*/${Math.max(1, Math.min(intervalMinutes, 59))} * * * *`;
 
   cron.schedule(cronExpr, async () => {
+    if (isRunning) {
+      console.log('[RSS Cron] Previous check still running, skipping this tick');
+      return;
+    }
+    isRunning = true;
     console.log(`[RSS Cron] Queuing feed checks at ${new Date().toISOString()}`);
     try {
       const sources = await listSubscriptions();
@@ -21,6 +27,8 @@ export function startRSSCron(intervalMinutes = 60) {
       console.log(`[RSS Cron] Queued ${sources.length} feed checks`);
     } catch (err) {
       console.error('[RSS Cron] Error:', err);
+    } finally {
+      isRunning = false;
     }
   });
 
