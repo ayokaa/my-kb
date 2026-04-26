@@ -14,7 +14,7 @@ export class FileSystemStorage implements Storage {
   private readonly execAsync: ExecAsyncType;
 
   constructor(root?: string, execAsync?: ExecAsyncType) {
-    this.root = root || join(process.cwd(), 'knowledge');
+    this.root = root || join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge');
     this.execAsync = execAsync || defaultExecAsync;
   }
 

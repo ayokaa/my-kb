@@ -23,7 +23,8 @@ const tasks = new Map<string, Task>();
 const pendingIds: string[] = [];
 let workerRunning = false;
 
-const QUEUE_PATH = join(process.cwd(), 'knowledge', 'meta', 'queue.json');
+const KNOWLEDGE_ROOT = process.env.KNOWLEDGE_ROOT || 'knowledge';
+const QUEUE_PATH = join(process.cwd(), KNOWLEDGE_ROOT, 'meta', 'queue.json');
 
 async function saveQueueState() {
   try {
@@ -172,7 +173,7 @@ export function parseInboxRaw(raw: string, path: string): InboxEntry {
 
 async function runIngestTask(payload: { fileName: string }) {
   const { fileName } = payload;
-  const filePath = join(process.cwd(), 'knowledge', 'inbox', fileName);
+  const filePath = join(process.cwd(), KNOWLEDGE_ROOT, 'inbox', fileName);
 
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxRaw(raw, filePath);

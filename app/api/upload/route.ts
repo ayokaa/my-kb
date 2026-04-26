@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const fileType = file.type;
 
     // Save original file to attachments/
-    const attachmentDir = join(process.cwd(), 'knowledge', 'attachments');
+    const attachmentDir = join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge', 'attachments');
     const attachmentPath = join(attachmentDir, `${Date.now()}-${fileName}`);
     await mkdir(attachmentDir, { recursive: true });
     await writeFile(attachmentPath, Buffer.from(bytes));

@@ -13,7 +13,8 @@ export interface RSSSubscription {
   lastPubDate?: string; // latest pubDate processed for this feed
 }
 
-const META_DIR = join(process.cwd(), 'knowledge', 'meta');
+const KNOWLEDGE_ROOT = process.env.KNOWLEDGE_ROOT || 'knowledge';
+const META_DIR = join(process.cwd(), KNOWLEDGE_ROOT, 'meta');
 const SOURCES_PATH = join(META_DIR, 'rss-sources.yml');
 
 async function ensureMetaDir() {

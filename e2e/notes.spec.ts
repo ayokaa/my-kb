@@ -1,16 +1,9 @@
 import { test, expect } from './fixtures';
-
-async function clearNotes(request: any) {
-  const res = await request.get('/api/notes');
-  const data = await res.json();
-  for (const note of data.notes || []) {
-    await request.delete(`/api/notes/${encodeURIComponent(note.id)}`);
-  }
-}
+import { resetTestData } from './fixtures';
 
 test.describe.serial('Notes', () => {
-  test.beforeEach(async ({ request }) => {
-    await clearNotes(request);
+  test.beforeEach(async () => {
+    await resetTestData();
   });
 
   test('shows empty state when no notes', async ({ page }) => {
@@ -29,7 +22,6 @@ test.describe.serial('Notes', () => {
     await expect(searchInput).toBeVisible();
     await expect(searchInput).toBeEnabled();
 
-    // When no notes exist, typing in search should still show "还没有笔记"
     await searchInput.fill('nonexistent');
     await expect(page.getByText('还没有笔记')).toBeVisible();
   });
@@ -44,7 +36,6 @@ test.describe.serial('Notes', () => {
     await expect(page.getByText('常青')).toBeVisible();
     await expect(page.getByText('陈旧')).toBeVisible();
 
-    // Click on each filter
     await page.getByText('种子').click();
     await page.getByText('生长中').click();
     await page.getByText('常青').click();

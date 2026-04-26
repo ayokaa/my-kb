@@ -1,18 +1,15 @@
 import { test, expect } from './fixtures';
+import { resetTestData } from './fixtures';
 
 test.describe.serial('RSS Subscriptions', () => {
-  test.beforeEach(async ({ request }) => {
-    // Clear all subscriptions before each test
-    const res = await request.get('/api/rss/subscriptions');
-    const data = await res.json();
-    for (const sub of data.subscriptions || []) {
-      await request.delete('/api/rss/subscriptions', { data: { url: sub.url } });
-    }
+  test.beforeEach(async () => {
+    await resetTestData();
   });
 
   test('RSS panel shows empty state', async ({ page }) => {
     await page.goto('/');
     await page.getByText('订阅').click();
+    await page.waitForTimeout(500);
 
     await expect(page.getByText('RSS 订阅')).toBeVisible();
     await expect(page.getByText('还没有订阅源')).toBeVisible();
@@ -30,7 +27,6 @@ test.describe.serial('RSS Subscriptions', () => {
 
     await page.locator('form').filter({ has: urlInput }).locator('button[type="submit"]').click();
 
-    // Should show the new subscription
     await expect(page.getByText('Overreacted', { exact: true })).toBeVisible();
     await expect(page.getByText('https://overreacted.io/rss.xml', { exact: true })).toBeVisible();
   });
