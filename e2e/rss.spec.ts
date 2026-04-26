@@ -29,4 +29,22 @@ test.describe.serial('RSS Subscriptions', () => {
     await expect(page.getByText('Overreacted', { exact: true })).toBeVisible();
     await expect(page.getByText('https://overreacted.io/rss.xml', { exact: true })).toBeVisible();
   });
+
+  test('can remove a subscription', async ({ page, request }) => {
+    // Seed subscription via API to avoid UI add/remove interaction issues
+    await request.post('/api/rss/subscriptions', {
+      data: { url: 'https://example.com/feed.xml', name: 'Test Feed' },
+    });
+
+    await page.goto('/');
+    await page.getByText('订阅').click();
+
+    await expect(page.getByText('Test Feed', { exact: true })).toBeVisible();
+
+    // Remove
+    await page.getByRole('button', { name: '删除订阅' }).click();
+
+    await expect(page.getByText('Test Feed', { exact: true })).not.toBeVisible();
+    await expect(page.getByText('还没有订阅源')).toBeVisible();
+  });
 });

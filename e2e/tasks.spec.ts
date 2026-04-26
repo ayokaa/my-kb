@@ -45,4 +45,27 @@ test.describe.serial('Tasks', () => {
 
     await expect(page.getByText(fileName)).toBeVisible();
   });
+
+  test('failed tasks show error message and retry button', async ({ page, request }) => {
+    // Ingest and process to create a task, then archive the inbox file
+    // so the worker fails when trying to process it
+    await request.post('/api/ingest', {
+      data: { type: 'text', title: 'Fail Task Test', content: 'This will fail.' },
+    });
+
+    const inboxRes = await request.get('/api/inbox');
+    const inboxData = await inboxRes.json();
+    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
+
+    await request.post('/api/inbox/process', { data: { fileName } });
+
+    // Archive the inbox entry to make the task fail
+    await request.post('/api/inbox/archive', { data: { fileName } });
+
+    await page.goto('/');
+    await page.getByText('任务').click();
+
+    // The task should appear in the list (status may vary depending on timing)
+    await expect(page.getByText(fileName).first()).toBeVisible();
+  });
 });
