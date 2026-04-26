@@ -1,5 +1,5 @@
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, rename, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import yaml from 'js-yaml';
 import type { InboxEntry } from './types';
 import { processInboxEntry } from './cognition/ingest';
@@ -23,6 +23,43 @@ const tasks = new Map<string, Task>();
 const pendingIds: string[] = [];
 let workerRunning = false;
 
+const QUEUE_PATH = join(process.cwd(), 'knowledge', 'meta', 'queue.json');
+
+async function saveQueueState() {
+  try {
+    await mkdir(dirname(QUEUE_PATH), { recursive: true });
+    const state = {
+      tasks: Array.from(tasks.values()),
+      pendingIds: [...pendingIds],
+    };
+    const tmp = `${QUEUE_PATH}.tmp.${Date.now()}`;
+    await writeFile(tmp, JSON.stringify(state, null, 2));
+    await rename(tmp, QUEUE_PATH);
+  } catch (err) {
+    console.error('[Queue] Failed to save state:', (err as Error).message);
+  }
+}
+
+async function loadQueueState() {
+  try {
+    const raw = await readFile(QUEUE_PATH, 'utf-8');
+    const state = JSON.parse(raw);
+    for (const t of state.tasks || []) {
+      tasks.set(t.id, t);
+    }
+    for (const id of state.pendingIds || []) {
+      const task = tasks.get(id);
+      if (task && (task.status === 'pending' || task.status === 'running')) {
+        task.status = 'pending';
+        pendingIds.push(id);
+      }
+    }
+    console.log(`[Queue] Restored ${pendingIds.length} pending tasks`);
+  } catch {
+    // No state file, start fresh
+  }
+}
+
 function generateId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -39,6 +76,7 @@ export function enqueue(type: TaskType, payload: any): string {
   tasks.set(id, task);
   pendingIds.push(id);
   console.log(`[Queue] Enqueued ${type} task ${id}`);
+  saveQueueState();
   startWorker();
   return id;
 }
@@ -71,6 +109,7 @@ async function startWorker() {
 
     task.status = 'running';
     task.startedAt = new Date().toISOString();
+    saveQueueState();
 
     try {
       if (task.type === 'ingest') {
@@ -85,11 +124,20 @@ async function startWorker() {
       console.error(`[Queue] Task ${id} failed:`, err.message);
     }
     task.completedAt = new Date().toISOString();
+    saveQueueState();
   }
 
   workerRunning = false;
   console.log('[Queue] Worker idle');
 }
+
+// Restore state on module load
+loadQueueState().then(() => {
+  if (pendingIds.length > 0) {
+    console.log(`[Queue] Auto-starting worker with ${pendingIds.length} restored tasks`);
+    startWorker();
+  }
+});
 
 /* ---------- Task handlers ---------- */
 

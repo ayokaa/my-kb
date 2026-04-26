@@ -1,6 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import yaml from 'js-yaml';
+import { writeFile } from 'fs/promises';
 import { parseInboxRaw, enqueue, getTask, listPending } from '../queue';
+
+vi.mock(import('fs/promises'), async () => {
+  const mocks = {
+    readFile: vi.fn().mockRejectedValue(new Error('no file')),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn().mockResolvedValue(undefined),
+    mkdir: vi.fn().mockResolvedValue(undefined),
+  };
+  return {
+    ...mocks,
+    default: mocks,
+  };
+});
 
 vi.mock('@/lib/cognition/ingest', () => ({
   processInboxEntry: vi.fn(),
@@ -56,8 +70,11 @@ describe('parseInboxRaw', () => {
 /* ===== enqueue / getTask / listPending ===== */
 
 describe('enqueue / getTask / listPending', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   afterEach(async () => {
-    // Allow worker to finish and avoid unhandled console log errors during teardown
     await new Promise((r) => setTimeout(r, 150));
   });
 
@@ -81,5 +98,11 @@ describe('enqueue / getTask / listPending', () => {
     enqueue('ingest', { fileName: 'pending.md' });
     const after = listPending().length;
     expect(after).toBe(before + 1);
+  });
+
+  it('persists queue state to disk after enqueue', async () => {
+    enqueue('ingest', { fileName: 'persist.md' });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(writeFile).toHaveBeenCalled();
   });
 });
