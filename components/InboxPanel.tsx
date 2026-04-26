@@ -21,7 +21,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [selected, setSelected] = useState<InboxEntry | null>(null);
   const [loading, setLoading] = useState(false);
-  const [processing, setProcessing] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [result, setResult] = useState('');
 
   async function load() {
@@ -48,7 +48,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
     const fileName = entry.filePath?.split('/').pop();
     if (!fileName) return;
 
-    setProcessing(true);
+    setProcessingId(fileName);
     setResult('');
     try {
       if (action === 'approve') {
@@ -59,9 +59,11 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
         });
         const data = await res.json();
         if (data.ok) {
-          setResult(`已加入处理队列 · ${entry.title}`);
+          setResult('已加入处理队列');
         } else {
           setResult(`失败 · ${data.error}`);
+          setProcessingId(null);
+          return;
         }
       } else {
         const res = await fetch('/api/inbox/archive', {
@@ -71,18 +73,31 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
         });
         const data = await res.json();
         if (data.ok) {
-          setResult(`已忽略 · ${entry.title}`);
+          setResult('已忽略');
         } else {
           setResult(`归档失败 · ${data.error}`);
+          setProcessingId(null);
+          return;
         }
       }
-      setEntries((prev) => prev.filter((e) => e.filePath !== entry.filePath));
-      setSelected(null);
+
+      // Remove from list and auto-select next
+      const currentIndex = entries.findIndex((e) => e.filePath === entry.filePath);
+      const newEntries = entries.filter((e) => e.filePath !== entry.filePath);
+      setEntries(newEntries);
+
+      if (newEntries.length > 0) {
+        const nextIndex = Math.min(currentIndex, newEntries.length - 1);
+        setSelected(newEntries[nextIndex]);
+      } else {
+        setSelected(null);
+      }
+
       onChange?.();
     } catch (err: any) {
       setResult(`错误 · ${err.message}`);
     }
-    setProcessing(false);
+    setProcessingId(null);
   }
 
   const sourceLabel = (entry: InboxEntry) => {
@@ -177,7 +192,7 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                 <div className="flex shrink-0 gap-2">
                   <button
                     onClick={() => processEntry(selected, 'reject')}
-                    disabled={processing}
+                    disabled={processingId === selected.filePath?.split('/').pop()}
                     className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs disabled:opacity-40"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -185,10 +200,10 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                   </button>
                   <button
                     onClick={() => processEntry(selected, 'approve')}
-                    disabled={processing}
+                    disabled={processingId === selected.filePath?.split('/').pop()}
                     className="btn-primary flex items-center gap-1.5 px-4 py-2 text-xs disabled:opacity-40"
                   >
-                    {processing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    {processingId === selected.filePath?.split('/').pop() ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                     加入知识库
                   </button>
                 </div>

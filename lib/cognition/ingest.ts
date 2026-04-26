@@ -116,7 +116,7 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
     updated: now,
     sources: [
       entry.sourceType,
-      entry.rawMetadata?.source_url as string,
+      originalUrl,
       entry.rawMetadata?.rss_source as string,
       entry.rawMetadata?.original_filename as string,
     ].filter((s): s is string => Boolean(s)),

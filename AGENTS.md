@@ -1,0 +1,309 @@
+# AGENTS.md — My Knowledge Base (my-kb)
+
+> 本文件面向 AI 编程助手。阅读者应对本项目一无所知，所有信息均基于实际代码，不做假设。
+
+---
+
+## 项目概述
+
+**my-kb** 是一个基于 Next.js 的个人 AI 知识库应用。用户可以通过聊天、网页链接、RSS 订阅、文件上传、网络搜索等方式收集信息，系统利用大语言模型（LLM）将原始内容自动加工成结构化的知识笔记，并以 Markdown 文件形式持久化存储在本地文件系统中。
+
+核心功能：
+- **AI 对话**：基于已有知识的流式聊天助手
+- **知识入库（Ingest）**：支持文本、链接、PDF/TXT/MD 文件、RSS 订阅、网络搜索结果的自动抓取与入库
+- **收件箱审核（Inbox）**：待处理内容经过人工确认后，由 LLM 生成结构化笔记
+- **笔记管理（Notes）**：按状态（种子/生长中/常青/陈旧/归档）管理笔记，支持标签搜索
+- **RSS 订阅**：定时自动检查订阅源，将新文章写入收件箱
+- **任务队列**：后台异步处理 inbox 到 note 的转换
+
+---
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| 框架 | Next.js 14.2.0 (App Router) + React 18 |
+| 语言 | TypeScript 5 (strict mode, target: es2015) |
+| 样式 | Tailwind CSS 3.4 + 自定义 CSS 变量（深色主题） |
+| 字体 | Cormorant Garamond (衬线标题) + JetBrains Mono (等宽正文) |
+| AI 流 | `ai` + `@ai-sdk/openai` 的 `OpenAIStream` / `StreamingTextResponse` |
+| LLM | MiniMax API（默认模型 `MiniMax-M2.7`） |
+| 测试 | Vitest 4（单元测试，jsdom 环境）+ Playwright（E2E，Chromium） |
+| 抓取 | `@mozilla/readability` + `jsdom` |
+| RSS | `feedsmith` |
+| PDF | `pdf-parse` |
+| 配置 | YAML 通过 `js-yaml` 读写 |
+| 定时 | `node-cron` |
+
+---
+
+## 目录结构
+
+```
+my-kb/
+├── app/                          # Next.js App Router
+│   ├── api/                      # API 路由（每个目录对应一个端点）
+│   │   ├── chat/                 # POST /api/chat — 流式 AI 对话
+│   │   ├── inbox/                # GET /api/inbox, POST /api/inbox/archive, POST /api/inbox/process
+│   │   ├── ingest/               # POST /api/ingest — 文本/链接手动入库
+│   │   ├── notes/                # GET /api/notes — 列出所有笔记
+│   │   ├── rss/                  # RSS 相关接口
+│   │   │   ├── subscriptions/    # GET/POST/DELETE 订阅源管理
+│   │   │   ├── subscriptions/check/   # POST 手动检查更新
+│   │   │   └── subscriptions/import-opml/  # POST 导入 OPML
+│   │   ├── search/               # POST /api/search — 网络搜索并入库
+│   │   └── upload/               # POST /api/upload — 文件上传
+│   ├── globals.css               # 全局样式、CSS 变量、自定义组件类
+│   ├── layout.tsx                # 根布局（启动 RSS cron）
+│   └── page.tsx                  # 主页面（标签页切换器）
+├── components/                   # React 组件
+│   ├── Sidebar.tsx               # 左侧导航栏
+│   ├── ChatPanel.tsx             # 聊天 + 入库面板
+│   ├── InboxPanel.tsx            # 收件箱审核
+│   ├── NotesPanel.tsx            # 笔记浏览与搜索
+│   └── RSSPanel.tsx              # RSS 订阅管理
+├── lib/                          # 核心业务逻辑
+│   ├── types.ts                  # TypeScript 类型定义
+│   ├── storage.ts                # FileSystemStorage 实现
+│   ├── parsers.ts                # Note 的 Markdown 解析与序列化
+│   ├── queue.ts                  # 内存任务队列与 Worker
+│   ├── cognition/
+│   │   └── ingest.ts             # LLM 调用：将 inbox 加工成 note
+│   ├── ingestion/
+│   │   ├── web.ts                # 网页内容抓取（Readability）
+│   │   ├── rss.ts                # RSS/Atom/JSON Feed 解析
+│   │   └── pdf.ts                # PDF 文本提取
+│   └── rss/
+│       ├── manager.ts            # RSS 订阅的增删查改与自动入库
+│       └── cron.ts               # node-cron 定时任务封装
+├── e2e/                          # Playwright E2E 测试
+├── knowledge/                    # 文件系统数据存储（被 .gitignore 忽略）
+│   ├── notes/                    # 结构化笔记（Markdown）
+│   ├── inbox/                    # 待审核条目
+│   ├── archive/                  # 归档数据
+│   │   └── inbox/                # 已忽略的 inbox 条目
+│   ├── conversations/            # 对话记录
+│   ├── meta/                     # 元数据
+│   │   ├── inverted-index.md     # 倒排索引
+│   │   ├── aliases.yml           # 别名映射
+│   │   ├── rss-sources.yml       # RSS 订阅列表
+│   │   └── rss-seen.yml          # 已读 RSS 条目记录
+│   ├── attachments/              # 上传的原始文件
+│   └── daily/                    # （预留目录）
+├── package.json
+├── next.config.mjs
+├── tsconfig.json
+├── tailwind.config.ts
+├── vitest.config.ts
+├── playwright.config.ts
+└── postcss.config.mjs
+```
+
+---
+
+## 构建与运行命令
+
+```bash
+# 安装依赖
+npm install
+
+# 开发服务器（默认 http://localhost:3000）
+npm run dev
+
+# 生产构建
+npm run build
+
+# 启动生产服务器
+npm run start
+
+# 代码检查
+npm run lint
+
+# 单元测试（Vitest，监视模式）
+npm run test
+
+# 单元测试（一次性运行，带覆盖率报告）
+npm run test:coverage
+
+# E2E 测试（Playwright，自动启动 dev 服务器）
+npm run test:e2e
+```
+
+---
+
+## 环境变量
+
+| 变量名 | 说明 | 是否必须 |
+|--------|------|----------|
+| `MINIMAX_API_KEY` | MiniMax API 密钥 | 是（聊天、笔记生成） |
+| `MINIMAX_BASE_URL` | MiniMax API 基地址，默认 `https://api.minimaxi.com/v1` | 否 |
+| `SEARCH_API_KEY` | 网络搜索 API 密钥（默认使用 Serper.dev） | 否（仅搜索功能） |
+| `SEARCH_ENGINE` | 搜索引擎，默认 `serper` | 否 |
+
+环境变量通过 `.env` 或 `.env*.local` 文件配置。这些文件以及 `knowledge/` 目录已被 `.gitignore` 排除，不会进入版本控制。
+
+---
+
+## 代码组织规范
+
+### 模块划分
+
+- **`lib/types.ts`**：所有核心业务类型（`Note`, `InboxEntry`, `Conversation`, `Storage` 接口等）。
+- **`lib/storage.ts`**：`FileSystemStorage` 类，实现 `Storage` 接口，所有数据持久化均通过此类完成。
+- **`lib/parsers.ts`**：`parseNote` / `stringifyNote`，定义了 Note 的 Markdown 格式规范。
+- **`lib/queue.ts`**：纯内存任务队列，用于将 inbox 条目的异步加工任务排队执行。
+- **`lib/cognition/ingest.ts`**：唯一调用 LLM 进行内容加工的地方。
+- **`lib/ingestion/`**：各类原始内容的抓取/解析器，不依赖 LLM。
+- **`lib/rss/`**：RSS 订阅管理与定时轮询。
+- **`app/api/`**：HTTP API 层，负责接收请求、调用 lib、返回 JSON。
+- **`components/`**：React UI 组件，全部为 Client Component（`'use client'`），通过 `fetch` 调用 API。
+
+### 路径别名
+
+TypeScript 与 Vitest 均配置 `@/` 指向项目根目录。所有内部导入应使用 `@/lib/...`、`@/components/...` 等形式。
+
+### API 路由风格
+
+- 使用标准 Web API：`export async function POST(req: Request)`，返回 `Response.json(...)`。
+- 不使用 `NextResponse`，保持与 Edge/Node 运行时的最大兼容性。
+- 错误处理统一返回 `{ error: err.message }` 与适当的 HTTP status code。
+
+---
+
+## 数据模型与存储格式
+
+### Note（笔记）
+
+存储于 `knowledge/notes/{id}.md`，格式如下：
+
+```markdown
+---
+id: "note-id"
+title: "笔记标题"
+tags:
+  - "标签1"
+  - "标签2"
+status: "seed"   # seed | growing | evergreen | stale | archived
+created: "2024-01-01T00:00:00.000Z"
+updated: "2024-01-01T00:00:00.000Z"
+sources:
+  - "web"
+  - "https://example.com"
+---
+
+# 笔记标题
+
+## 一句话摘要
+摘要内容
+
+## 与我相关
+个人价值分析
+
+## 关键事实
+- 事实 1
+- 事实 2
+
+## 时间线
+- 2024-01 | 事件描述
+
+## 关联
+- [[另一篇笔记]] #strong — 关联原因
+
+## 常见问题
+**Q**: 问题？
+**A**: 答案
+*来源: [[某笔记]]*
+
+## 详细内容
+Markdown 正文
+```
+
+### Inbox（收件箱）
+
+存储于 `knowledge/inbox/{timestamp}-{slug}.md`，YAML frontmatter 包含 `source_type`、`source_path`、`title`、`extracted_at` 以及原始元数据。
+
+### RSS 元数据
+
+- `knowledge/meta/rss-sources.yml`：订阅源列表
+- `knowledge/meta/rss-seen.yml`：每个订阅源已见过的条目 ID（上限保留最近 500 条）
+
+---
+
+## 测试策略
+
+### 单元测试（Vitest）
+
+- 测试文件与源码紧邻存放，命名规则：
+  - `lib/__tests__/storage.test.ts`
+  - `lib/cognition/__tests__/ingest.test.ts`
+  - `app/api/chat/__tests__/route.test.ts`
+- 环境：`jsdom`（用于 React/前端逻辑），`globals: true`
+- 覆盖率提供者：`v8`
+- 阈值要求：
+  - lines ≥ 80%
+  - functions ≥ 80%
+  - branches ≥ 70%
+  - statements ≥ 80%
+- 排除目录：`node_modules/`, `.next/`, `e2e/`, `**/*.config.*`, `app/layout.tsx`, `app/page.tsx`
+
+### E2E 测试（Playwright）
+
+- 测试目录：`e2e/`
+- 浏览器：仅 Chromium
+- 自动启动开发服务器：`npm run dev`
+- 配置在 CI 模式下使用 1 个 worker、2 次重试；本地开发复用已有服务器
+
+### 运行全部测试
+
+```bash
+# 单元测试 + 覆盖率
+npm run test:coverage
+
+# E2E
+npm run test:e2e
+```
+
+---
+
+## 安全与隐私注意事项
+
+1. **敏感数据不入库**：`knowledge/` 与 `.env*` 已被 `.gitignore` 排除，确保个人笔记和 API 密钥不会被意外提交。
+2. **文件上传**：上传文件保存在 `knowledge/attachments/`，以时间戳前缀重命名，避免文件名冲突与路径遍历。
+3. **Shell 注入**：`storage.ts` 中的 `commit()` 方法通过 `git add` 和 `git commit` 执行外部命令，已对消息中的双引号做了转义。修改此逻辑时需格外谨慎。
+4. **API 密钥**：LLM 和搜索 API 密钥仅通过环境变量注入，不在客户端暴露。
+5. **RSS/网络抓取**：使用自定义 User-Agent (`AgentKB/1.0`)，抓取超时 8 秒，对 RSS 源之间加入 500ms 延迟以示礼貌。
+
+---
+
+## 开发约定
+
+- **UI 语言**：中文。所有面向用户的文案、提示、标签均使用中文。
+- **主题**：固定深色主题，通过 CSS 变量在 `globals.css` 中定义，不使用 Tailwind 默认颜色。
+- **组件风格**：大量自定义 CSS 类（`.glass`、`.card-elevated`、`.btn-primary`、`.input-dark` 等），参考 `globals.css` 的 `@layer components`。
+- **状态管理**：无全局状态库，React 组件内部使用 `useState` + `useEffect` + `fetch` 进行数据获取。
+- **Cron 启动**：RSS 定时任务在 `app/layout.tsx` 中通过动态 `import('@/lib/rss/cron')` 启动，仅在 Node.js 运行时且非测试环境下执行。
+- **Git 集成**：`FileSystemStorage.commit(message)` 可自动将 `knowledge/` 目录的变更提交到 Git，便于知识库版本管理。
+
+---
+
+## 常见修改场景指引
+
+| 场景 | 应修改的文件 |
+|------|-------------|
+| 新增 API 端点 | `app/api/{feature}/route.ts` |
+| 修改笔记数据结构 | `lib/types.ts` → `lib/parsers.ts` → `lib/storage.ts` |
+| 调整 LLM 提示词 | `lib/cognition/ingest.ts` 中的 `SYSTEM_PROMPT` |
+| 更换 LLM 提供商 | `lib/cognition/ingest.ts` 和 `app/api/chat/route.ts` 中的 OpenAI 客户端配置 |
+| 新增入库来源类型 | `lib/ingestion/` 下新增解析器，并在 `app/api/ingest/route.ts` 或 `app/api/upload/route.ts` 中接入 |
+| 调整 RSS 轮询频率 | `app/layout.tsx` 中 `startRSSCron(60)` 的参数（分钟） |
+| 修改 UI 主题色 | `app/globals.css` 中的 `:root` CSS 变量 |
+| 新增组件 | `components/{Name}.tsx`，并在 `app/page.tsx` 中引用 |
+
+---
+
+## 依赖版本锁定
+
+本项目使用 `package-lock.json` 锁定依赖版本。新增依赖后需确保：
+1. 在 `package.json` 中明确版本范围；
+2. 运行 `npm install` 更新 `package-lock.json`；
+3. 若新增依赖涉及文件系统、网络或环境相关行为，补充对应单元测试。

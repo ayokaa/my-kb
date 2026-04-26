@@ -74,11 +74,11 @@ async function startWorker() {
 
     try {
       if (task.type === 'ingest') {
-        await runIngestTask(task.payload);
+        const result = await runIngestTask(task.payload);
+        task.status = 'done';
+        task.result = result || { ok: true };
+        console.log(`[Queue] Task ${id} completed`, result?.skipped ? '(skipped)' : '');
       }
-      task.status = 'done';
-      task.result = { ok: true };
-      console.log(`[Queue] Task ${id} completed`);
     } catch (err: any) {
       task.status = 'failed';
       task.error = err.message;
@@ -129,8 +129,22 @@ async function runIngestTask(payload: { fileName: string }) {
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxRaw(raw, filePath);
 
-  const { note } = await processInboxEntry(entry);
+  const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
+
   const storage = new FileSystemStorage();
+
+  // Check for duplicate source URL in existing notes
+  if (originalUrl) {
+    const notes = await storage.listNotes();
+    const hasDuplicate = notes.some((note) => note.sources.includes(originalUrl));
+    if (hasDuplicate) {
+      console.log(`[Queue] Duplicate source detected: ${originalUrl}, archiving ${fileName}`);
+      await storage.archiveInbox(fileName);
+      return { skipped: true, reason: 'duplicate source' };
+    }
+  }
+
+  const { note } = await processInboxEntry(entry);
   await storage.saveNote(note);
   await storage.archiveInbox(fileName);
 }
