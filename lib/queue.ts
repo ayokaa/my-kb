@@ -1,5 +1,6 @@
 import { readFile, writeFile, rename, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
+import { randomUUID } from 'crypto';
 import yaml from 'js-yaml';
 import type { InboxEntry } from './types';
 import { processInboxEntry } from './cognition/ingest';
@@ -91,7 +92,7 @@ async function loadQueueState() {
 }
 
 function generateId(): string {
-  return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  return `task-${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
 
 export function enqueue(type: TaskType, payload: TaskPayload): string {
@@ -168,10 +169,10 @@ async function startWorker() {
         task.result = result;
         console.log(`[Queue] Task ${id} RSS fetch completed`, result.newItems !== undefined ? `(${result.newItems} new items)` : '');
       }
-    } catch (err: any) {
+    } catch (err) {
       task.status = 'failed';
-      task.error = err.message;
-      console.error(`[Queue] Task ${id} failed:`, err.message);
+      task.error = err instanceof Error ? err.message : 'Unknown error';
+      console.error(`[Queue] Task ${id} failed:`, err);
     }
     task.completedAt = new Date().toISOString();
     saveQueueState();
