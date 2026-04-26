@@ -36,7 +36,7 @@
 - **Web Scraping**: Playwright (Chromium headless) + Readability
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark)
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (86 unit tests) + Playwright (6 E2E tests)
+- **Testing**: Vitest (90 unit tests) + Playwright (20 E2E tests)
 
 ## Quick Start
 
@@ -114,6 +114,7 @@ my-kb/
 │   ├── inbox/              # Pending review entries
 │   ├── meta/               # Metadata (index, queue, RSS subscriptions)
 │   └── attachments/        # Uploaded original files
+├── knowledge-test/         # E2E test data isolation (.gitignore, local only)
 ├── docs/                   # Documentation
 │   ├── API.md              # REST API reference
 │   └── ARCHITECTURE.md     # System design & data flow
@@ -130,7 +131,11 @@ All data is stored as Markdown / YAML files in the `knowledge/` directory. No da
 - **Inbox**: `knowledge/inbox/{timestamp}-{slug}.md`
 - **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state
 
-Both `knowledge/` and `.env*.local` are excluded by `.gitignore` to ensure personal data never enters version control.
+Both `knowledge/` and `knowledge-test/` and `.env*.local` are excluded by `.gitignore` to ensure personal data never enters version control.
+
+### Test Data Isolation
+
+E2E tests run against a separate `knowledge-test/` directory (set via `KNOWLEDGE_ROOT=knowledge-test` in `playwright.config.ts`). This prevents test operations from polluting your real `knowledge/` data. The `resetTestData()` helper in `e2e/fixtures.ts` clears `knowledge-test/` before each test.
 
 ## Key Design Decisions
 

@@ -94,6 +94,7 @@ my-kb/
 │   │   └── queue.json            # 任务队列持久化状态
 │   ├── attachments/              # 上传的原始文件
 │   └── daily/                    # （预留目录）
+├── knowledge-test/               # E2E 测试数据隔离目录（被 .gitignore 忽略）
 ├── package.json
 ├── next.config.mjs
 ├── tsconfig.json
@@ -144,9 +145,10 @@ npm run test:e2e
 |--------|------|----------|
 | `MINIMAX_API_KEY` | MiniMax API 密钥 | 是（聊天、笔记生成） |
 | `MINIMAX_BASE_URL` | MiniMax API 基地址，默认 `https://api.minimaxi.com/v1` | 否 |
+| `KNOWLEDGE_ROOT` | 数据存储根目录，默认 `knowledge` | 否 |
 
 
-环境变量通过 `.env` 或 `.env*.local` 文件配置。这些文件以及 `knowledge/` 目录已被 `.gitignore` 排除，不会进入版本控制。
+环境变量通过 `.env` 或 `.env*.local` 文件配置。这些文件以及 `knowledge/` 和 `knowledge-test/` 目录已被 `.gitignore` 排除，不会进入版本控制。
 
 ---
 
@@ -261,8 +263,11 @@ Markdown 正文
 
 - 测试目录：`e2e/`
 - 浏览器：仅 Chromium
-- 自动启动开发服务器：`npm run dev`
-- 配置在 CI 模式下使用 1 个 worker、2 次重试；本地开发复用已有服务器
+- 自动启动开发服务器：`npm run dev`（注入 `KNOWLEDGE_ROOT=knowledge-test`）
+- `workers: 1`，所有 spec 文件使用 `test.describe.serial`，防止并发测试数据污染
+- `e2e/fixtures.ts` 拦截 Google Fonts 请求（防止 headless Chromium 超时）
+- 每个测试的 `beforeEach` 调用 `resetTestData()` 清空 `knowledge-test/`
+- 配置在 CI 模式下使用 2 次重试；本地开发复用已有服务器
 
 ### 运行全部测试
 
@@ -295,6 +300,7 @@ npm run test:e2e
 - **状态管理**：无全局状态库，React 组件内部使用 `useState` + `useEffect` + `fetch` 进行数据获取。
 - **Cron 启动**：RSS 定时任务在 `app/layout.tsx` 中通过动态 `import('@/lib/rss/cron')` 启动，仅在 Node.js 运行时且非测试环境下执行。
 - **Git 集成（当前失效）**：`FileSystemStorage.commit(message)` 设计意图是将 `knowledge/` 变更自动提交到 Git，但因 `knowledge/` 被 `.gitignore` 排除，实际不会产生任何提交。如需启用，需将 `knowledge/` 从 `.gitignore` 中移除。
+- **CHANGELOG 更新**：任何对代码行为的实质性修改（新功能、bug 修复、行为变更、API 调整）必须在 `CHANGELOG.md` 中记录。新增条目放在最上方的日期节下；如果当天已有条目，则追加到该节内，不重复创建同日期标题。每次提交前检查 CHANGELOG 是否同步。
 
 ---
 

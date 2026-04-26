@@ -118,7 +118,7 @@ This ensures readers never see a partially written file.
 ### Directory Layout
 
 ```
-knowledge/
+knowledge/                    — Production data (default)
 ├── notes/               — Structured notes (*.md)
 ├── inbox/               — Pending review entries (*.md)
 ├── archive/
@@ -130,7 +130,11 @@ knowledge/
 │   ├── rss-sources.yml  — Subscriptions + lastPubDate
 │   └── queue.json       — Serialized task queue
 └── attachments/         — Uploaded original files
+
+knowledge-test/               — E2E test data (isolated)
 ```
+
+The storage root is configurable via the `KNOWLEDGE_ROOT` environment variable. When unset, it defaults to `knowledge/`. E2E tests set `KNOWLEDGE_ROOT=knowledge-test` so all file operations during tests go to `knowledge-test/` instead of `knowledge/`.
 
 ---
 
@@ -210,6 +214,27 @@ Timeout: 20 seconds. The browser is always closed in a `finally` block.
 
 ---
 
+## E2E Test Isolation
+
+### Problem
+
+E2E tests write real files (inbox entries, notes, queue state) to the filesystem. Without isolation, running tests would pollute the user's production `knowledge/` data.
+
+### Solution: `KNOWLEDGE_ROOT` Environment Variable
+
+All storage paths in the codebase read `process.env.KNOWLEDGE_ROOT` (with fallback to `knowledge/`):
+
+| Module | Path Construction |
+|--------|-------------------|
+| `lib/storage.ts` | `constructor(root \|\| join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge'))` |
+| `lib/queue.ts` | `QUEUE_PATH = join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge', 'meta', 'queue.json')` |
+| `lib/rss/manager.ts` | `META_DIR = join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge', 'meta')` |
+| `app/api/upload/route.ts` | `UPLOAD_DIR = join(cwd, KNOWLEDGE_ROOT \|\| 'knowledge', 'attachments')` |
+
+`playwright.config.ts` launches the dev server with `KNOWLEDGE_ROOT=knowledge-test`. The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledge-test/` before each test, ensuring a clean slate.
+
+---
+
 ## Key Design Decisions
 
 | Decision | Rationale |
@@ -220,3 +245,4 @@ Timeout: 20 seconds. The browser is always closed in a `finally` block.
 | **Inbox review step** | LLM calls cost money and can produce garbage. Human approval prevents polluting the knowledge base. |
 | **YAML frontmatter** | Human-readable metadata that any Markdown editor can display. |
 | **Inverted index in Markdown** | Keeps everything in the same format; no separate index file to maintain. |
+| **E2E data isolation via env var** | Single `KNOWLEDGE_ROOT` point of control; no mocking or dependency injection needed. |
