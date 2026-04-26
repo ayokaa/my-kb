@@ -8,11 +8,31 @@ All notable changes to this project are documented in this file.
 
 - Upgrade to Next.js 16.2.4 + React 19.2.5 to address multiple CVEs in the legacy 14.x line (CVE-2025-55184, CVE-2025-29927, CVE-2025-32421).
 
+### Fixed
+
+- **Inbox process API**: `POST /api/inbox/process` was calling `archiveInbox()` *before* `enqueue()`, causing the worker to fail with `ENOENT` when it tried to read the file from `knowledge/inbox/`. The file had already been moved to `knowledge/archive/inbox/`. Removed the premature archive; worker now handles archiving after successful processing. (`3634ff1`)
+- **RSS duplicate ingestion**: Same articles were being ingested repeatedly (e.g. one article appeared 21+ times in `archive/inbox`). Fixed with three layers of defense:
+  - `fetchRSS` now returns items sorted by `pubDate` descending.
+  - `processFeedItems` uses `Date` object comparison instead of string comparison for `lastPubDate`.
+  - Both `processFeedItems` and `writeInbox` now check for existing `rss_link` before writing, skipping duplicates with a log message. (`bdc9cb1`)
+- **AGENTS.md inaccuracies**: Added missing `app/api/tasks/` and `app/api/notes/[id]/` to directory tree; corrected AI stream description (`@ai-sdk/openai` installed but unused); added missing test file examples; clarified Git integration is currently non-functional due to `.gitignore`. (`70482ad`)
+
+### Added
+
+- **E2E test coverage**: Expanded from 6 to 20 tests across 7 spec files, covering all user-facing paths:
+  - `inbox.spec.ts`: empty state, view detail, archive, approve, badge count updates.
+  - `ingest.spec.ts`: text ingestion via UI, link form, tab switching, RSS tab presence.
+  - `notes.spec.ts`: empty state, search input, status filter buttons.
+  - `tasks.spec.ts`: panel load, status filters, task display after queue.
+- **`e2e/fixtures.ts`**: Custom Playwright fixture that intercepts `fonts.googleapis.com` and `fonts.gstatic.com` requests. Prevents `page.goto` timeout in headless Chromium caused by Google Fonts `@import` blocking the `load` event.
+
 ### Changed
 
 - **Framework**: Next.js 14.2.0 → 16.2.4, React 18.2.0 → 19.2.5.
 - **Font loading**: Replace `next/font/google` with CSS `@import` to work around Next.js 16.2.x Turbopack regression (vercel/next.js#92671).
 - **Build tool**: Turbopack is now the default bundler in Next.js 16.
+- **Playwright config**: Set `workers: 1` to prevent cross-test data pollution when multiple spec files run concurrently. Each spec file uses `test.describe.serial` with `beforeEach` cleanup.
+- **Test count**: 86 → 90 Vitest unit tests (+4 for `sortRSSItems`); 6 → 20 Playwright E2E tests (+14).
 
 ## 2025-04-25
 
