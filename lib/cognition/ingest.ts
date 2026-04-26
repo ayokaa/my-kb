@@ -70,18 +70,30 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
     entry.rawMetadata?.original_filename && `原始文件: ${entry.rawMetadata.original_filename}`,
   ].filter(Boolean).join('\n');
 
-  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 8000)}`;
+  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 20000)}`;
 
-  const response = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.3,
-  });
+  async function callLLM(prompt: string, retries = 1): Promise<string> {
+    try {
+      const response = await client.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+      });
+      return response.choices[0]?.message?.content?.trim() || '{}';
+    } catch (err: any) {
+      if (retries > 0) {
+        console.warn(`[Ingest] LLM call failed, retrying... (${err.message})`);
+        await new Promise((r) => setTimeout(r, 2000));
+        return callLLM(prompt, retries - 1);
+      }
+      throw err;
+    }
+  }
 
-  const raw = response.choices[0]?.message?.content?.trim() || '{}';
+  const raw = await callLLM(userPrompt);
   const jsonText = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '');
   let parsed: any;
   try {

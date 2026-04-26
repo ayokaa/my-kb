@@ -1,7 +1,7 @@
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 
-const FETCH_TIMEOUT = 8000; // 8 seconds
+const FETCH_TIMEOUT = 15000; // 15 seconds
 
 export async function fetchWebContent(url: string): Promise<{ title: string; content: string; excerpt?: string }> {
   const controller = new AbortController();
