@@ -5,7 +5,6 @@ import { fetchWebContent } from '../ingestion/web';
 const client = new OpenAI({
   apiKey: process.env.MINIMAX_API_KEY || '',
   baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-  dangerouslyAllowBrowser: true,
 });
 
 const MODEL = 'MiniMax-M2.7';
@@ -102,6 +101,38 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
     // Fallback: try to extract JSON from the response
     const match = jsonText.match(/\{[\s\S]*\}/);
     parsed = match ? JSON.parse(match[0]) : {};
+  }
+
+  // Schema validation — fail fast with a descriptive error instead of silent corruption
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('LLM response is not a JSON object');
+  }
+  if (parsed.title !== undefined && typeof parsed.title !== 'string') {
+    throw new Error(`LLM response field 'title' must be a string, got ${typeof parsed.title}`);
+  }
+  if (parsed.tags !== undefined && !Array.isArray(parsed.tags)) {
+    throw new Error(`LLM response field 'tags' must be an array, got ${typeof parsed.tags}`);
+  }
+  if (parsed.summary !== undefined && typeof parsed.summary !== 'string') {
+    throw new Error(`LLM response field 'summary' must be a string, got ${typeof parsed.summary}`);
+  }
+  if (parsed.personalContext !== undefined && typeof parsed.personalContext !== 'string') {
+    throw new Error(`LLM response field 'personalContext' must be a string`);
+  }
+  if (parsed.keyFacts !== undefined && !Array.isArray(parsed.keyFacts)) {
+    throw new Error(`LLM response field 'keyFacts' must be an array`);
+  }
+  if (parsed.timeline !== undefined && !Array.isArray(parsed.timeline)) {
+    throw new Error(`LLM response field 'timeline' must be an array`);
+  }
+  if (parsed.links !== undefined && !Array.isArray(parsed.links)) {
+    throw new Error(`LLM response field 'links' must be an array`);
+  }
+  if (parsed.qas !== undefined && !Array.isArray(parsed.qas)) {
+    throw new Error(`LLM response field 'qas' must be an array`);
+  }
+  if (parsed.content !== undefined && typeof parsed.content !== 'string') {
+    throw new Error(`LLM response field 'content' must be a string`);
   }
 
   const now = new Date().toISOString();

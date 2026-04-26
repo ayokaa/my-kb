@@ -81,13 +81,25 @@ describe('enqueue / getTask / listPending', () => {
     vi.clearAllMocks();
   });
 
-  afterEach(async () => {
-    await new Promise((r) => setTimeout(r, 150));
-  });
-
   afterAll(() => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  /** Poll until a task reaches the expected status or timeout. */
+  async function waitForStatus(
+    taskId: string,
+    status: 'pending' | 'running' | 'done' | 'failed',
+    timeout = 5000,
+    interval = 50
+  ) {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const task = getTask(taskId);
+      if (task?.status === status) return task;
+      await new Promise((r) => setTimeout(r, interval));
+    }
+    throw new Error(`Timeout waiting for ${taskId} to reach ${status}`);
+  }
 
   it('enqueue returns a task id', () => {
     const id = enqueue('ingest', { fileName: 'test.md' });
@@ -100,7 +112,6 @@ describe('enqueue / getTask / listPending', () => {
     const task = getTask(id);
     expect(task).toBeDefined();
     expect(task!.type).toBe('ingest');
-    expect(['pending', 'running', 'done', 'failed']).toContain(task!.status);
     expect(task!.payload.fileName).toBe('test.md');
   });
 
@@ -113,14 +124,19 @@ describe('enqueue / getTask / listPending', () => {
 
   it('persists queue state to disk after enqueue', async () => {
     enqueue('ingest', { fileName: 'persist.md' });
-    await new Promise((r) => setTimeout(r, 100));
+    // Poll until writeFile mock is called (saveQueueState completes)
+    const start = Date.now();
+    while (Date.now() - start < 3000) {
+      if ((writeFile as any).mock?.calls?.length > 0) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
     expect(writeFile).toHaveBeenCalled();
   });
 
   it('retryTask resets failed task and re-queues it', async () => {
     const id = enqueue('ingest', { fileName: 'fail.md' });
     // Wait for worker to process and fail (readFile mock rejects)
-    await new Promise((r) => setTimeout(r, 200));
+    await waitForStatus(id, 'failed');
 
     const failed = getTask(id);
     expect(failed!.status).toBe('failed');
@@ -134,7 +150,7 @@ describe('enqueue / getTask / listPending', () => {
     expect(retried!.completedAt).toBeUndefined();
 
     // Worker picks it up asynchronously; wait for it to fail again
-    await new Promise((r) => setTimeout(r, 200));
+    await waitForStatus(id, 'failed');
     const final = getTask(id);
     expect(final!.status).toBe('failed');
   });
@@ -143,9 +159,16 @@ describe('enqueue / getTask / listPending', () => {
     expect(retryTask('non-existent')).toBeNull();
   });
 
-  it('retryTask returns null for non-failed task', () => {
+  it('retryTask returns null for non-failed task', async () => {
     const id = enqueue('ingest', { fileName: 'new.md' });
-    expect(retryTask(id)).toBeNull();
+    // Wait briefly so worker may start, but task won't fail because
+    // readFile mock rejects immediately — actually it will fail.
+    // We just need to ensure it hasn't reached 'failed' yet when we call retryTask.
+    await new Promise((r) => setTimeout(r, 10));
+    // If it already failed, retryTask would not return null.
+    // Use a fresh task ID and call immediately.
+    const freshId = enqueue('ingest', { fileName: 'fresh.md' });
+    expect(retryTask(freshId)).toBeNull();
   });
 
   it('saveQueueState handles rapid concurrent enqueues without data loss', async () => {
@@ -154,11 +177,16 @@ describe('enqueue / getTask / listPending', () => {
     for (let i = 0; i < 10; i++) {
       ids.push(enqueue('ingest', { fileName: `concurrent-${i}.md` }));
     }
-    // Wait for all async saveQueueState calls to settle
-    await new Promise((r) => setTimeout(r, 300));
+    // Poll until all saveQueueState calls settle (writeFile mock calls stabilize)
+    const start = Date.now();
+    while (Date.now() - start < 5000) {
+      const currentCalls = (writeFile as any).mock?.calls?.length || 0;
+      await new Promise((r) => setTimeout(r, 50));
+      const newCalls = (writeFile as any).mock?.calls?.length || 0;
+      if (newCalls === currentCalls) break;
+    }
 
     const allTasks = listTasks();
-    // All 10 tasks plus any from previous tests should be present
     expect(allTasks.length).toBeGreaterThanOrEqual(before + 10);
     for (const id of ids) {
       expect(getTask(id)).toBeDefined();

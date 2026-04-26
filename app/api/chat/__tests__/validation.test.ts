@@ -1,5 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 
+vi.mock('openai', () => ({
+  default: vi.fn(function () {
+    return {
+      chat: {
+        completions: {
+          create: vi.fn().mockResolvedValue(new ReadableStream()),
+        },
+      },
+    };
+  }),
+}));
+
 vi.mock('@/lib/storage', () => ({
   FileSystemStorage: vi.fn(function () {
     return {
