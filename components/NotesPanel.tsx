@@ -122,6 +122,13 @@ export default function NotesPanel() {
     setLoading(false);
   }
 
+  function navigateToNote(title: string) {
+    const target = notes.find((n) => n.title === title);
+    if (target) {
+      setSelected(target);
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -367,14 +374,15 @@ export default function NotesPanel() {
                       </h4>
                       <div className="flex flex-wrap gap-2">
                         {selected.links.map((link, i) => (
-                          <span
+                          <button
                             key={i}
-                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs ${
+                            onClick={() => navigateToNote(link.target)}
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
                               link.weight === 'strong'
-                                ? 'border-[var(--accent)]/30 bg-[var(--accent-dim)] text-[var(--accent)]'
+                                ? 'border-[var(--accent)]/30 bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20'
                                 : link.weight === 'context'
-                                  ? 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-secondary)]'
-                                  : 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-tertiary)]'
+                                  ? 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:border-[var(--accent)]/30 hover:text-[var(--accent)]'
+                                  : 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:border-[var(--accent)]/30 hover:text-[var(--accent)]'
                             }`}
                           >
                             <ChevronRight className="h-3 w-3 shrink-0" />
@@ -382,7 +390,7 @@ export default function NotesPanel() {
                             {link.context && (
                               <span className="text-[10px] opacity-60 break-words">— {link.context}</span>
                             )}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     </div>
