@@ -148,14 +148,16 @@ describe('sortRSSItems', () => {
 });
 
 describe('fetchRSS integration — real feeds', () => {
-  it('fetches Simon Willison\'s Atom feed', async () => {
+  const hasNetwork = !process.env.CI;
+
+  it.skipIf(!hasNetwork)('fetches Simon Willison\'s Atom feed', async () => {
     const items = await fetchRSS('https://simonwillison.net/atom/everything/');
     expect(items.length).toBeGreaterThan(0);
     expect(items[0].title).toBeTruthy();
     expect(items[0].link).toMatch(/^https?:\/\//);
   }, 30000);
 
-  it('fetches Overreacted RSS feed', async () => {
+  it.skipIf(!hasNetwork)('fetches Overreacted RSS feed', async () => {
     const items = await fetchRSS('https://overreacted.io/rss.xml');
     expect(items.length).toBeGreaterThan(0);
     expect(items[0].title).toBeTruthy();

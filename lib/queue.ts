@@ -9,21 +9,35 @@ import { ingestRSSItems, checkFeed } from './rss/manager';
 
 export type TaskType = 'ingest' | 'rss_fetch';
 
+export interface IngestPayload {
+  fileName: string;
+}
+
+export interface RSSFetchPayload {
+  url: string;
+  name?: string;
+  maxItems?: number;
+  isSubscriptionCheck?: boolean;
+}
+
+export type TaskPayload = IngestPayload | RSSFetchPayload;
+
 export interface Task {
   id: string;
   type: TaskType;
-  payload: any;
+  payload: TaskPayload;
   status: 'pending' | 'running' | 'done' | 'failed';
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
   error?: string;
-  result?: any;
+  result?: unknown;
 }
 
 const tasks = new Map<string, Task>();
 const pendingIds: string[] = [];
 let workerRunning = false;
+let saveLock: Promise<void> = Promise.resolve();
 
 function getKnowledgeRoot(): string {
   return process.env.KNOWLEDGE_ROOT || 'knowledge';
@@ -34,19 +48,26 @@ function getQueuePath(): string {
 }
 
 async function saveQueueState() {
-  const queuePath = getQueuePath();
-  try {
-    await mkdir(dirname(queuePath), { recursive: true });
-    const state = {
-      tasks: Array.from(tasks.values()),
-      pendingIds: [...pendingIds],
-    };
-    const tmp = `${queuePath}.tmp.${Date.now()}`;
-    await writeFile(tmp, JSON.stringify(state, null, 2));
-    await rename(tmp, queuePath);
-  } catch (err) {
-    console.error('[Queue] Failed to save state:', (err as Error).message);
-  }
+  saveLock = saveLock
+    .then(async () => {
+      const queuePath = getQueuePath();
+      try {
+        await mkdir(dirname(queuePath), { recursive: true });
+        const state = {
+          tasks: Array.from(tasks.values()),
+          pendingIds: [...pendingIds],
+        };
+        const tmp = `${queuePath}.tmp.${Date.now()}`;
+        await writeFile(tmp, JSON.stringify(state, null, 2));
+        await rename(tmp, queuePath);
+      } catch (err) {
+        console.error('[Queue] Failed to save state:', (err as Error).message);
+      }
+    })
+    .catch(() => {
+      // Errors are logged inside; keep the chain alive
+    });
+  await saveLock;
 }
 
 async function loadQueueState() {
@@ -73,7 +94,7 @@ function generateId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function enqueue(type: TaskType, payload: any): string {
+export function enqueue(type: TaskType, payload: TaskPayload): string {
   const id = generateId();
   const task: Task = {
     id,
@@ -171,8 +192,9 @@ loadQueueState().then(() => {
 /* ---------- Task handlers ---------- */
 
 export function parseInboxRaw(raw: string, path: string): InboxEntry {
-  const parts = raw.split('---');
-  if (parts.length < 3) {
+  // Robust frontmatter extraction: looks for --- at the very start,
+  // then finds the closing --- on its own line.
+  if (!raw.startsWith('---')) {
     return {
       sourceType: 'text',
       title: path.split('/').pop()?.replace('.md', '') || 'untitled',
@@ -181,8 +203,22 @@ export function parseInboxRaw(raw: string, path: string): InboxEntry {
       filePath: path,
     };
   }
-  const fm = yaml.load(parts[1].trim()) as Record<string, unknown>;
-  const content = parts.slice(2).join('---').trim();
+
+  const endMarker = raw.indexOf('\n---', 3);
+  if (endMarker === -1) {
+    return {
+      sourceType: 'text',
+      title: path.split('/').pop()?.replace('.md', '') || 'untitled',
+      content: raw,
+      rawMetadata: {},
+      filePath: path,
+    };
+  }
+
+  const fmRaw = raw.slice(3, endMarker).trim();
+  const content = raw.slice(endMarker + 4).trim();
+
+  const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
   const rawMetadata: Record<string, unknown> = {};
   const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
   for (const [k, v] of Object.entries(fm)) {
@@ -199,7 +235,7 @@ export function parseInboxRaw(raw: string, path: string): InboxEntry {
   };
 }
 
-async function runRSSFetchTask(payload: { url: string; name?: string; maxItems?: number; isSubscriptionCheck?: boolean }) {
+async function runRSSFetchTask(payload: RSSFetchPayload) {
   const { url, name, maxItems, isSubscriptionCheck } = payload;
 
   if (isSubscriptionCheck) {
@@ -211,7 +247,7 @@ async function runRSSFetchTask(payload: { url: string; name?: string; maxItems?:
   return { count: entries.length, url, name: name || url };
 }
 
-async function runIngestTask(payload: { fileName: string }) {
+async function runIngestTask(payload: IngestPayload) {
   const { fileName } = payload;
   const filePath = join(process.cwd(), getKnowledgeRoot(), 'inbox', fileName);
 

@@ -18,7 +18,7 @@ const client = new OpenAI({
  * 优先使用缓存的 search-index.json，不存在时全量重建。
  */
 async function loadOrBuildIndex(storage: FileSystemStorage): Promise<InvertedIndexMap> {
-  const root = (storage as any).root as string;
+  const root = storage.getRoot();
   const indexPath = join(root, 'meta', 'search-index.json');
 
   try {
@@ -37,14 +37,42 @@ async function loadOrBuildIndex(storage: FileSystemStorage): Promise<InvertedInd
   return buildIndex(notes);
 }
 
+function validateMessages(messages: unknown): Array<{ role: string; content: string }> {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error('messages must be a non-empty array');
+  }
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object') {
+      throw new Error('Each message must be an object');
+    }
+    if (!['system', 'user', 'assistant'].includes(String((msg as any).role))) {
+      throw new Error('Invalid message role');
+    }
+    if (typeof (msg as any).content !== 'string' || (msg as any).content.length === 0) {
+      throw new Error('Invalid message content');
+    }
+  }
+  return messages as Array<{ role: string; content: string }>;
+}
+
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  let body: { messages?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  let messages: Array<{ role: string; content: string }>;
+  try {
+    messages = validateMessages(body.messages);
+  } catch (err: any) {
+    return Response.json({ error: err.message }, { status: 400 });
+  }
 
   // 获取最后一轮用户消息作为查询
   const lastUserMessage = messages[messages.length - 1];
-  const query = typeof lastUserMessage?.content === 'string'
-    ? lastUserMessage.content
-    : '';
+  const query = lastUserMessage.content;
 
   // 加载笔记和索引
   const storage = new FileSystemStorage();

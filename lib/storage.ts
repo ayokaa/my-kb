@@ -1,4 +1,4 @@
-import { exec, ExecOptions } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, readdir, mkdir, rename, unlink } from 'fs/promises';
 import { join, dirname, basename } from 'path';
@@ -6,16 +6,16 @@ import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
 import { parseNote, stringifyNote } from './parsers';
 
-const defaultExecAsync = promisify(exec);
-type ExecAsyncType = typeof defaultExecAsync;
+const defaultExecFileAsync = promisify(execFile);
+type ExecFileAsyncType = typeof defaultExecFileAsync;
 
 export class FileSystemStorage implements Storage {
   private readonly root: string;
-  private readonly execAsync: ExecAsyncType;
+  private readonly execFileAsync: ExecFileAsyncType;
 
-  constructor(root?: string, execAsync?: ExecAsyncType) {
+  constructor(root?: string, execFileAsync?: ExecFileAsyncType) {
     this.root = root || join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge');
-    this.execAsync = execAsync || defaultExecAsync;
+    this.execFileAsync = execFileAsync || defaultExecFileAsync;
   }
 
   private notePath(id: string): string {
@@ -307,11 +307,28 @@ export class FileSystemStorage implements Storage {
 
   // ===== Git =====
 
+  getRoot(): string {
+    return this.root;
+  }
+
   async commit(message: string): Promise<void> {
-    const cmd = `git add "${this.root}" && git commit -m "${message.replace(/"/g, '\\"')}"`;
-    const { stderr } = await this.execAsync(cmd, { cwd: process.cwd() });
-    if (stderr && !stderr.includes('nothing to commit') && !stderr.includes('no changes added')) {
-      console.warn('[Git]', stderr);
+    try {
+      await this.execFileAsync('git', ['add', this.root], { cwd: process.cwd() });
+    } catch (err: any) {
+      if (!err.message?.includes('nothing to commit') && !err.message?.includes('no changes added')) {
+        throw err;
+      }
+    }
+
+    try {
+      const { stderr } = await this.execFileAsync('git', ['commit', '-m', message], { cwd: process.cwd() });
+      if (stderr && !stderr.includes('nothing to commit') && !stderr.includes('no changes added')) {
+        console.warn('[Git]', stderr);
+      }
+    } catch (err: any) {
+      if (!err.message?.includes('nothing to commit') && !err.message?.includes('no changes added')) {
+        throw err;
+      }
     }
   }
 

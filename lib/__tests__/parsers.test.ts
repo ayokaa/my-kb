@@ -201,7 +201,7 @@ id: test
 
   it('throws on missing frontmatter', () => {
     expect(() => parseNote('no frontmatter here')).toThrow('Invalid markdown: missing frontmatter');
-    expect(() => parseNote('---\nonly one')).toThrow('Invalid markdown: missing frontmatter');
+    expect(() => parseNote('---\nonly one')).toThrow('Invalid markdown: unclosed frontmatter');
   });
 
   it('handles unknown sections by merging into content', () => {

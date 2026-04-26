@@ -58,7 +58,6 @@ test.describe.serial('Inbox', () => {
 
   test('inbox count badge updates', async ({ page, request }) => {
     await page.goto('/');
-    await page.waitForTimeout(500);
 
     await request.post('/api/ingest', {
       data: { type: 'text', title: 'Badge Test', content: 'Testing badge count.' },

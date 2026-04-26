@@ -33,7 +33,8 @@ export default function RSSPanel() {
       const res = await fetch('/api/rss/subscriptions');
       const data = await res.json();
       setSubscriptions(data.subscriptions || []);
-    } catch {
+    } catch (err) {
+      console.error('[RSSPanel] Failed to load subscriptions:', err);
       setSubscriptions([]);
     }
     setLoading(false);

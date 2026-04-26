@@ -9,7 +9,6 @@ test.describe.serial('RSS Subscriptions', () => {
   test('RSS panel shows empty state', async ({ page }) => {
     await page.goto('/');
     await page.getByText('订阅').click();
-    await page.waitForTimeout(500);
 
     await expect(page.getByText('RSS 订阅')).toBeVisible();
     await expect(page.getByText('还没有订阅源')).toBeVisible();

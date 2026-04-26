@@ -321,31 +321,39 @@ describe('FileSystemStorage', () => {
 
   describe('commit', () => {
     it('executes git add and commit', async () => {
-      const mockExec = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
-      const gitStorage = new FileSystemStorage(tmpDir, mockExec as any);
+      const mockExecFile = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
+      const gitStorage = new FileSystemStorage(tmpDir, mockExecFile as any);
 
       await gitStorage.commit('[test] note update');
-      expect(mockExec).toHaveBeenCalledTimes(1);
-      const [cmd, opts] = mockExec.mock.calls[0];
-      expect(cmd).toContain('git add');
-      expect(cmd).toContain('[test] note update');
-      expect(opts).toHaveProperty('cwd');
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const [file1, args1, opts1] = mockExecFile.mock.calls[0];
+      expect(file1).toBe('git');
+      expect(args1).toContain('add');
+      expect(opts1).toHaveProperty('cwd');
+
+      const [file2, args2] = mockExecFile.mock.calls[1];
+      expect(file2).toBe('git');
+      expect(args2).toContain('commit');
+      expect(args2).toContain('[test] note update');
     });
 
     it('ignores nothing-to-commit stderr', async () => {
-      const mockExec = vi.fn().mockResolvedValue({
-        stdout: '',
-        stderr: 'nothing to commit, working tree clean',
-      });
-      const gitStorage = new FileSystemStorage(tmpDir, mockExec as any);
+      const err = new Error('nothing to commit, working tree clean');
+      (err as any).stderr = 'nothing to commit, working tree clean';
+      const mockExecFile = vi.fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        .mockRejectedValueOnce(err);
+      const gitStorage = new FileSystemStorage(tmpDir, mockExecFile as any);
 
       await gitStorage.commit('[test] empty commit');
-      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
     it('warns on unexpected git stderr', async () => {
-      const mockExec = vi.fn().mockResolvedValue({ stdout: '', stderr: 'some warning' });
-      const gitStorage = new FileSystemStorage(tmpDir, mockExec as any);
+      const mockExecFile = vi.fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        .mockResolvedValueOnce({ stdout: '', stderr: 'some warning' });
+      const gitStorage = new FileSystemStorage(tmpDir, mockExecFile as any);
 
       const warnLogs: string[] = [];
       const originalWarn = console.warn;

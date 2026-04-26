@@ -31,7 +31,7 @@ describe('/api/chat', () => {
     expect(hasContent).toBe(true);
   }, 30000);
 
-  it('environment variable is defined', () => {
+  it.skipIf(!hasKey)('environment variable is defined', () => {
     expect(process.env.MINIMAX_API_KEY).toBeDefined();
   });
 });

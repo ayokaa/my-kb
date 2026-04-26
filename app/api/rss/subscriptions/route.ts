@@ -1,5 +1,14 @@
 import { listSubscriptions, addSubscription, removeSubscription } from '@/lib/rss/manager';
 
+function isValidHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export async function GET() {
   try {
     const subs = await listSubscriptions();
@@ -11,8 +20,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const { url, name } = await req.json();
-  if (!url) {
+  if (!url || typeof url !== 'string') {
     return Response.json({ error: 'URL required' }, { status: 400 });
+  }
+  if (!isValidHttpUrl(url)) {
+    return Response.json({ error: 'Invalid URL' }, { status: 400 });
   }
   try {
     const sub = await addSubscription(url, name);
@@ -24,7 +36,7 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   const { url } = await req.json();
-  if (!url) {
+  if (!url || typeof url !== 'string') {
     return Response.json({ error: 'URL required' }, { status: 400 });
   }
   try {

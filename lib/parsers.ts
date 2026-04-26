@@ -2,13 +2,21 @@ import yaml from 'js-yaml';
 import type { Note, NoteLink, TimelineEntry, QAEntry } from './types';
 
 export function parseNote(raw: string, filePath?: string): Note {
-  const parts = raw.split('---');
-  if (parts.length < 3) {
+  // Robust frontmatter extraction: looks for --- at the very start,
+  // then finds the closing --- on its own line.
+  if (!raw.startsWith('---')) {
     throw new Error('Invalid markdown: missing frontmatter');
   }
 
-  const fm = yaml.load(parts[1].trim()) as Record<string, unknown>;
-  const body = parts.slice(2).join('---').trim();
+  const endMarker = raw.indexOf('\n---', 3);
+  if (endMarker === -1) {
+    throw new Error('Invalid markdown: unclosed frontmatter');
+  }
+
+  const fmRaw = raw.slice(3, endMarker).trim();
+  const body = raw.slice(endMarker + 4).trim();
+
+  const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
 
   const note: Note = {
     id: String(fm.id || ''),

@@ -20,7 +20,7 @@ export default function TabShell({ notesPanel }: TabShellProps) {
     fetch('/api/inbox', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => setInboxCount(d.entries?.length || 0))
-      .catch(() => {});
+      .catch((err) => console.error('[TabShell] Failed to refresh inbox count:', err));
   }
 
   useEffect(() => {
@@ -29,14 +29,22 @@ export default function TabShell({ notesPanel }: TabShellProps) {
 
   useEffect(() => {
     const poll = () => {
+      if (document.visibilityState === 'hidden') return;
       fetch('/api/tasks?filter=pending', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => setTaskCount(d.tasks?.length || 0))
-        .catch(() => {});
+        .catch((err) => console.error('[TabShell] Failed to poll tasks:', err));
     };
     poll();
     const interval = setInterval(poll, 3000);
-    return () => clearInterval(interval);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') poll();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   return (

@@ -2,7 +2,20 @@ import { FileSystemStorage } from '@/lib/storage';
 import { extractPDF } from '@/lib/ingestion/pdf';
 import { writeFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
-import { join } from 'path';
+import { join, basename } from 'path';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/x-markdown',
+];
+
+function sanitizeFileName(name: string): string {
+  // Remove path traversal characters and control characters
+  return basename(name).replace(/[\x00-\x1f\x7f]/g, '').replace(/[/\\]/g, '_');
+}
 
 export async function POST(req: Request) {
   const formData = await req.formData();
@@ -12,12 +25,22 @@ export async function POST(req: Request) {
     return Response.json({ error: 'No file provided' }, { status: 400 });
   }
 
+  if (file.size > MAX_FILE_SIZE) {
+    return Response.json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024} MB)` }, { status: 413 });
+  }
+
+  const fileType = file.type;
+  const isExplicitlyAllowed = ALLOWED_TYPES.includes(fileType);
+  const isTextByExtension = file.name.endsWith('.md') || file.name.endsWith('.txt') || file.name.endsWith('.pdf');
+  if (!isExplicitlyAllowed && !isTextByExtension) {
+    return Response.json({ error: 'File type not allowed' }, { status: 415 });
+  }
+
   const storage = new FileSystemStorage();
 
   try {
     const bytes = await file.arrayBuffer();
-    const fileName = file.name;
-    const fileType = file.type;
+    const fileName = sanitizeFileName(file.name);
 
     // Save original file to attachments/
     const attachmentDir = join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge', 'attachments');

@@ -42,7 +42,8 @@ export default function TasksPanel() {
       const res = await fetch('/api/tasks', { cache: 'no-store' });
       const data = await res.json();
       setTasks(data.tasks || []);
-    } catch {
+    } catch (err) {
+      console.error('[TasksPanel] Failed to load tasks:', err);
       setTasks([]);
     }
     setLoading(false);
