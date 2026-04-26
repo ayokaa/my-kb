@@ -14,7 +14,7 @@
      └────────────────  对话检索与问答  ──────────────────→
 ```
 
-- **信息摄入**：支持网页链接、RSS 订阅、PDF/TXT/MD 文件、纯文本、网络搜索
+- **信息摄入**：支持网页链接、RSS 订阅、PDF/TXT/MD 文件、纯文本
 - **收件箱审核**：待处理内容经过人工确认（或自动）后进入加工流程
 - **LLM 加工**：调用 MiniMax API 提取标签、摘要、关键事实、时间线、关联等结构化信息
 - **知识笔记**：以 Markdown + YAML Frontmatter 格式存储于本地文件系统
@@ -60,7 +60,6 @@ cp .env.example .env.local
 
 可选变量：
 - `MINIMAX_BASE_URL` — 默认 `https://api.minimaxi.com/v1`
-- `SEARCH_API_KEY` / `SEARCH_ENGINE` — 网络搜索功能（默认 Serper.dev）
 
 ### 3. 启动开发服务器
 

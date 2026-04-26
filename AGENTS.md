@@ -51,7 +51,6 @@ my-kb/
 │   │   │   ├── subscriptions/    # GET/POST/DELETE 订阅源管理
 │   │   │   ├── subscriptions/check/   # POST 手动检查更新
 │   │   │   └── subscriptions/import-opml/  # POST 导入 OPML
-│   │   ├── search/               # POST /api/search — 网络搜索并入库
 │   │   └── upload/               # POST /api/upload — 文件上传
 │   ├── globals.css               # 全局样式、CSS 变量、自定义组件类
 │   ├── layout.tsx                # 根布局（启动 RSS cron）
@@ -138,8 +137,7 @@ npm run test:e2e
 |--------|------|----------|
 | `MINIMAX_API_KEY` | MiniMax API 密钥 | 是（聊天、笔记生成） |
 | `MINIMAX_BASE_URL` | MiniMax API 基地址，默认 `https://api.minimaxi.com/v1` | 否 |
-| `SEARCH_API_KEY` | 网络搜索 API 密钥（默认使用 Serper.dev） | 否（仅搜索功能） |
-| `SEARCH_ENGINE` | 搜索引擎，默认 `serper` | 否 |
+
 
 环境变量通过 `.env` 或 `.env*.local` 文件配置。这些文件以及 `knowledge/` 目录已被 `.gitignore` 排除，不会进入版本控制。
 
