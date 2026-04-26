@@ -1,5 +1,4 @@
-import { fetchRSS } from '@/lib/ingestion/rss';
-import { ingestRSSItems } from '@/lib/rss/manager';
+import { enqueue } from '@/lib/queue';
 
 export async function POST(req: Request) {
   const { url, name, maxItems = 5 } = await req.json();
@@ -9,10 +8,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const items = await fetchRSS(url);
-    const entries = await ingestRSSItems(url, name || url, items, maxItems);
-
-    return Response.json({ ok: true, count: entries.length, entries });
+    const taskId = enqueue('rss_fetch', { url, name, maxItems });
+    return Response.json({ ok: true, taskId, message: 'RSS fetch queued' }, { status: 202 });
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 });
   }

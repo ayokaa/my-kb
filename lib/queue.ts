@@ -4,8 +4,10 @@ import yaml from 'js-yaml';
 import type { InboxEntry } from './types';
 import { processInboxEntry } from './cognition/ingest';
 import { FileSystemStorage } from './storage';
+import { fetchRSS } from './ingestion/rss';
+import { ingestRSSItems, checkFeed } from './rss/manager';
 
-export type TaskType = 'ingest';
+export type TaskType = 'ingest' | 'rss_fetch';
 
 export interface Task {
   id: string;
@@ -139,6 +141,11 @@ async function startWorker() {
         task.status = 'done';
         task.result = result || { ok: true };
         console.log(`[Queue] Task ${id} completed`, result?.skipped ? '(skipped)' : '');
+      } else if (task.type === 'rss_fetch') {
+        const result = await runRSSFetchTask(task.payload);
+        task.status = 'done';
+        task.result = result;
+        console.log(`[Queue] Task ${id} RSS fetch completed`, result.newItems !== undefined ? `(${result.newItems} new items)` : '');
       }
     } catch (err: any) {
       task.status = 'failed';
@@ -190,6 +197,18 @@ export function parseInboxRaw(raw: string, path: string): InboxEntry {
     rawMetadata,
     filePath: path,
   };
+}
+
+async function runRSSFetchTask(payload: { url: string; name?: string; maxItems?: number; isSubscriptionCheck?: boolean }) {
+  const { url, name, maxItems, isSubscriptionCheck } = payload;
+
+  if (isSubscriptionCheck) {
+    return await checkFeed(url);
+  }
+
+  const items = await fetchRSS(url);
+  const entries = await ingestRSSItems(url, name || url, items, maxItems);
+  return { count: entries.length, url, name: name || url };
 }
 
 async function runIngestTask(payload: { fileName: string }) {

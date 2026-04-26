@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **RSS fetch queued**: RSS fetching is now asynchronous via the task queue instead of blocking the HTTP request.
+  - `lib/queue.ts`: Added `rss_fetch` task type and `runRSSFetchTask()` handler. Subscription checks use `checkFeed()`; manual fetches use `fetchRSS()` + `ingestRSSItems()`.
+  - `app/api/rss/route.ts`: Returns `202 Accepted` with `taskId` immediately.
+  - `app/api/rss/subscriptions/check/route.ts`: Enqueues one `rss_fetch` task per subscription (or per URL if specified).
+  - `lib/rss/cron.ts`: Cron job now enqueues tasks instead of directly calling `checkAllFeeds()`.
+
 - **Task retry for failed ingest tasks**: Users can now manually retry failed tasks from the Tasks panel.
   - `lib/queue.ts`: Added `retryTask(id)` which resets a failed task to `pending`, clears error/result/completedAt, re-queues it, and triggers the worker.
   - `app/api/tasks/route.ts`: Added `POST` handler supporting `action: 'retry'`.
