@@ -29,6 +29,14 @@ vi.mock('openai', () => ({
   }),
 }));
 
+vi.mock('@/lib/ingestion/web', () => ({
+  fetchWebContent: vi.fn().mockResolvedValue({
+    title: 'Zed Parallel Agents',
+    content: 'Zed now supports running multiple AI agents in parallel within the same window.',
+    excerpt: 'Parallel agents in Zed',
+  }),
+}));
+
 describe('processInboxEntry', () => {
   it('converts inbox entry to note via LLM', async () => {
     const entry = {
