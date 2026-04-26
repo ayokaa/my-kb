@@ -36,6 +36,8 @@ async function loadOrBuildIndex(storage: FileSystemStorage): Promise<InvertedInd
   return buildIndex(notes);
 }
 
+const MAX_MESSAGE_LENGTH = 10000;
+
 function validateMessages(messages: unknown): Array<{ role: string; content: string }> {
   if (!Array.isArray(messages) || messages.length === 0) {
     throw new Error('messages must be a non-empty array');
@@ -44,11 +46,16 @@ function validateMessages(messages: unknown): Array<{ role: string; content: str
     if (!msg || typeof msg !== 'object') {
       throw new Error('Each message must be an object');
     }
-    if (!['system', 'user', 'assistant'].includes(String((msg as any).role))) {
+    const role = (msg as any).role;
+    const content = (msg as any).content;
+    if (!['system', 'user', 'assistant'].includes(String(role))) {
       throw new Error('Invalid message role');
     }
-    if (typeof (msg as any).content !== 'string' || (msg as any).content.length === 0) {
+    if (typeof content !== 'string' || content.length === 0) {
       throw new Error('Invalid message content');
+    }
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      throw new Error(`Message exceeds max length of ${MAX_MESSAGE_LENGTH}`);
     }
   }
   return messages as Array<{ role: string; content: string }>;
@@ -65,8 +72,9 @@ export async function POST(req: Request) {
   let messages: Array<{ role: string; content: string }>;
   try {
     messages = validateMessages(body.messages);
-  } catch (err: any) {
-    return Response.json({ error: err.message }, { status: 400 });
+  } catch (err) {
+    console.error('[Chat] Validation error:', err);
+    return Response.json({ error: 'Invalid messages' }, { status: 400 });
   }
 
   // 获取最后一轮用户消息作为查询
