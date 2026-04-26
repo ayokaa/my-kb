@@ -10,15 +10,11 @@ export interface RSSSubscription {
   addedAt: string;
   lastChecked?: string;
   lastEntryCount?: number;
-}
-
-interface SeenEntries {
-  [feedUrl: string]: string[]; // list of seen guids or links
+  lastPubDate?: string; // latest pubDate processed for this feed
 }
 
 const META_DIR = join(process.cwd(), 'knowledge', 'meta');
 const SOURCES_PATH = join(META_DIR, 'rss-sources.yml');
-const SEEN_PATH = join(META_DIR, 'rss-seen.yml');
 
 async function ensureMetaDir() {
   await mkdir(META_DIR, { recursive: true });
@@ -38,68 +34,44 @@ async function saveSources(sources: RSSSubscription[]) {
   await writeFile(SOURCES_PATH, yaml.dump(sources, { allowUnicode: true } as any), 'utf-8');
 }
 
-async function loadSeen(): Promise<SeenEntries> {
-  try {
-    const raw = await readFile(SEEN_PATH, 'utf-8');
-    return (yaml.load(raw) as SeenEntries) || {};
-  } catch {
-    return {};
-  }
-}
-
-async function saveSeen(seen: SeenEntries) {
-  await ensureMetaDir();
-  await writeFile(SEEN_PATH, yaml.dump(seen, { allowUnicode: true } as any), 'utf-8');
-}
-
-function getItemId(item: RSSItem): string {
-  // Use link as fallback; some feeds have guid but feedsmith normalizes it
-  return item.link || item.title || '';
-}
-
-function isSeen(seen: SeenEntries, feedUrl: string, item: RSSItem): boolean {
-  const entries = seen[feedUrl] || [];
-  const id = getItemId(item);
-  return entries.includes(id);
-}
-
-function markSeen(seen: SeenEntries, feedUrl: string, item: RSSItem): void {
-  if (!seen[feedUrl]) seen[feedUrl] = [];
-  const id = getItemId(item);
-  if (!seen[feedUrl].includes(id)) {
-    seen[feedUrl].push(id);
-  }
-  // Keep last 500 per feed to prevent unbounded growth
-  if (seen[feedUrl].length > 500) {
-    seen[feedUrl] = seen[feedUrl].slice(-500);
-  }
-}
-
 // Prevent concurrent ingest for the same feed URL
 const processingFeeds = new Set<string>();
 
-/** Ingest RSS items into inbox with dedup via seen file. */
-export async function ingestFeedItems(
+/** Write feed items to inbox with lastPubDate filtering.
+ *  - If lastPubDate is set: only items with pubDate > lastPubDate are ingested.
+ *  - If lastPubDate is absent (first time): ingest up to 5 most-recent items.
+ *  Returns the latest pubDate encountered (to update subscription metadata).
+ */
+async function processFeedItems(
   url: string,
   name: string,
   items: RSSItem[],
+  lastPubDate?: string,
   maxItems?: number
-): Promise<{ title: string; link: string; skipped: boolean }[]> {
+): Promise<{ count: number; latestPubDate: string }> {
   if (processingFeeds.has(url)) {
     console.log(`[RSS] Skip concurrent ingest for ${url}`);
-    return [];
+    return { count: 0, latestPubDate: lastPubDate || '' };
   }
   processingFeeds.add(url);
 
   try {
-    let seen = await loadSeen();
     const storage = new FileSystemStorage();
-    const results: { title: string; link: string; skipped: boolean }[] = [];
+    let count = 0;
+    let latestPubDate = lastPubDate || '';
 
-    for (const item of items.slice(0, maxItems ?? items.length)) {
-      const alreadySeen = isSeen(seen, url, item);
-      results.push({ title: item.title, link: item.link, skipped: alreadySeen });
-      if (alreadySeen) continue;
+    for (const item of items) {
+      if (maxItems !== undefined && count >= maxItems) break;
+
+      const itemPubDate = item.pubDate || '';
+
+      // With lastPubDate: skip items that are not newer
+      if (lastPubDate && itemPubDate && itemPubDate <= lastPubDate) {
+        continue;
+      }
+
+      // Without lastPubDate (first check): ingest at most 5 items
+      if (!lastPubDate && count >= 5) break;
 
       await storage.writeInbox({
         sourceType: 'web',
@@ -113,11 +85,13 @@ export async function ingestFeedItems(
         },
       });
 
-      markSeen(seen, url, item);
+      count++;
+      if (itemPubDate && itemPubDate > latestPubDate) {
+        latestPubDate = itemPubDate;
+      }
     }
 
-    await saveSeen(seen);
-    return results;
+    return { count, latestPubDate };
   } finally {
     processingFeeds.delete(url);
   }
@@ -151,10 +125,6 @@ export async function removeSubscription(url: string): Promise<void> {
     throw new Error('Subscription not found');
   }
   await saveSources(filtered);
-  // Also clean up seen entries
-  const seen = await loadSeen();
-  delete seen[url];
-  await saveSeen(seen);
 }
 
 export async function importOPML(xml: string): Promise<{ added: number; errors: string[] }> {
@@ -190,17 +160,18 @@ export async function checkFeed(url: string): Promise<CheckResult> {
 
   try {
     const items = await fetchRSS(url);
-    const results = await ingestFeedItems(url, name, items);
-    const newItems = results.filter((r) => !r.skipped).length;
+    const { count, latestPubDate } = await processFeedItems(url, name, items, source?.lastPubDate);
 
-    // Update source metadata
     if (source) {
       source.lastChecked = new Date().toISOString();
       source.lastEntryCount = items.length;
+      if (latestPubDate) {
+        source.lastPubDate = latestPubDate;
+      }
       await saveSources(sources);
     }
 
-    return { url, name, newItems };
+    return { url, name, newItems: count };
   } catch (err: any) {
     return { url, name, newItems: 0, error: err.message };
   }
@@ -216,4 +187,24 @@ export async function checkAllFeeds(): Promise<CheckResult[]> {
     await new Promise(r => setTimeout(r, 500));
   }
   return results;
+}
+
+/** Manual RSS ingest (e.g. from ChatPanel). Respects lastPubDate if feed is subscribed. */
+export async function ingestRSSItems(
+  url: string,
+  name: string,
+  items: RSSItem[],
+  maxItems?: number
+): Promise<{ title: string; link: string }[]> {
+  const sources = await loadSources();
+  const source = sources.find(s => s.url === url);
+  const { count, latestPubDate } = await processFeedItems(url, name, items, source?.lastPubDate, maxItems);
+
+  if (source && latestPubDate && latestPubDate !== source.lastPubDate) {
+    source.lastPubDate = latestPubDate;
+    await saveSources(sources);
+  }
+
+  // Return all items up to maxItems for display, regardless of whether they were skipped
+  return items.slice(0, maxItems ?? items.length).map(item => ({ title: item.title, link: item.link }));
 }

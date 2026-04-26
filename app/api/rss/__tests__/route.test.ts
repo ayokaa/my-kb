@@ -9,9 +9,9 @@ vi.mock('@/lib/ingestion/rss', () => ({
 }));
 
 vi.mock('@/lib/rss/manager', () => ({
-  ingestFeedItems: vi.fn().mockResolvedValue([
-    { title: 'Article 1', link: 'https://example.com/1', skipped: false },
-    { title: 'Article 2', link: 'https://example.com/2', skipped: false },
+  ingestRSSItems: vi.fn().mockResolvedValue([
+    { title: 'Article 1', link: 'https://example.com/1' },
+    { title: 'Article 2', link: 'https://example.com/2' },
   ]),
 }));
 
