@@ -41,3 +41,4 @@ attachments/
 # playwright
 test-results/
 playwright-report/
+tmp/

@@ -32,12 +32,14 @@ All notable changes to this project are documented in this file.
 - **Font loading**: Replace `next/font/google` with CSS `@import` to work around Next.js 16.2.x Turbopack regression (vercel/next.js#92671).
 - **Build tool**: Turbopack is now the default bundler in Next.js 16.
 - **Playwright config**: Set `workers: 1` to prevent cross-test data pollution when multiple spec files run concurrently. Each spec file uses `test.describe.serial` with `beforeEach` cleanup.
-- **Test count**: 86 → 92 Vitest unit tests (+4 for `sortRSSItems`, +2 for inbox sorting); 6 → 20 Playwright E2E tests (+14).
+- **Test count**: 86 → 92 Vitest unit tests (+4 for `sortRSSItems`, +2 for inbox sorting, +2 for queue test isolation); 6 → 20 Playwright E2E tests (+14).
 - **Hardcoded storage paths**: `lib/storage.ts`, `lib/queue.ts`, `lib/rss/manager.ts`, and `app/api/upload/route.ts` now read `process.env.KNOWLEDGE_ROOT` instead of hardcoded `knowledge/` paths, making the storage layer configurable for test environments. (`f9a01ca`)
 
 ### Added
 
 - **E2E test data isolation**: E2E tests use a dedicated `knowledge-test/` directory via `KNOWLEDGE_ROOT=knowledge-test` injected by `playwright.config.ts`. `e2e/fixtures.ts` provides `resetTestData()` to clear the directory before each test. Both `knowledge/` and `knowledge-test/` are `.gitignore`d.
+- **Server Component migration**: `app/page.tsx` is now a Server Component. Tab state and polling logic moved to `components/TabShell.tsx` (Client Component). `NotesPanel` is now a Server Component that fetches notes on the server via `FileSystemStorage.listNotes()`, passing initial data to `NotesPanelClient` (Client Component) for interactivity.
+- **Queue test isolation**: `lib/queue.ts` now uses dynamic `getKnowledgeRoot()` and `getQueuePath()` functions instead of module-level constants. `lib/__tests__/queue.test.ts` creates a temporary directory and sets `KNOWLEDGE_ROOT` before module load, ensuring queue state never touches production `knowledge/` during tests.
 
 ## 2025-04-25
 

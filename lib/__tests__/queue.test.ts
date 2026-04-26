@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+const tmpDir = mkdtempSync(join(tmpdir(), 'kb-queue-test-'));
+process.env.KNOWLEDGE_ROOT = tmpDir;
+
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import yaml from 'js-yaml';
 import { writeFile } from 'fs/promises';
 import { parseInboxRaw, enqueue, getTask, listPending } from '../queue';
 
-vi.mock(import('fs/promises'), async () => {
+vi.mock('fs/promises', () => {
   const mocks = {
     readFile: vi.fn().mockRejectedValue(new Error('no file')),
     writeFile: vi.fn().mockResolvedValue(undefined),
@@ -13,7 +20,7 @@ vi.mock(import('fs/promises'), async () => {
   return {
     ...mocks,
     default: mocks,
-  };
+  } as any;
 });
 
 vi.mock('@/lib/cognition/ingest', () => ({
@@ -76,6 +83,10 @@ describe('enqueue / getTask / listPending', () => {
 
   afterEach(async () => {
     await new Promise((r) => setTimeout(r, 150));
+  });
+
+  afterAll(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('enqueue returns a task id', () => {

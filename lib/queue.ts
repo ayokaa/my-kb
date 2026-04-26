@@ -23,19 +23,25 @@ const tasks = new Map<string, Task>();
 const pendingIds: string[] = [];
 let workerRunning = false;
 
-const KNOWLEDGE_ROOT = process.env.KNOWLEDGE_ROOT || 'knowledge';
-const QUEUE_PATH = join(process.cwd(), KNOWLEDGE_ROOT, 'meta', 'queue.json');
+function getKnowledgeRoot(): string {
+  return process.env.KNOWLEDGE_ROOT || 'knowledge';
+}
+
+function getQueuePath(): string {
+  return join(process.cwd(), getKnowledgeRoot(), 'meta', 'queue.json');
+}
 
 async function saveQueueState() {
+  const queuePath = getQueuePath();
   try {
-    await mkdir(dirname(QUEUE_PATH), { recursive: true });
+    await mkdir(dirname(queuePath), { recursive: true });
     const state = {
       tasks: Array.from(tasks.values()),
       pendingIds: [...pendingIds],
     };
-    const tmp = `${QUEUE_PATH}.tmp.${Date.now()}`;
+    const tmp = `${queuePath}.tmp.${Date.now()}`;
     await writeFile(tmp, JSON.stringify(state, null, 2));
-    await rename(tmp, QUEUE_PATH);
+    await rename(tmp, queuePath);
   } catch (err) {
     console.error('[Queue] Failed to save state:', (err as Error).message);
   }
@@ -43,7 +49,7 @@ async function saveQueueState() {
 
 async function loadQueueState() {
   try {
-    const raw = await readFile(QUEUE_PATH, 'utf-8');
+    const raw = await readFile(getQueuePath(), 'utf-8');
     const state = JSON.parse(raw);
     for (const t of state.tasks || []) {
       tasks.set(t.id, t);
@@ -173,7 +179,7 @@ export function parseInboxRaw(raw: string, path: string): InboxEntry {
 
 async function runIngestTask(payload: { fileName: string }) {
   const { fileName } = payload;
-  const filePath = join(process.cwd(), KNOWLEDGE_ROOT, 'inbox', fileName);
+  const filePath = join(process.cwd(), getKnowledgeRoot(), 'inbox', fileName);
 
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxRaw(raw, filePath);
