@@ -1,9 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
+    --font-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
     --bg-primary: #0c0e14;
     --bg-surface: #13151f;
     --bg-elevated: #1a1d2b;
@@ -28,7 +32,7 @@
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-    font-family: var(--font-mono), ui-monospace, monospace;
+    font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
