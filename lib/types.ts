@@ -95,5 +95,6 @@ export interface Storage {
   writeInbox(entry: InboxEntry): Promise<void>;
   listInbox(): Promise<InboxEntry[]>;
   archiveInbox(fileName: string): Promise<void>;
+  listNoteSources(): Promise<Array<{ id: string; sources: string[] }>>;
   commit(message: string): Promise<void>;
 }
