@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { processInboxEntry } from '../ingest';
+import { processInboxEntry, validateLLMOutput } from '../ingest';
 
 vi.mock('openai', () => ({
   default: vi.fn(function() {
@@ -36,6 +36,39 @@ vi.mock('@/lib/ingestion/web', () => ({
     excerpt: 'Parallel agents in Zed',
   }),
 }));
+
+describe('validateLLMOutput', () => {
+  it('accepts a valid LLM response', () => {
+    expect(() =>
+      validateLLMOutput({
+        title: 'Test',
+        tags: ['a', 'b'],
+        summary: 'Summary',
+        keyFacts: ['f1'],
+        timeline: [{ date: '2024-01', event: 'E1' }],
+        links: [{ target: 'T', weight: 'weak' }],
+        qas: [{ question: 'Q', answer: 'A' }],
+        content: 'Body',
+      })
+    ).not.toThrow();
+  });
+
+  it('rejects non-string tags', () => {
+    expect(() => validateLLMOutput({ tags: [1, null, 'ok'] })).toThrow('tags');
+  });
+
+  it('rejects non-string keyFacts', () => {
+    expect(() => validateLLMOutput({ keyFacts: [1, 'ok'] })).toThrow('keyFacts');
+  });
+
+  it('rejects invalid timeline item types', () => {
+    expect(() => validateLLMOutput({ timeline: ['not an object'] })).toThrow('timeline');
+  });
+
+  it('rejects invalid link weight', () => {
+    expect(() => validateLLMOutput({ links: [{ target: 'T', weight: 'invalid' }] })).toThrow('weight');
+  });
+});
 
 describe('processInboxEntry', () => {
   it('converts inbox entry to note via LLM', async () => {
