@@ -82,9 +82,10 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
         temperature: 0.3,
       });
       return response.choices[0]?.message?.content?.trim() || '{}';
-    } catch (err: any) {
+    } catch (err) {
       if (retries > 0) {
-        console.warn(`[Ingest] LLM call failed, retrying... (${err.message})`);
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        console.warn(`[Ingest] LLM call failed, retrying... (${msg})`);
         await new Promise((r) => setTimeout(r, 2000));
         return callLLM(prompt, retries - 1);
       }
@@ -122,14 +123,56 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
   if (parsed.keyFacts !== undefined && !Array.isArray(parsed.keyFacts)) {
     throw new Error(`LLM response field 'keyFacts' must be an array`);
   }
-  if (parsed.timeline !== undefined && !Array.isArray(parsed.timeline)) {
-    throw new Error(`LLM response field 'timeline' must be an array`);
+  if (parsed.timeline !== undefined) {
+    if (!Array.isArray(parsed.timeline)) {
+      throw new Error(`LLM response field 'timeline' must be an array`);
+    }
+    for (const item of parsed.timeline) {
+      if (!item || typeof item !== 'object') {
+        throw new Error(`LLM response field 'timeline' items must be objects`);
+      }
+      if (item.date !== undefined && typeof item.date !== 'string') {
+        throw new Error(`LLM response field 'timeline[].date' must be a string`);
+      }
+      if (item.event !== undefined && typeof item.event !== 'string') {
+        throw new Error(`LLM response field 'timeline[].event' must be a string`);
+      }
+    }
   }
-  if (parsed.links !== undefined && !Array.isArray(parsed.links)) {
-    throw new Error(`LLM response field 'links' must be an array`);
+  if (parsed.links !== undefined) {
+    if (!Array.isArray(parsed.links)) {
+      throw new Error(`LLM response field 'links' must be an array`);
+    }
+    for (const item of parsed.links) {
+      if (!item || typeof item !== 'object') {
+        throw new Error(`LLM response field 'links' items must be objects`);
+      }
+      if (item.target !== undefined && typeof item.target !== 'string') {
+        throw new Error(`LLM response field 'links[].target' must be a string`);
+      }
+      if (item.weight !== undefined && !['strong', 'weak', 'context'].includes(item.weight)) {
+        throw new Error(`LLM response field 'links[].weight' must be one of strong/weak/context`);
+      }
+      if (item.context !== undefined && typeof item.context !== 'string') {
+        throw new Error(`LLM response field 'links[].context' must be a string`);
+      }
+    }
   }
-  if (parsed.qas !== undefined && !Array.isArray(parsed.qas)) {
-    throw new Error(`LLM response field 'qas' must be an array`);
+  if (parsed.qas !== undefined) {
+    if (!Array.isArray(parsed.qas)) {
+      throw new Error(`LLM response field 'qas' must be an array`);
+    }
+    for (const item of parsed.qas) {
+      if (!item || typeof item !== 'object') {
+        throw new Error(`LLM response field 'qas' items must be objects`);
+      }
+      if (item.question !== undefined && typeof item.question !== 'string') {
+        throw new Error(`LLM response field 'qas[].question' must be a string`);
+      }
+      if (item.answer !== undefined && typeof item.answer !== 'string') {
+        throw new Error(`LLM response field 'qas[].answer' must be a string`);
+      }
+    }
   }
   if (parsed.content !== undefined && typeof parsed.content !== 'string') {
     throw new Error(`LLM response field 'content' must be a string`);
