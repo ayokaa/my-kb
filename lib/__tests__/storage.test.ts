@@ -273,6 +273,12 @@ describe('FileSystemStorage', () => {
       await storage.archiveInbox(fileName);
       expect((await storage.listInbox()).length).toBe(0);
     });
+
+    it('skips gracefully when inbox file is already missing', async () => {
+      const fileName = 'non-existent-file.md';
+      // Should not throw
+      await expect(storage.archiveInbox(fileName)).resolves.toBeUndefined();
+    });
   });
 
   // ===== Conversation =====

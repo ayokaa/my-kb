@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, readdir, mkdir, rename, unlink } from 'fs/promises';
+import { readFile, writeFile, readdir, mkdir, rename, unlink, stat } from 'fs/promises';
 import { join, dirname, basename } from 'path';
 import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
@@ -353,6 +353,12 @@ export class FileSystemStorage implements Storage {
 
   async archiveInbox(fileName: string): Promise<void> {
     const src = this.inboxPath(fileName);
+    try {
+      await stat(src);
+    } catch {
+      // File already archived or deleted, treat as idempotent
+      return;
+    }
     const dst = join(this.root, 'archive', 'inbox', fileName);
     await mkdir(dirname(dst), { recursive: true });
     await rename(src, dst);

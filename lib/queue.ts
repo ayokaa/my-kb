@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir } from 'fs/promises';
+import { readFile, writeFile, rename, mkdir, stat } from 'fs/promises';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import yaml from 'js-yaml';
@@ -251,6 +251,12 @@ async function runRSSFetchTask(payload: RSSFetchPayload) {
 async function runIngestTask(payload: IngestPayload) {
   const { fileName } = payload;
   const filePath = join(process.cwd(), getKnowledgeRoot(), 'inbox', fileName);
+
+  try {
+    await stat(filePath);
+  } catch {
+    throw new Error(`Inbox file not found: ${fileName}`);
+  }
 
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxRaw(raw, filePath);

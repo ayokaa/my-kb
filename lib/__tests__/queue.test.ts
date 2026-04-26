@@ -16,6 +16,7 @@ vi.mock('fs/promises', () => {
     writeFile: vi.fn().mockResolvedValue(undefined),
     rename: vi.fn().mockResolvedValue(undefined),
     mkdir: vi.fn().mockResolvedValue(undefined),
+    stat: vi.fn().mockRejectedValue(new Error('no file')),
   };
   return {
     ...mocks,
@@ -183,14 +184,16 @@ describe('enqueue / getTask / listPending', () => {
   });
 
   it('skips duplicate source during ingest', async () => {
-    const { readFile } = await import('fs/promises');
+    const { readFile, stat } = await import('fs/promises');
     const prevReadFile = readFile.getMockImplementation();
+    const prevStat = stat.getMockImplementation();
     readFile.mockImplementation(async (path: string) => {
       if (typeof path === 'string' && path.includes('dup.md')) {
         return makeInboxMd('RSS Article', { rss_link: 'https://example.com/feed' });
       }
       throw new Error('no file');
     });
+    stat.mockResolvedValue({} as any);
 
     const { FileSystemStorage } = await import('@/lib/storage');
     const prevImpl = FileSystemStorage.getMockImplementation();
@@ -210,11 +213,20 @@ describe('enqueue / getTask / listPending', () => {
       throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
     } finally {
       readFile.mockImplementation(prevReadFile as any);
+      stat.mockImplementation(prevStat as any);
       FileSystemStorage.mockImplementation(prevImpl as any);
     }
 
     const task = getTask(id);
     expect(task?.result).toEqual({ skipped: true, reason: 'duplicate source' });
+  });
+
+  it('marks task failed when inbox file is missing (stat rejects)', async () => {
+    const id = enqueue('ingest', { fileName: 'missing.md' });
+    await waitForStatus(id, 'failed');
+    const task = getTask(id);
+    expect(task!.status).toBe('failed');
+    expect(task!.error).toContain('Inbox file not found');
   });
 
   it('saveQueueState handles rapid concurrent enqueues without data loss', async () => {
