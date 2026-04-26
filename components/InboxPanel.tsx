@@ -36,7 +36,8 @@ export default function InboxPanel({ count, onChange, taskCount = 0 }: InboxPane
         setSelected(data.entries[0]);
       }
       onChange?.();
-    } catch {
+    } catch (err) {
+      console.error('[InboxPanel] Failed to load entries:', err);
       setEntries([]);
     }
     setLoading(false);
@@ -100,8 +101,9 @@ export default function InboxPanel({ count, onChange, taskCount = 0 }: InboxPane
       }
 
       onChange?.();
-    } catch (err: any) {
-      setResult(`错误 · ${err.message}`);
+    } catch (err) {
+      console.error('[InboxPanel] Failed to process entry:', err);
+      setResult('错误 · 处理失败');
     }
     setProcessingId(null);
   }

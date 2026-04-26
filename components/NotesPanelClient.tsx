@@ -95,7 +95,8 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       }
       setShowDeleteConfirm(false);
       setDeleteResult('');
-    } catch {
+    } catch (err) {
+      console.error('[NotesPanel] Failed to load notes:', err);
       setNotes([]);
     }
     setLoading(false);
@@ -129,8 +130,9 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       } else {
         setDeleteResult(`删除失败 · ${data.error}`);
       }
-    } catch (err: any) {
-      setDeleteResult(`错误 · ${err.message}`);
+    } catch (err) {
+      console.error('[NotesPanel] Failed to delete note:', err);
+      setDeleteResult('错误 · 删除失败');
     }
     setDeletingId(null);
   }
