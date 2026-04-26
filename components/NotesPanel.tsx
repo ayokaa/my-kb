@@ -271,9 +271,25 @@ export default function NotesPanel() {
                         {formatDate(selected.created)}
                       </span>
                       {selected.sources.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <FileText className="h-3 w-3" />
-                          {selected.sources.join(' · ')}
+                        <span className="flex flex-wrap items-center gap-1">
+                          <FileText className="h-3 w-3 shrink-0" />
+                          {selected.sources.map((s, i) => (
+                            <span key={i} className="flex items-center">
+                              {i > 0 && <span className="mx-1">·</span>}
+                              {/^https?:\/\//.test(s) ? (
+                                <a
+                                  href={s}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="break-all text-[var(--accent)] underline transition-opacity hover:opacity-80"
+                                >
+                                  {s}
+                                </a>
+                              ) : (
+                                <span>{s}</span>
+                              )}
+                            </span>
+                          ))}
                         </span>
                       )}
                     </div>
