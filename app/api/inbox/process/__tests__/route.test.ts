@@ -46,6 +46,6 @@ describe('/api/inbox/process', () => {
     const res = await POST(req);
     expect(res.status).toBe(500);
     const data = await res.json();
-    expect(data.error).toBe('queue full');
+    expect(data.error).toBe('Internal error');
   });
 });

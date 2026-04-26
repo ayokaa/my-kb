@@ -48,7 +48,7 @@ describe('/api/chat validation', () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain('non-empty');
+    expect(data.error).toBe('Invalid messages');
   });
 
   it('returns 400 for invalid message role', async () => {
@@ -60,7 +60,7 @@ describe('/api/chat validation', () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain('role');
+    expect(data.error).toBe('Invalid messages');
   });
 
   it('returns 400 for empty content', async () => {
@@ -72,7 +72,7 @@ describe('/api/chat validation', () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toContain('content');
+    expect(data.error).toBe('Invalid messages');
   });
 
   it('returns 400 for non-array messages', async () => {
