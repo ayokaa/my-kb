@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { chromium } from 'playwright';
-import { fetchWebContent } from '../web';
+import { fetchWebContent, closeBrowser, resetBrowserForTesting } from '../web';
 
 vi.mock('playwright', () => ({
   chromium: {
@@ -15,8 +15,7 @@ describe('fetchWebContent', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockPageClose.mockClear();
-    const { __resetBrowserSingleton } = await import('../web');
-    __resetBrowserSingleton();
+    resetBrowserForTesting();
   });
 
   function mockPage(html: string, bodyText = '') {
@@ -33,6 +32,7 @@ describe('fetchWebContent', () => {
     return {
       newPage: vi.fn().mockResolvedValue(page),
       close: mockClose,
+      isConnected: vi.fn().mockReturnValue(true),
     };
   }
 
@@ -95,5 +95,40 @@ describe('fetchWebContent', () => {
     // Pages should be closed after each use, but browser stays open
     expect(mockPageClose).toHaveBeenCalledTimes(2);
     expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it('recovers from a crashed browser by re-launching', async () => {
+    const deadBrowser = {
+      newPage: vi.fn().mockRejectedValue(new Error('browser crashed')),
+      close: vi.fn().mockResolvedValue(undefined),
+      isConnected: vi.fn().mockReturnValue(false),
+    };
+    const healthyBrowser = {
+      ...mockBrowser(mockPage('<html><body>recovered</body></html>')),
+      isConnected: vi.fn().mockReturnValue(true),
+    };
+
+    let callCount = 0;
+    vi.mocked(chromium.launch).mockImplementation(() => {
+      callCount++;
+      return Promise.resolve(callCount === 1 ? (deadBrowser as any) : (healthyBrowser as any));
+    });
+
+    await fetchWebContent('https://example.com/crash');
+
+    // Should have launched twice: first fails health check, then retry succeeds
+    expect(chromium.launch).toHaveBeenCalledTimes(2);
+    expect(mockPageClose).toHaveBeenCalled();
+  });
+
+  it('closes browser on closeBrowser()', async () => {
+    vi.mocked(chromium.launch).mockResolvedValue(
+      mockBrowser(mockPage('<html><body>test</body></html>'))
+    );
+
+    await fetchWebContent('https://example.com/close');
+    await closeBrowser();
+
+    expect(mockClose).toHaveBeenCalled();
   });
 });
