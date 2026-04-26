@@ -29,7 +29,7 @@
 | AI 流 | `ai` + `@ai-sdk/openai` 的 `OpenAIStream` / `StreamingTextResponse` |
 | LLM | MiniMax API（默认模型 `MiniMax-M2.7`） |
 | 测试 | Vitest 4（单元测试，jsdom 环境）+ Playwright（E2E，Chromium） |
-| 抓取 | `@mozilla/readability` + `jsdom` |
+| 抓取 | `playwright`（Chromium 无头浏览器）+ `@mozilla/readability` + `jsdom` |
 | RSS | `feedsmith` |
 | PDF | `pdf-parse` |
 | 配置 | YAML 通过 `js-yaml` 读写 |
@@ -61,16 +61,17 @@ my-kb/
 │   ├── ChatPanel.tsx             # 聊天 + 入库面板
 │   ├── InboxPanel.tsx            # 收件箱审核
 │   ├── NotesPanel.tsx            # 笔记浏览与搜索
-│   └── RSSPanel.tsx              # RSS 订阅管理
+│   ├── RSSPanel.tsx              # RSS 订阅管理
+│   └── TasksPanel.tsx              # 任务队列状态面板
 ├── lib/                          # 核心业务逻辑
 │   ├── types.ts                  # TypeScript 类型定义
 │   ├── storage.ts                # FileSystemStorage 实现
 │   ├── parsers.ts                # Note 的 Markdown 解析与序列化
-│   ├── queue.ts                  # 内存任务队列与 Worker
+│   ├── queue.ts                  # 任务队列与 Worker（内存运行 + JSON 持久化）
 │   ├── cognition/
 │   │   └── ingest.ts             # LLM 调用：将 inbox 加工成 note
 │   ├── ingestion/
-│   │   ├── web.ts                # 网页内容抓取（Readability）
+│   │   ├── web.ts                # 网页内容抓取（Playwright + Readability）
 │   │   ├── rss.ts                # RSS/Atom/JSON Feed 解析
 │   │   └── pdf.ts                # PDF 文本提取
 │   └── rss/
@@ -86,8 +87,8 @@ my-kb/
 │   ├── meta/                     # 元数据
 │   │   ├── inverted-index.md     # 倒排索引
 │   │   ├── aliases.yml           # 别名映射
-│   │   ├── rss-sources.yml       # RSS 订阅列表
-│   │   └── rss-seen.yml          # 已读 RSS 条目记录
+│   │   ├── rss-sources.yml       # RSS 订阅列表（含 lastPubDate 增量标记）
+│   │   └── queue.json            # 任务队列持久化状态
 │   ├── attachments/              # 上传的原始文件
 │   └── daily/                    # （预留目录）
 ├── package.json
@@ -151,7 +152,7 @@ npm run test:e2e
 - **`lib/types.ts`**：所有核心业务类型（`Note`, `InboxEntry`, `Conversation`, `Storage` 接口等）。
 - **`lib/storage.ts`**：`FileSystemStorage` 类，实现 `Storage` 接口，所有数据持久化均通过此类完成。
 - **`lib/parsers.ts`**：`parseNote` / `stringifyNote`，定义了 Note 的 Markdown 格式规范。
-- **`lib/queue.ts`**：纯内存任务队列，用于将 inbox 条目的异步加工任务排队执行。
+- **`lib/queue.ts`**：任务队列与后台 Worker。队列状态在 `knowledge/meta/queue.json` 中持久化（原子写入：tmp+rename），进程重启后自动恢复 pending 任务并重跑 Worker。
 - **`lib/cognition/ingest.ts`**：唯一调用 LLM 进行内容加工的地方。
 - **`lib/ingestion/`**：各类原始内容的抓取/解析器，不依赖 LLM。
 - **`lib/rss/`**：RSS 订阅管理与定时轮询。
@@ -224,8 +225,11 @@ Markdown 正文
 
 ### RSS 元数据
 
-- `knowledge/meta/rss-sources.yml`：订阅源列表
-- `knowledge/meta/rss-seen.yml`：每个订阅源已见过的条目 ID（上限保留最近 500 条）
+- `knowledge/meta/rss-sources.yml`：订阅源列表。每个订阅项包含 `url`、`name`、`addedAt` 和 **`lastPubDate`**（上次处理的最晚发布日期）。RSS 增量更新以此为水位线：首次检查只取最近 5 条，后续仅抓取 `pubDate > lastPubDate` 的新条目。`rss-seen.yml` 已废弃并停止写入。
+
+### 任务队列持久化
+
+- `knowledge/meta/queue.json`：任务队列的运行时状态。包含 `tasks` 数组（完整任务历史）和 `pendingIds` 数组。模块加载时自动恢复，enqueue / task start / task complete 时触发原子写入（tmp+rename）。
 
 ---
 
@@ -271,7 +275,8 @@ npm run test:e2e
 2. **文件上传**：上传文件保存在 `knowledge/attachments/`，以时间戳前缀重命名，避免文件名冲突与路径遍历。
 3. **Shell 注入**：`storage.ts` 中的 `commit()` 方法通过 `git add` 和 `git commit` 执行外部命令，已对消息中的双引号做了转义。修改此逻辑时需格外谨慎。
 4. **API 密钥**：LLM 和搜索 API 密钥仅通过环境变量注入，不在客户端暴露。
-5. **RSS/网络抓取**：使用自定义 User-Agent (`AgentKB/1.0`)，抓取超时 8 秒，对 RSS 源之间加入 500ms 延迟以示礼貌。
+5. **网页抓取**：使用 Playwright 启动 Chromium 无头浏览器，执行页面 JavaScript 后提取正文，超时 20 秒（`networkidle` 等待模式）。不再使用静态 `fetch` 方式。
+6. **RSS 抓取**：使用 `fetch` + 自定义 User-Agent (`AgentKB/1.0`)，源之间加入 500ms 延迟以示礼貌。
 
 ---
 
@@ -298,6 +303,8 @@ npm run test:e2e
 | 调整 RSS 轮询频率 | `app/layout.tsx` 中 `startRSSCron(60)` 的参数（分钟） |
 | 修改 UI 主题色 | `app/globals.css` 中的 `:root` CSS 变量 |
 | 新增组件 | `components/{Name}.tsx`，并在 `app/page.tsx` 中引用 |
+| 调整任务队列逻辑 | `lib/queue.ts` |
+| 修改任务面板 UI | `components/TasksPanel.tsx` |
 
 ---
 
