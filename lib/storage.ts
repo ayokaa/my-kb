@@ -237,7 +237,7 @@ export class FileSystemStorage implements Storage {
     const path = join(this.root, 'meta', 'aliases.yml');
     try {
       const raw = await readFile(path, 'utf-8');
-      const data = yaml.load(raw) as Record<string, string[]> | null;
+      const data = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, string[]> | null;
       if (!data || typeof data !== 'object') return [];
       return Object.entries(data).map(([canonical, aliases]) => ({
         canonical,
@@ -347,8 +347,9 @@ export class FileSystemStorage implements Storage {
   async commit(message: string): Promise<void> {
     try {
       await this.execFileAsync('git', ['add', this.root], { cwd: process.cwd() });
-    } catch (err: any) {
-      if (!err.message?.includes('nothing to commit') && !err.message?.includes('no changes added')) {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (!msg.includes('nothing to commit') && !msg.includes('no changes added')) {
         throw err;
       }
     }
@@ -358,8 +359,9 @@ export class FileSystemStorage implements Storage {
       if (stderr && !stderr.includes('nothing to commit') && !stderr.includes('no changes added')) {
         console.warn('[Git]', stderr);
       }
-    } catch (err: any) {
-      if (!err.message?.includes('nothing to commit') && !err.message?.includes('no changes added')) {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (!msg.includes('nothing to commit') && !msg.includes('no changes added')) {
         throw err;
       }
     }
@@ -413,8 +415,17 @@ export class FileSystemStorage implements Storage {
   }
 
   private parseInboxEntry(raw: string, path: string): InboxEntry {
-    const parts = raw.split('---');
-    if (parts.length < 3) {
+    if (!raw.startsWith('---')) {
+      return {
+        sourceType: 'text',
+        title: basename(path, '.md'),
+        content: raw,
+        rawMetadata: {},
+        filePath: path,
+      };
+    }
+    const endMarker = raw.indexOf('\n---', 3);
+    if (endMarker === -1) {
       return {
         sourceType: 'text',
         title: basename(path, '.md'),
@@ -424,8 +435,9 @@ export class FileSystemStorage implements Storage {
       };
     }
 
-    const fm = yaml.load(parts[1].trim()) as Record<string, unknown>;
-    const content = parts.slice(2).join('---').trim();
+    const fmRaw = raw.slice(3, endMarker).trim();
+    const content = raw.slice(endMarker + 4).trim();
+    const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
 
     const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
     const rawMetadata: Record<string, unknown> = {};
@@ -445,9 +457,16 @@ export class FileSystemStorage implements Storage {
   }
 
   private parseConversation(raw: string, path: string): Conversation {
-    const parts = raw.split('---');
-    const fm = parts.length >= 3 ? (yaml.load(parts[1].trim()) as Record<string, unknown>) : {};
-    const body = parts.length >= 3 ? parts.slice(2).join('---').trim() : raw;
+    let fm: Record<string, unknown> = {};
+    let body = raw;
+    if (raw.startsWith('---')) {
+      const endMarker = raw.indexOf('\n---', 3);
+      if (endMarker !== -1) {
+        const fmRaw = raw.slice(3, endMarker).trim();
+        fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
+        body = raw.slice(endMarker + 4).trim();
+      }
+    }
 
     const conv: Conversation = {
       date: String(fm.date || basename(path, '.md')),
