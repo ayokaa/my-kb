@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
-test.describe('RSS Subscriptions', () => {
+test.describe.serial('RSS Subscriptions', () => {
   test.beforeEach(async ({ request }) => {
     // Clear all subscriptions before each test
     const res = await request.get('/api/rss/subscriptions');

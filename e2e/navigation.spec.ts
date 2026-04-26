@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 
 test.describe('Navigation', () => {
   test('homepage loads with sidebar and chat panel', async ({ page }) => {
