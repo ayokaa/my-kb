@@ -11,11 +11,15 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('chat');
   const [inboxCount, setInboxCount] = useState(0);
 
-  useEffect(() => {
+  function refreshInboxCount() {
     fetch('/api/inbox')
       .then((r) => r.json())
       .then((d) => setInboxCount(d.entries?.length || 0))
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    refreshInboxCount();
   }, [tab]);
 
   return (
@@ -23,7 +27,7 @@ export default function HomePage() {
       <Sidebar active={tab} onChange={setTab} inboxCount={inboxCount} />
       <main className="flex-1 overflow-hidden p-5">
         {tab === 'chat' && <ChatPanel />}
-        {tab === 'inbox' && <InboxPanel />}
+        {tab === 'inbox' && <InboxPanel onChange={refreshInboxCount} />}
         {tab === 'rss' && <RSSPanel />}
         {tab === 'notes' && <NotesPanel />}
       </main>

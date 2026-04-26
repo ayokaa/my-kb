@@ -12,7 +12,11 @@ interface InboxEntry {
   filePath?: string;
 }
 
-export default function InboxPanel() {
+interface InboxPanelProps {
+  onChange?: () => void;
+}
+
+export default function InboxPanel({ onChange }: InboxPanelProps) {
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [selected, setSelected] = useState<InboxEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,6 +32,7 @@ export default function InboxPanel() {
       if (data.entries?.length > 0 && !selected) {
         setSelected(data.entries[0]);
       }
+      onChange?.();
     } catch {
       setEntries([]);
     }
@@ -72,6 +77,7 @@ export default function InboxPanel() {
       }
       setEntries((prev) => prev.filter((e) => e.filePath !== entry.filePath));
       setSelected(null);
+      onChange?.();
     } catch (err: any) {
       setResult(`错误 · ${err.message}`);
     }
