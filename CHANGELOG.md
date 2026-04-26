@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## 2026-04-26
 
+### Added
+
+- **Chat KB Search (RAG)**: Keyword-based structured retrieval system with Zone-weighted scoring.
+  - `lib/search/inverted-index.ts`: Inverted index builder with Chinese/English mixed tokenization, stop-word filtering, and all-length Chinese substring expansion.
+  - `lib/search/engine.ts`: Search engine with OR-semantics query, Zone scoring (tag 3.0 > qa 2.5 > title 2.0 > summary 1.8 > keyFact/link 1.5 > content 0.8), and 1-hop link diffusion (0.3 decay).
+  - `lib/search/eval.ts`: Quantified evaluation framework with SuccessRate@5, AvgPrecision@5, FalsePositiveRate, per-category metrics, quality gates, and error-report generation.
+  - `lib/search/__tests__/`: 54 tests including inverted-index correctness, zone-scoring logic, boolean-query behavior, and golden-dataset quality assessment (10 test cases, all passing gates: success≥90%, precision≥70%, FP≤10%).
+  - `app/api/chat/route.ts`: Integrates retrieval into chat — loads/builds search index, executes query against notes, assembles structured context into dynamic system prompt.
+  - `lib/storage.ts`: `saveNote()` and `deleteNote()` now auto-update `knowledge/meta/search-index.json` incrementally.
+
+## 2026-04-26
+
 ### Security
 
 - Upgrade to Next.js 16.2.4 + React 19.2.5 to address multiple CVEs in the legacy 14.x line (CVE-2025-55184, CVE-2025-29927, CVE-2025-32421).

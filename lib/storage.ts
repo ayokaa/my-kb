@@ -26,6 +26,10 @@ export class FileSystemStorage implements Storage {
     return join(this.root, 'conversations', `${date}.md`);
   }
 
+  private searchIndexPath(): string {
+    return join(this.root, 'meta', 'search-index.json');
+  }
+
   private inboxPath(fileName: string): string {
     return join(this.root, 'inbox', fileName);
   }
@@ -54,6 +58,32 @@ export class FileSystemStorage implements Storage {
     const path = this.notePath(note.id);
     await this.atomicWrite(path, stringifyNote(note));
     note.filePath = path;
+
+    // Update search index
+    try {
+      const { buildNoteIndex, mergeIndexes, removeNoteFromIndex, serializeIndex } = await import('./search/inverted-index');
+      const indexPath = this.searchIndexPath();
+      let existing: Awaited<ReturnType<typeof import('./search/inverted-index').deserializeIndex>> = null;
+      try {
+        const raw = await readFile(indexPath, 'utf-8');
+        existing = (await import('./search/inverted-index')).deserializeIndex(raw);
+      } catch {
+        // File may not exist
+      }
+
+      let indexMap = existing?.index ?? {};
+      // Remove old entries for this note (if updating)
+      indexMap = removeNoteFromIndex(indexMap, note.id);
+      // Add new entries
+      const noteIndex = buildNoteIndex(note);
+      indexMap = mergeIndexes([indexMap, noteIndex]);
+
+      const allNotes = await this.listNotes();
+      const noteIds = allNotes.map(n => n.id);
+      await this.atomicWrite(indexPath, serializeIndex(indexMap, noteIds));
+    } catch (err) {
+      console.warn('[Storage] Failed to update search index:', (err as Error).message);
+    }
   }
 
   async listNotes(): Promise<Note[]> {
@@ -92,6 +122,27 @@ export class FileSystemStorage implements Storage {
       }
     } catch {
       // Index cleanup failure is non-critical
+    }
+
+    // Clean up search index
+    try {
+      const { removeNoteFromIndex, serializeIndex } = await import('./search/inverted-index');
+      const indexPath = this.searchIndexPath();
+      let existing: Awaited<ReturnType<typeof import('./search/inverted-index').deserializeIndex>> = null;
+      try {
+        const raw = await readFile(indexPath, 'utf-8');
+        existing = (await import('./search/inverted-index')).deserializeIndex(raw);
+      } catch {
+        // File may not exist
+      }
+
+      if (existing) {
+        const cleaned = removeNoteFromIndex(existing.index, id);
+        const noteIds = existing.noteIds.filter(nid => nid !== id);
+        await this.atomicWrite(indexPath, serializeIndex(cleaned, noteIds));
+      }
+    } catch (err) {
+      console.warn('[Storage] Failed to clean up search index:', (err as Error).message);
     }
   }
 
