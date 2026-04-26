@@ -15,9 +15,10 @@ interface InboxEntry {
 interface InboxPanelProps {
   count?: number;
   onChange?: () => void;
+  taskCount?: number;
 }
 
-export default function InboxPanel({ count, onChange }: InboxPanelProps) {
+export default function InboxPanel({ count, onChange, taskCount = 0 }: InboxPanelProps) {
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [selected, setSelected] = useState<InboxEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -281,6 +282,14 @@ export default function InboxPanel({ count, onChange }: InboxPanelProps) {
                 </div>
               )}
             </div>
+            {taskCount > 0 && (
+              <div className="border-t border-[var(--border)] px-6 py-3">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+                  <Loader2 className="h-3 w-3 animate-spin text-[var(--accent)]" />
+                  <span>处理中 {taskCount} 条…</span>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-[var(--text-tertiary)]">

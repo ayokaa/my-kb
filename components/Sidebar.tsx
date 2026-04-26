@@ -1,23 +1,25 @@
 'use client';
 
-import { MessageSquare, Inbox, BookOpen, Sparkles, Rss } from 'lucide-react';
+import { MessageSquare, Inbox, BookOpen, Sparkles, Rss, ListChecks } from 'lucide-react';
 
-export type Tab = 'chat' | 'inbox' | 'notes' | 'rss';
+export type Tab = 'chat' | 'inbox' | 'tasks' | 'notes' | 'rss';
 
 interface SidebarProps {
   active: Tab;
   onChange: (tab: Tab) => void;
   inboxCount?: number;
+  taskCount?: number;
 }
 
 const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'chat', label: '对话', icon: MessageSquare },
   { id: 'inbox', label: '收件箱', icon: Inbox },
+  { id: 'tasks', label: '任务', icon: ListChecks },
   { id: 'rss', label: '订阅', icon: Rss },
   { id: 'notes', label: '笔记', icon: BookOpen },
 ];
 
-export default function Sidebar({ active, onChange, inboxCount = 0 }: SidebarProps) {
+export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0 }: SidebarProps) {
   return (
     <aside className="glass flex h-screen w-64 flex-col">
       {/* Logo */}
@@ -57,6 +59,11 @@ export default function Sidebar({ active, onChange, inboxCount = 0 }: SidebarPro
               {item.id === 'inbox' && inboxCount > 0 && (
                 <span className="rounded-md bg-[var(--error)] px-2 py-0.5 text-[10px] font-bold text-white">
                   {inboxCount}
+                </span>
+              )}
+              {item.id === 'inbox' && inboxCount === 0 && taskCount > 0 && (
+                <span className="rounded-md bg-orange-500/20 px-2 py-0.5 text-[10px] font-bold text-orange-400">
+                  {taskCount}
                 </span>
               )}
               {isActive && (
