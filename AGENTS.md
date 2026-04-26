@@ -6,11 +6,11 @@
 
 ## 项目概述
 
-**my-kb** 是一个基于 Next.js 的个人 AI 知识库应用。用户可以通过聊天、网页链接、RSS 订阅、文件上传、网络搜索等方式收集信息，系统利用大语言模型（LLM）将原始内容自动加工成结构化的知识笔记，并以 Markdown 文件形式持久化存储在本地文件系统中。
+**my-kb** 是一个基于 Next.js 的个人 AI 知识库应用。用户可以通过聊天、网页链接、RSS 订阅、文件上传等方式收集信息，系统利用大语言模型（LLM）将原始内容自动加工成结构化的知识笔记，并以 Markdown 文件形式持久化存储在本地文件系统中。
 
 核心功能：
 - **AI 对话**：基于已有知识的流式聊天助手
-- **知识入库（Ingest）**：支持文本、链接、PDF/TXT/MD 文件、RSS 订阅、网络搜索结果的自动抓取与入库
+- **知识入库（Ingest）**：支持文本、链接、PDF/TXT/MD 文件、RSS 订阅的自动抓取与入库
 - **收件箱审核（Inbox）**：待处理内容经过人工确认后，由 LLM 生成结构化笔记
 - **笔记管理（Notes）**：按状态（种子/生长中/常青/陈旧/归档）管理笔记，支持标签搜索
 - **RSS 订阅**：定时自动检查订阅源，将新文章写入收件箱
@@ -26,7 +26,7 @@
 | 语言 | TypeScript 5 (strict mode, target: es2015) |
 | 样式 | Tailwind CSS 3.4 + 自定义 CSS 变量（深色主题） |
 | 字体 | Cormorant Garamond (衬线标题) + JetBrains Mono (等宽正文) |
-| AI 流 | `ai` + `@ai-sdk/openai` 的 `OpenAIStream` / `StreamingTextResponse` |
+| AI 流 | `ai` v3 的 legacy `OpenAIStream` / `StreamingTextResponse`（`@ai-sdk/openai` 已安装但暂未使用） |
 | LLM | MiniMax API（默认模型 `MiniMax-M2.7`） |
 | 测试 | Vitest 4（单元测试，jsdom 环境）+ Playwright（E2E，Chromium） |
 | 抓取 | `playwright`（Chromium 无头浏览器）+ `@mozilla/readability` + `jsdom` |
@@ -47,10 +47,13 @@ my-kb/
 │   │   ├── inbox/                # GET /api/inbox, POST /api/inbox/archive, POST /api/inbox/process
 │   │   ├── ingest/               # POST /api/ingest — 文本/链接手动入库
 │   │   ├── notes/                # GET /api/notes — 列出所有笔记
+│   │   │   └── [id]/             # GET /api/notes/{id} — 获取单个笔记
 │   │   ├── rss/                  # RSS 相关接口
 │   │   │   ├── subscriptions/    # GET/POST/DELETE 订阅源管理
 │   │   │   ├── subscriptions/check/   # POST 手动检查更新
 │   │   │   └── subscriptions/import-opml/  # POST 导入 OPML
+│   │   ├── search/               # POST /api/search — 网络搜索（后端存在，暂无前端调用）
+│   │   ├── tasks/                # GET /api/tasks — 任务队列查询
 │   │   └── upload/               # POST /api/upload — 文件上传
 │   ├── globals.css               # 全局样式、CSS 变量、自定义组件类
 │   ├── layout.tsx                # 根布局（启动 RSS cron）
@@ -61,7 +64,7 @@ my-kb/
 │   ├── InboxPanel.tsx            # 收件箱审核
 │   ├── NotesPanel.tsx            # 笔记浏览与搜索
 │   ├── RSSPanel.tsx              # RSS 订阅管理
-│   └── TasksPanel.tsx              # 任务队列状态面板
+│   └── TasksPanel.tsx            # 任务队列状态面板
 ├── lib/                          # 核心业务逻辑
 │   ├── types.ts                  # TypeScript 类型定义
 │   ├── storage.ts                # FileSystemStorage 实现
@@ -76,6 +79,7 @@ my-kb/
 │   └── rss/
 │       ├── manager.ts            # RSS 订阅的增删查改与自动入库
 │       └── cron.ts               # node-cron 定时任务封装
+├── docs/                         # 文档（API 参考、架构设计）
 ├── e2e/                          # Playwright E2E 测试
 ├── knowledge/                    # 文件系统数据存储（被 .gitignore 忽略）
 │   ├── notes/                    # 结构化笔记（Markdown）
@@ -96,6 +100,9 @@ my-kb/
 ├── tailwind.config.ts
 ├── vitest.config.ts
 ├── playwright.config.ts
+├── CHANGELOG.md
+├── LICENSE
+├── .env.example
 └── postcss.config.mjs
 ```
 
@@ -239,6 +246,8 @@ Markdown 正文
   - `lib/__tests__/storage.test.ts`
   - `lib/cognition/__tests__/ingest.test.ts`
   - `app/api/chat/__tests__/route.test.ts`
+  - `app/api/tasks/__tests__/route.test.ts`
+  - `components/__tests__/TasksPanel.test.ts`
 - 环境：`jsdom`（用于 React/前端逻辑），`globals: true`
 - 覆盖率提供者：`v8`
 - 阈值要求：
@@ -271,7 +280,7 @@ npm run test:e2e
 
 1. **敏感数据不入库**：`knowledge/` 与 `.env*` 已被 `.gitignore` 排除，确保个人笔记和 API 密钥不会被意外提交。
 2. **文件上传**：上传文件保存在 `knowledge/attachments/`，以时间戳前缀重命名，避免文件名冲突与路径遍历。
-3. **Shell 注入**：`storage.ts` 中的 `commit()` 方法通过 `git add` 和 `git commit` 执行外部命令，已对消息中的双引号做了转义。修改此逻辑时需格外谨慎。
+3. **Shell 注入**：`storage.ts` 中的 `commit()` 方法通过 `git add` 和 `git commit` 执行外部命令，已对消息中的双引号做了转义。注意：由于 `knowledge/` 在 `.gitignore` 中，`git add` 不会实际添加任何文件，此方法当前处于失效状态。如需启用 Git 版本管理，需将 `knowledge/` 移出 `.gitignore`。
 4. **API 密钥**：LLM 和搜索 API 密钥仅通过环境变量注入，不在客户端暴露。
 5. **网页抓取**：使用 Playwright 启动 Chromium 无头浏览器，执行页面 JavaScript 后提取正文，超时 20 秒（`networkidle` 等待模式）。不再使用静态 `fetch` 方式。
 6. **RSS 抓取**：使用 `fetch` + 自定义 User-Agent (`AgentKB/1.0`)，源之间加入 500ms 延迟以示礼貌。
@@ -285,7 +294,7 @@ npm run test:e2e
 - **组件风格**：大量自定义 CSS 类（`.glass`、`.card-elevated`、`.btn-primary`、`.input-dark` 等），参考 `globals.css` 的 `@layer components`。
 - **状态管理**：无全局状态库，React 组件内部使用 `useState` + `useEffect` + `fetch` 进行数据获取。
 - **Cron 启动**：RSS 定时任务在 `app/layout.tsx` 中通过动态 `import('@/lib/rss/cron')` 启动，仅在 Node.js 运行时且非测试环境下执行。
-- **Git 集成**：`FileSystemStorage.commit(message)` 可自动将 `knowledge/` 目录的变更提交到 Git，便于知识库版本管理。
+- **Git 集成（当前失效）**：`FileSystemStorage.commit(message)` 设计意图是将 `knowledge/` 变更自动提交到 Git，但因 `knowledge/` 被 `.gitignore` 排除，实际不会产生任何提交。如需启用，需将 `knowledge/` 从 `.gitignore` 中移除。
 
 ---
 
