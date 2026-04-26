@@ -102,6 +102,21 @@ export function listPending(): Task[] {
   return listTasks().filter((t) => t.status === 'pending' || t.status === 'running');
 }
 
+export function retryTask(id: string): Task | null {
+  const task = tasks.get(id);
+  if (!task || task.status !== 'failed') return null;
+
+  task.status = 'pending';
+  task.error = undefined;
+  task.startedAt = undefined;
+  task.completedAt = undefined;
+  task.result = undefined;
+  pendingIds.push(id);
+  saveQueueState();
+  startWorker();
+  return task;
+}
+
 /* ---------- Worker ---------- */
 
 async function startWorker() {

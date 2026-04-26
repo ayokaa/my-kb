@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { GET } from '../route';
+import { GET, POST } from '../route';
+
+const mockRetryTask = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/queue', () => ({
   listTasks: vi.fn().mockReturnValue([
@@ -8,6 +10,7 @@ vi.mock('@/lib/queue', () => ({
   listPending: vi.fn().mockReturnValue([
     { id: 'task-2', type: 'ingest', status: 'pending', createdAt: '2024-01-02T00:00:00Z' },
   ]),
+  retryTask: mockRetryTask,
 }));
 
 describe('/api/tasks', () => {
@@ -27,5 +30,41 @@ describe('/api/tasks', () => {
     const data = await res.json();
     expect(data.tasks).toHaveLength(1);
     expect(data.tasks[0].status).toBe('pending');
+  });
+
+  describe('POST /api/tasks', () => {
+    it('retries a failed task', async () => {
+      mockRetryTask.mockReturnValue({ id: 'task-3', status: 'pending', type: 'ingest' });
+      const req = new Request('http://localhost/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'retry', taskId: 'task-3' }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.task.status).toBe('pending');
+      expect(mockRetryTask).toHaveBeenCalledWith('task-3');
+    });
+
+    it('returns 400 when task is not found or not failed', async () => {
+      mockRetryTask.mockReturnValue(null);
+      const req = new Request('http://localhost/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'retry', taskId: 'task-missing' }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toContain('not found');
+    });
+
+    it('returns 400 for invalid action', async () => {
+      const req = new Request('http://localhost/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'unknown', taskId: 'task-1' }),
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+    });
   });
 });

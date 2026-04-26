@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ListChecks, Loader2, CheckCircle2, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { ListChecks, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, RotateCcw } from 'lucide-react';
 
 interface Task {
   id: string;
@@ -33,6 +33,7 @@ function formatDate(iso: string) {
 export default function TasksPanel() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'pending' | 'running' | 'done' | 'failed'>('all');
 
   async function load() {
@@ -45,6 +46,23 @@ export default function TasksPanel() {
       setTasks([]);
     }
     setLoading(false);
+  }
+
+  async function handleRetry(taskId: string) {
+    setRetryingId(taskId);
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'retry', taskId }),
+      });
+      if (res.ok) {
+        await load();
+      }
+    } catch {
+      // ignore
+    }
+    setRetryingId(null);
   }
 
   useEffect(() => {
@@ -140,6 +158,16 @@ export default function TasksPanel() {
                     </p>
                   )}
                 </div>
+                {task.status === 'failed' && (
+                  <button
+                    onClick={() => handleRetry(task.id)}
+                    disabled={retryingId === task.id}
+                    className="ml-2 flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-dim)] disabled:opacity-50"
+                  >
+                    <RotateCcw className={`h-3 w-3 ${retryingId === task.id ? 'animate-spin' : ''}`} />
+                    {retryingId === task.id ? '重试中' : '重试'}
+                  </button>
+                )}
               </div>
             );
           })}

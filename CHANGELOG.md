@@ -6,6 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **Task retry for failed ingest tasks**: Users can now manually retry failed tasks from the Tasks panel.
+  - `lib/queue.ts`: Added `retryTask(id)` which resets a failed task to `pending`, clears error/result/completedAt, re-queues it, and triggers the worker.
+  - `app/api/tasks/route.ts`: Added `POST` handler supporting `action: 'retry'`.
+  - `components/TasksPanel.tsx`: Added "重试" button on failed task cards with loading state (`RotateCcw` icon + `retryingId` tracking).
+  - `lib/__tests__/queue.test.ts`: 3 tests for retryTask behavior.
+  - `app/api/tasks/__tests__/route.test.ts`: 3 tests for POST retry endpoint.
+
 - **Chat KB Search (RAG)**: Keyword-based structured retrieval system with Zone-weighted scoring.
   - `lib/search/inverted-index.ts`: Inverted index builder with Chinese/English mixed tokenization, stop-word filtering, and all-length Chinese substring expansion.
   - `lib/search/engine.ts`: Search engine with OR-semantics query, Zone scoring (tag 3.0 > qa 2.5 > title 2.0 > summary 1.8 > keyFact/link 1.5 > content 0.8), and 1-hop link diffusion (0.3 decay).
