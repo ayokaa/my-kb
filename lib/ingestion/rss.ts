@@ -42,10 +42,10 @@ function getLink(entry: any): string {
   // Atom: links array
   if (entry.links && Array.isArray(entry.links)) {
     const alternate = entry.links.find((l: any) => l.rel === 'alternate' || !l.rel);
-    if (alternate?.href) return alternate.href;
+    if (alternate?.href) return extractText(alternate.href) || '';
   }
   // RSS: direct link
-  return entry.link || '';
+  return extractText(entry.link) || '';
 }
 
 export async function fetchRSS(url: string): Promise<RSSItem[]> {
@@ -64,7 +64,7 @@ export async function fetchRSS(url: string): Promise<RSSItem[]> {
     const items = feed.items ?? [];
     return items.map((item: any) => ({
       title: extractText(item.title) || 'Untitled',
-      link: item.link || '',
+      link: extractText(item.link) || '',
       pubDate: item.pubDate,
       description: extractText(item.description),
       content: extractText(item.content),
@@ -97,7 +97,7 @@ export async function fetchRSS(url: string): Promise<RSSItem[]> {
   const items = feed.items ?? [];
   return items.map((item: any) => ({
     title: extractText(item.title) || 'Untitled',
-    link: item.link || '',
+    link: extractText(item.link) || '',
     pubDate: item.date,
     description: extractText(item.description),
     content: extractText(item.content),

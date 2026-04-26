@@ -6,20 +6,13 @@ vi.mock('@/lib/ingestion/rss', () => ({
     { title: 'Article 1', link: 'https://example.com/1', pubDate: '2024-01-01', description: 'Desc 1' },
     { title: 'Article 2', link: 'https://example.com/2', pubDate: '2024-01-02', description: 'Desc 2' },
   ]),
-  rssItemToInbox: vi.fn().mockReturnValue({
-    sourceType: 'web',
-    title: 'Mock Article',
-    content: 'content',
-    rawMetadata: {},
-  }),
 }));
 
-vi.mock('@/lib/storage', () => ({
-  FileSystemStorage: vi.fn(function() {
-    return {
-      writeInbox: vi.fn().mockResolvedValue(undefined),
-    };
-  }),
+vi.mock('@/lib/rss/manager', () => ({
+  ingestFeedItems: vi.fn().mockResolvedValue([
+    { title: 'Article 1', link: 'https://example.com/1', skipped: false },
+    { title: 'Article 2', link: 'https://example.com/2', skipped: false },
+  ]),
 }));
 
 describe('/api/rss', () => {
@@ -33,7 +26,7 @@ describe('/api/rss', () => {
     expect(res.status).toBe(400);
   });
 
-  it('fetches RSS and writes to inbox', async () => {
+  it('fetches RSS and returns ingested entries', async () => {
     const req = new Request('http://localhost/api/rss', {
       method: 'POST',
       body: JSON.stringify({ url: 'https://example.com/rss.xml', name: 'Test Blog', maxItems: 2 }),

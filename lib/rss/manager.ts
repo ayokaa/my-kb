@@ -75,6 +75,54 @@ function markSeen(seen: SeenEntries, feedUrl: string, item: RSSItem): void {
   }
 }
 
+// Prevent concurrent ingest for the same feed URL
+const processingFeeds = new Set<string>();
+
+/** Ingest RSS items into inbox with dedup via seen file. */
+export async function ingestFeedItems(
+  url: string,
+  name: string,
+  items: RSSItem[],
+  maxItems?: number
+): Promise<{ title: string; link: string; skipped: boolean }[]> {
+  if (processingFeeds.has(url)) {
+    console.log(`[RSS] Skip concurrent ingest for ${url}`);
+    return [];
+  }
+  processingFeeds.add(url);
+
+  try {
+    let seen = await loadSeen();
+    const storage = new FileSystemStorage();
+    const results: { title: string; link: string; skipped: boolean }[] = [];
+
+    for (const item of items.slice(0, maxItems ?? items.length)) {
+      const alreadySeen = isSeen(seen, url, item);
+      results.push({ title: item.title, link: item.link, skipped: alreadySeen });
+      if (alreadySeen) continue;
+
+      await storage.writeInbox({
+        sourceType: 'web',
+        title: item.title,
+        content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
+        extractedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+        rawMetadata: {
+          rss_source: name || url,
+          rss_link: item.link,
+          rss_pubDate: item.pubDate,
+        },
+      });
+
+      markSeen(seen, url, item);
+    }
+
+    await saveSeen(seen);
+    return results;
+  } finally {
+    processingFeeds.delete(url);
+  }
+}
+
 // ===== Public API =====
 
 export async function listSubscriptions(): Promise<RSSSubscription[]> {
@@ -142,30 +190,8 @@ export async function checkFeed(url: string): Promise<CheckResult> {
 
   try {
     const items = await fetchRSS(url);
-    const seen = await loadSeen();
-    const storage = new FileSystemStorage();
-    let newItems = 0;
-
-    for (const item of items) {
-      if (isSeen(seen, url, item)) continue;
-
-      await storage.writeInbox({
-        sourceType: 'web',
-        title: item.title,
-        content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
-        extractedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
-        rawMetadata: {
-          rss_source: name,
-          rss_link: item.link,
-          rss_pubDate: item.pubDate,
-        },
-      });
-
-      markSeen(seen, url, item);
-      newItems++;
-    }
-
-    await saveSeen(seen);
+    const results = await ingestFeedItems(url, name, items);
+    const newItems = results.filter((r) => !r.skipped).length;
 
     // Update source metadata
     if (source) {
