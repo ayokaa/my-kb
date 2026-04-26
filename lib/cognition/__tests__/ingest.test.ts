@@ -68,6 +68,15 @@ describe('validateLLMOutput', () => {
   it('rejects invalid link weight', () => {
     expect(() => validateLLMOutput({ links: [{ target: 'T', weight: 'invalid' }] })).toThrow('weight');
   });
+
+  it('rejects invalid qas item types', () => {
+    expect(() => validateLLMOutput({ qas: ['not an object'] })).toThrow('qas');
+  });
+
+  it('rejects non-string qas fields', () => {
+    expect(() => validateLLMOutput({ qas: [{ question: 123, answer: 'ok' }] })).toThrow('question');
+    expect(() => validateLLMOutput({ qas: [{ question: 'Q', answer: 456 }] })).toThrow('answer');
+  });
 });
 
 describe('processInboxEntry', () => {

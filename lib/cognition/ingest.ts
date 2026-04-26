@@ -86,14 +86,15 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
     if (!Array.isArray(p.timeline)) {
       throw new Error(`LLM response field 'timeline' must be an array`);
     }
-    for (const item of p.timeline) {
+    for (const rawItem of p.timeline) {
+      const item = rawItem as Record<string, unknown>;
       if (!item || typeof item !== 'object') {
         throw new Error(`LLM response field 'timeline' items must be objects`);
       }
-      if ((item as any).date !== undefined && typeof (item as any).date !== 'string') {
+      if (item.date !== undefined && typeof item.date !== 'string') {
         throw new Error(`LLM response field 'timeline[].date' must be a string`);
       }
-      if ((item as any).event !== undefined && typeof (item as any).event !== 'string') {
+      if (item.event !== undefined && typeof item.event !== 'string') {
         throw new Error(`LLM response field 'timeline[].event' must be a string`);
       }
     }
@@ -102,17 +103,18 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
     if (!Array.isArray(p.links)) {
       throw new Error(`LLM response field 'links' must be an array`);
     }
-    for (const item of p.links) {
+    for (const rawItem of p.links) {
+      const item = rawItem as Record<string, unknown>;
       if (!item || typeof item !== 'object') {
         throw new Error(`LLM response field 'links' items must be objects`);
       }
-      if ((item as any).target !== undefined && typeof (item as any).target !== 'string') {
+      if (item.target !== undefined && typeof item.target !== 'string') {
         throw new Error(`LLM response field 'links[].target' must be a string`);
       }
-      if ((item as any).weight !== undefined && !['strong', 'weak', 'context'].includes((item as any).weight)) {
+      if (item.weight !== undefined && !['strong', 'weak', 'context'].includes(item.weight as string)) {
         throw new Error(`LLM response field 'links[].weight' must be one of strong/weak/context`);
       }
-      if ((item as any).context !== undefined && typeof (item as any).context !== 'string') {
+      if (item.context !== undefined && typeof item.context !== 'string') {
         throw new Error(`LLM response field 'links[].context' must be a string`);
       }
     }
@@ -121,14 +123,15 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
     if (!Array.isArray(p.qas)) {
       throw new Error(`LLM response field 'qas' must be an array`);
     }
-    for (const item of p.qas) {
+    for (const rawItem of p.qas) {
+      const item = rawItem as Record<string, unknown>;
       if (!item || typeof item !== 'object') {
         throw new Error(`LLM response field 'qas' items must be objects`);
       }
-      if ((item as any).question !== undefined && typeof (item as any).question !== 'string') {
+      if (item.question !== undefined && typeof item.question !== 'string') {
         throw new Error(`LLM response field 'qas[].question' must be a string`);
       }
-      if ((item as any).answer !== undefined && typeof (item as any).answer !== 'string') {
+      if (item.answer !== undefined && typeof item.answer !== 'string') {
         throw new Error(`LLM response field 'qas[].answer' must be a string`);
       }
     }
