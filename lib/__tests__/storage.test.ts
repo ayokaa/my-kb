@@ -53,6 +53,17 @@ describe('FileSystemStorage', () => {
       expect(loaded.summary).toBe('Summary of rag');
     });
 
+    it('does not call listNotes when updating search index', async () => {
+      await storage.saveNote(createTestNote('note-a'));
+      await storage.saveNote(createTestNote('note-b'));
+
+      const listNotesSpy = vi.spyOn(storage, 'listNotes');
+      await storage.saveNote(createTestNote('note-c'));
+
+      expect(listNotesSpy).not.toHaveBeenCalled();
+      listNotesSpy.mockRestore();
+    });
+
     it('creates directories automatically', async () => {
       const note = createTestNote('deep/nested');
       await storage.saveNote(note);

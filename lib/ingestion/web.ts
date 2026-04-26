@@ -1,13 +1,31 @@
-import { chromium } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 
 const FETCH_TIMEOUT = 20000;
 
+let browserPromise: Promise<Browser> | null = null;
+
+async function getBrowser(): Promise<Browser> {
+  if (!browserPromise) {
+    browserPromise = chromium.launch({ headless: true });
+    browserPromise.catch(() => {
+      // Reset on failure so next call can retry
+      browserPromise = null;
+    });
+  }
+  return browserPromise;
+}
+
+/** Reset the browser singleton (test-only). */
+export function __resetBrowserSingleton() {
+  browserPromise = null;
+}
+
 export async function fetchWebContent(url: string): Promise<{ title: string; content: string; excerpt?: string }> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await getBrowser();
+  const page = await browser.newPage();
   try {
-    const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle', timeout: FETCH_TIMEOUT });
 
     const title = await page.title();
@@ -33,6 +51,6 @@ export async function fetchWebContent(url: string): Promise<{ title: string; con
       excerpt: bodyText.slice(0, 200),
     };
   } finally {
-    await browser.close();
+    await page.close();
   }
 }

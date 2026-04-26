@@ -54,6 +54,39 @@ export class FileSystemStorage implements Storage {
     return parseNote(raw, path);
   }
 
+  private async loadNoteFrontmatter(id: string): Promise<Record<string, unknown>> {
+    const path = this.notePath(id);
+    const raw = await readFile(path, 'utf-8');
+    if (!raw.startsWith('---')) return {};
+    const endMarker = raw.indexOf('\n---', 3);
+    if (endMarker === -1) return {};
+    const fmRaw = raw.slice(3, endMarker).trim();
+    return yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown> ?? {};
+  }
+
+  /** Light-weight scan: reads only frontmatter sources from all notes. */
+  async listNoteSources(): Promise<Array<{ id: string; sources: string[] }>> {
+    const dir = join(this.root, 'notes');
+    let files: string[];
+    try {
+      files = await readdir(dir);
+    } catch {
+      return [];
+    }
+
+    const results: Array<{ id: string; sources: string[] }> = [];
+    for (const file of files.filter(f => f.endsWith('.md'))) {
+      const id = basename(file, '.md');
+      try {
+        const fm = await this.loadNoteFrontmatter(id);
+        results.push({ id, sources: Array.isArray(fm.sources) ? fm.sources.map(String) : [] });
+      } catch {
+        // skip corrupted frontmatter
+      }
+    }
+    return results;
+  }
+
   async saveNote(note: Note): Promise<void> {
     const path = this.notePath(note.id);
     await this.atomicWrite(path, stringifyNote(note));
@@ -78,8 +111,8 @@ export class FileSystemStorage implements Storage {
       const noteIndex = buildNoteIndex(note);
       indexMap = mergeIndexes([indexMap, noteIndex]);
 
-      const allNotes = await this.listNotes();
-      const noteIds = allNotes.map(n => n.id);
+      // Derive noteIds from existing index instead of reading all notes (N+1 fix)
+      const noteIds = Array.from(new Set([...(existing?.noteIds ?? []), note.id]));
       await this.atomicWrite(indexPath, serializeIndex(indexMap, noteIds));
     } catch (err) {
       console.warn('[Storage] Failed to update search index:', (err as Error).message);

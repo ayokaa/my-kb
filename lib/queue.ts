@@ -258,10 +258,10 @@ async function runIngestTask(payload: IngestPayload) {
 
   const storage = new FileSystemStorage();
 
-  // Check for duplicate source URL in existing notes
+  // Check for duplicate source URL in existing notes (light-weight frontmatter scan)
   if (originalUrl) {
-    const notes = await storage.listNotes();
-    const hasDuplicate = notes.some((note) => note.sources.includes(originalUrl));
+    const noteSources = await storage.listNoteSources();
+    const hasDuplicate = noteSources.some((ns) => ns.sources.includes(originalUrl));
     if (hasDuplicate) {
       console.log(`[Queue] Duplicate source detected: ${originalUrl}, archiving ${fileName}`);
       await storage.archiveInbox(fileName);
