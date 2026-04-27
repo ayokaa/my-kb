@@ -132,7 +132,7 @@ export default function ChatPanel() {
                 <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-[var(--border-hover)] px-4 py-6 text-sm text-[var(--text-tertiary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-secondary)]">
                   <Upload className="h-4 w-4" />
                   <span>点击或拖拽上传文件</span>
-                  <input type="file" onChange={handleFileUpload} className="hidden" />
+                  <input type="file" accept=".pdf,.md,.txt,.markdown,application/pdf,text/plain,text/markdown" onChange={handleFileUpload} className="hidden" />
                 </label>
                 <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">支持 PDF、Markdown、TXT</p>
               </div>

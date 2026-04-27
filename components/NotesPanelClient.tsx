@@ -90,11 +90,21 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       const data = await res.json();
       const list: Note[] = data.notes || [];
       setNotes(list);
-      if (list.length > 0 && !selected) {
+      // If currently selected note no longer exists, pick the next available one
+      if (selected) {
+        const stillExists = list.find((n) => n.id === selected.id);
+        if (!stillExists) {
+          if (list.length > 0) {
+            setSelected(list[0]);
+          } else {
+            setSelected(null);
+          }
+          setShowDeleteConfirm(false);
+          setDeleteResult('');
+        }
+      } else if (list.length > 0) {
         setSelected(list[0]);
       }
-      setShowDeleteConfirm(false);
-      setDeleteResult('');
     } catch (err) {
       console.error('[NotesPanel] Failed to load notes:', err);
       setNotes([]);
@@ -108,6 +118,16 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       setSelected(target);
     }
   }
+
+  useEffect(() => {
+    load();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function handleDelete(note: Note) {
     setDeletingId(note.id);
