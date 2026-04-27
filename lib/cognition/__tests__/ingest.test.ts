@@ -1,29 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
-import { processInboxEntry, validateLLMOutput, selectCandidateTitles } from '../ingest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Note } from '../../types';
 
+// Shared mock for LLM chat.completions.create — hoisted so vi.mock can access it
+const { mockCreate } = vi.hoisted(() => ({
+  mockCreate: vi.fn(),
+}));
+
 vi.mock('openai', () => ({
-  default: vi.fn(function() {
+  default: vi.fn(function () {
     return {
       chat: {
         completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  title: 'AI Agents in Zed',
-                  tags: ['ai', 'zed', 'agent'],
-                  summary: 'Zed introduces parallel AI agents',
-                  personalContext: 'Useful for understanding IDE agent trends',
-                  keyFacts: ['Zed now supports parallel agents', 'Agents can run simultaneously'],
-                  timeline: [{ date: '2026-04', event: 'Zed launches parallel agents' }],
-                  qas: [{ question: 'What are parallel agents?', answer: 'Multiple AI agents running at once' }],
-                  links: [{ target: 'Zed', weight: 'weak', context: 'IDE' }],
-                  content: '## Zed Parallel Agents\n\nZed now supports running multiple AI agents in parallel.',
-                }),
-              },
-            }],
-          }),
+          create: mockCreate,
         },
       },
     };
@@ -38,8 +26,135 @@ vi.mock('@/lib/ingestion/web', () => ({
   }),
 }));
 
-describe('validateLLMOutput', () => {
-  it('accepts a valid LLM response', () => {
+import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidateTitles } from '../ingest';
+
+/** Set up mock to return three-step pipeline responses */
+function setupThreeStepMock(overrides: { extract?: any; qa?: any; links?: any } = {}) {
+  const extractResponse = overrides.extract ?? {
+    title: 'AI Agents in Zed',
+    tags: ['ai', 'zed', 'agent'],
+    summary: 'Zed introduces parallel AI agents',
+    personalContext: 'Useful for understanding IDE agent trends',
+    keyFacts: ['Zed now supports parallel agents', 'Agents can run simultaneously'],
+    timeline: [{ date: '2026-04', event: 'Zed launches parallel agents' }],
+    content: '## Zed Parallel Agents\n\nZed now supports running multiple AI agents in parallel.',
+  };
+  const qaResponse = overrides.qa ?? {
+    qas: [{ question: 'What are parallel agents?', answer: 'Multiple AI agents running at once' }],
+  };
+  const linksResponse = overrides.links ?? {
+    links: [{ target: 'Zed', weight: 'weak', context: 'IDE' }],
+  };
+
+  const responses = [
+    { choices: [{ message: { content: JSON.stringify(extractResponse) } }] },
+    { choices: [{ message: { content: JSON.stringify(qaResponse) } }] },
+    { choices: [{ message: { content: JSON.stringify(linksResponse) } }] },
+  ];
+
+  let callIndex = 0;
+  mockCreate.mockImplementation(() => {
+    const resp = responses[Math.min(callIndex, responses.length - 1)];
+    callIndex++;
+    return Promise.resolve(resp);
+  });
+}
+
+/** Set up mock where a specific step fails */
+function setupFailingStepMock(failAtStep: number, extractData: any, qaData?: any) {
+  const failError = failAtStep === 2 ? 'QA API error' : 'Link API error';
+
+  let callIndex = 0;
+  mockCreate.mockImplementation(() => {
+    callIndex++;
+    if (callIndex === 1) {
+      return Promise.resolve({ choices: [{ message: { content: JSON.stringify(extractData) } }] });
+    }
+    if (callIndex === 2) {
+      if (failAtStep === 2) return Promise.reject(new Error(failError));
+      return Promise.resolve({ choices: [{ message: { content: JSON.stringify(qaData ?? { qas: [] }) } }] });
+    }
+    if (failAtStep === 3) return Promise.reject(new Error(failError));
+    return Promise.resolve({ choices: [{ message: { content: JSON.stringify({ links: [] }) } }] });
+  });
+}
+
+describe('validateExtractOutput', () => {
+  it('accepts valid extract output', () => {
+    expect(() =>
+      validateExtractOutput({
+        title: 'Test',
+        tags: ['a', 'b'],
+        summary: 'Summary',
+        keyFacts: ['f1'],
+        timeline: [{ date: '2024-01', event: 'E1' }],
+        content: 'Body',
+      })
+    ).not.toThrow();
+  });
+
+  it('rejects non-object root', () => {
+    expect(() => validateExtractOutput(null)).toThrow('not a JSON object');
+    expect(() => validateExtractOutput('string')).toThrow('not a JSON object');
+  });
+
+  it('rejects non-string tags', () => {
+    expect(() => validateExtractOutput({ tags: [1, null, 'ok'] })).toThrow('tags');
+  });
+
+  it('rejects non-string keyFacts', () => {
+    expect(() => validateExtractOutput({ keyFacts: [1, 'ok'] })).toThrow('keyFacts');
+  });
+
+  it('rejects invalid timeline item types', () => {
+    expect(() => validateExtractOutput({ timeline: ['not an object'] })).toThrow('timeline');
+  });
+
+  it('accepts empty arrays', () => {
+    expect(() =>
+      validateExtractOutput({
+        title: '',
+        tags: [],
+        summary: '',
+        keyFacts: [],
+        timeline: [],
+        content: '',
+      })
+    ).not.toThrow();
+  });
+});
+
+describe('validateQAOutput', () => {
+  it('accepts valid QA output', () => {
+    expect(() =>
+      validateQAOutput({ qas: [{ question: 'Q', answer: 'A' }] })
+    ).not.toThrow();
+  });
+
+  it('rejects invalid qas item types', () => {
+    expect(() => validateQAOutput({ qas: ['not an object'] })).toThrow('qas');
+  });
+
+  it('rejects non-string qas fields', () => {
+    expect(() => validateQAOutput({ qas: [{ question: 123, answer: 'ok' }] })).toThrow('question');
+    expect(() => validateQAOutput({ qas: [{ question: 'Q', answer: 456 }] })).toThrow('answer');
+  });
+});
+
+describe('validateLinkOutput', () => {
+  it('accepts valid link output', () => {
+    expect(() =>
+      validateLinkOutput({ links: [{ target: 'T', weight: 'weak' }] })
+    ).not.toThrow();
+  });
+
+  it('rejects invalid link weight', () => {
+    expect(() => validateLinkOutput({ links: [{ target: 'T', weight: 'invalid' }] })).toThrow('weight');
+  });
+});
+
+describe('validateLLMOutput (backwards compatible)', () => {
+  it('accepts a valid full LLM response', () => {
     expect(() =>
       validateLLMOutput({
         title: 'Test',
@@ -54,55 +169,20 @@ describe('validateLLMOutput', () => {
     ).not.toThrow();
   });
 
-  it('rejects non-string tags', () => {
-    expect(() => validateLLMOutput({ tags: [1, null, 'ok'] })).toThrow('tags');
-  });
-
-  it('rejects non-string keyFacts', () => {
-    expect(() => validateLLMOutput({ keyFacts: [1, 'ok'] })).toThrow('keyFacts');
-  });
-
-  it('rejects invalid timeline item types', () => {
-    expect(() => validateLLMOutput({ timeline: ['not an object'] })).toThrow('timeline');
-  });
-
-  it('rejects invalid link weight', () => {
-    expect(() => validateLLMOutput({ links: [{ target: 'T', weight: 'invalid' }] })).toThrow('weight');
-  });
-
-  it('rejects invalid qas item types', () => {
-    expect(() => validateLLMOutput({ qas: ['not an object'] })).toThrow('qas');
-  });
-
-  it('rejects non-string qas fields', () => {
-    expect(() => validateLLMOutput({ qas: [{ question: 123, answer: 'ok' }] })).toThrow('question');
-    expect(() => validateLLMOutput({ qas: [{ question: 'Q', answer: 456 }] })).toThrow('answer');
-  });
-
   it('rejects non-object root', () => {
     expect(() => validateLLMOutput(null)).toThrow('not a JSON object');
-    expect(() => validateLLMOutput('string')).toThrow('not a JSON object');
     expect(() => validateLLMOutput(42)).toThrow('not a JSON object');
-  });
-
-  it('accepts empty arrays and objects', () => {
-    expect(() =>
-      validateLLMOutput({
-        title: '',
-        tags: [],
-        summary: '',
-        keyFacts: [],
-        timeline: [],
-        links: [],
-        qas: [],
-        content: '',
-      })
-    ).not.toThrow();
   });
 });
 
 describe('processInboxEntry', () => {
-  it('converts inbox entry to note via LLM', async () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+  });
+
+  it('converts inbox entry to note via three-step pipeline', async () => {
+    setupThreeStepMock();
+
     const entry = {
       sourceType: 'web' as const,
       title: 'Introducing Parallel Agents in Zed',
@@ -119,11 +199,17 @@ describe('processInboxEntry', () => {
     expect(note.content).toContain('Parallel Agents');
     expect(note.sources).toContain('https://zed.dev/blog/parallel-agents');
     expect(note.status).toBe('seed');
+    expect(note.qas).toHaveLength(1);
+    expect(note.qas[0].question).toBe('What are parallel agents?');
+    // 2 LLM calls: extract + QA (link step skipped because no existing notes)
+    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to entry.content when web fetch fails', async () => {
     const { fetchWebContent } = await import('@/lib/ingestion/web');
     (fetchWebContent as any).mockRejectedValue(new Error('Network error'));
+
+    setupThreeStepMock();
 
     const entry = {
       sourceType: 'web' as const,
@@ -133,8 +219,55 @@ describe('processInboxEntry', () => {
     };
 
     const { note } = await processInboxEntry(entry);
-    expect(note.title).toBe('AI Agents in Zed'); // LLM mock still returns same title
-    // The content passed to LLM should still contain the original entry content
+    expect(note.title).toBe('AI Agents in Zed');
+  });
+
+  it('produces valid note when QA step fails', async () => {
+    setupFailingStepMock(2, {
+      title: 'Resilient Note',
+      tags: ['test'],
+      summary: 'Test summary',
+      personalContext: '',
+      keyFacts: ['fact'],
+      timeline: [],
+      content: 'Content',
+    });
+
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Resilience Test',
+      content: 'Testing QA failure resilience',
+      rawMetadata: {},
+    };
+
+    const { note } = await processInboxEntry(entry);
+    expect(note.title).toBe('Resilient Note');
+    expect(note.qas).toEqual([]);
+    expect(note.links).toEqual([]);
+  });
+
+  it('produces valid note when Link step fails', async () => {
+    setupFailingStepMock(3, {
+      title: 'Link Fail Note',
+      tags: ['test'],
+      summary: 'Test',
+      personalContext: '',
+      keyFacts: [],
+      timeline: [],
+      content: 'Content',
+    }, { qas: [{ question: 'Q', answer: 'A' }] });
+
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Link Fail Test',
+      content: 'Testing link failure resilience',
+      rawMetadata: {},
+    };
+
+    const { note } = await processInboxEntry(entry);
+    expect(note.title).toBe('Link Fail Note');
+    expect(note.qas).toHaveLength(1);
+    expect(note.links).toEqual([]);
   });
 });
 
@@ -160,15 +293,14 @@ describe('selectCandidateTitles', () => {
 
   it('returns all titles when note count <= 10', () => {
     const notes = Array.from({ length: 10 }, (_, i) => makeNote(`Note ${i}`));
-    const entry = { sourceType: 'text' as const, title: 'Test', content: 'hello world', rawMetadata: {} };
-    const candidates = selectCandidateTitles(entry, notes);
+    const source = { title: 'Test', content: 'hello world' };
+    const candidates = selectCandidateTitles(source, notes);
     expect(candidates).toHaveLength(10);
     expect(candidates).toContain('Note 0');
     expect(candidates).toContain('Note 9');
   });
 
-  it('returns top 15 candidates via search when note count > 10', () => {
-    // 15 irrelevant notes + 5 relevant notes
+  it('returns top 5 candidates via search when note count > 10', () => {
     const irrelevant = Array.from({ length: 15 }, (_, i) =>
       makeNote(`Irrelevant ${i}`, ['random', 'noise'], 'something unrelated')
     );
@@ -181,28 +313,22 @@ describe('selectCandidateTitles', () => {
     ];
     const allNotes = [...irrelevant, ...relevant];
 
-    const entry = {
-      sourceType: 'text' as const,
+    const source = {
       title: 'Advanced React Patterns with TypeScript',
       content: 'This article covers React hooks, TypeScript integration, and frontend architecture best practices.',
-      rawMetadata: {},
     };
 
-    const candidates = selectCandidateTitles(entry, allNotes);
+    const candidates = selectCandidateTitles(source, allNotes);
 
-    // Should be limited to 5
     expect(candidates.length).toBeLessThanOrEqual(5);
-    // Should prefer relevant notes
     expect(candidates).toContain('React Hooks Guide');
     expect(candidates).toContain('TypeScript Tips');
     expect(candidates).toContain('Frontend Architecture');
   });
 
   it('returns empty array when no notes exist', () => {
-    const entry = { sourceType: 'text' as const, title: 'Test', content: 'hello', rawMetadata: {} };
-    const candidates = selectCandidateTitles(entry, []);
+    const source = { title: 'Test', content: 'hello' };
+    const candidates = selectCandidateTitles(source, []);
     expect(candidates).toEqual([]);
   });
 });
-
-

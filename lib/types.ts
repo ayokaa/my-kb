@@ -40,6 +40,17 @@ export interface Note extends NoteFrontmatter {
   filePath?: string;
 }
 
+/** 步骤 1（Extract）的中间结果 */
+export interface ExtractResult {
+  title: string;
+  tags: string[];
+  summary: string;
+  personalContext: string;
+  keyFacts: string[];
+  timeline: TimelineEntry[];
+  content: string;
+}
+
 export interface ConversationTurn {
   role: 'user' | 'agent';
   content: string;

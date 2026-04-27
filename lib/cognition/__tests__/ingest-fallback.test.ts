@@ -5,18 +5,32 @@ vi.mock('@/lib/ingestion/web', () => ({
 }));
 
 describe('processInboxEntry — LLM JSON fallback', () => {
-  it('extracts JSON from markdown code block', async () => {
+  it('extracts JSON from markdown code block in step 1', async () => {
+    let callIndex = 0;
     vi.doMock('openai', () => ({
       default: function () {
         return {
           chat: {
             completions: {
-              create: vi.fn().mockResolvedValue({
-                choices: [{
-                  message: {
-                    content: '```json\n{"title":"Code Block","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"links":[],"qas":[],"content":"body"}\n```',
-                  },
-                }],
+              create: vi.fn().mockImplementation(() => {
+                callIndex++;
+                if (callIndex === 1) {
+                  return Promise.resolve({
+                    choices: [{
+                      message: {
+                        content: '```json\n{"title":"Code Block","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"body"}\n```',
+                      },
+                    }],
+                  });
+                }
+                if (callIndex === 2) {
+                  return Promise.resolve({
+                    choices: [{ message: { content: '{"qas":[]}' } }],
+                  });
+                }
+                return Promise.resolve({
+                  choices: [{ message: { content: '{"links":[]}' } }],
+                });
               }),
             },
           },
@@ -38,19 +52,33 @@ describe('processInboxEntry — LLM JSON fallback', () => {
     vi.doUnmock('openai');
   });
 
-  it('extracts JSON from surrounding text via regex fallback', async () => {
+  it('extracts JSON from surrounding text via regex fallback in step 1', async () => {
     vi.resetModules();
+    let callIndex = 0;
     vi.doMock('openai', () => ({
       default: function () {
         return {
           chat: {
             completions: {
-              create: vi.fn().mockResolvedValue({
-                choices: [{
-                  message: {
-                    content: 'Here is the result:\n\n{"title":"Extracted","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"links":[],"qas":[],"content":"c"}\n\nHope that helps!',
-                  },
-                }],
+              create: vi.fn().mockImplementation(() => {
+                callIndex++;
+                if (callIndex === 1) {
+                  return Promise.resolve({
+                    choices: [{
+                      message: {
+                        content: 'Here is the result:\n\n{"title":"Extracted","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"c"}\n\nHope that helps!',
+                      },
+                    }],
+                  });
+                }
+                if (callIndex === 2) {
+                  return Promise.resolve({
+                    choices: [{ message: { content: '{"qas":[]}' } }],
+                  });
+                }
+                return Promise.resolve({
+                  choices: [{ message: { content: '{"links":[]}' } }],
+                });
               }),
             },
           },
