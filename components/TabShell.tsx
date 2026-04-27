@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Sidebar, { type Tab } from './Sidebar';
 import ChatPanel from './ChatPanel';
 import InboxPanel from './InboxPanel';
+import IngestPanel from './IngestPanel';
 import RSSPanel from './RSSPanel';
 import TasksPanel from './TasksPanel';
 
@@ -56,6 +57,9 @@ export default function TabShell({ notesPanel }: TabShellProps) {
         </div>
         <div data-testid="panel-inbox" className={tab === 'inbox' ? 'h-full' : 'hidden'}>
           <InboxPanel count={inboxCount} onChange={refreshInboxCount} taskCount={taskCount} isActive={tab === 'inbox'} />
+        </div>
+        <div data-testid="panel-ingest" className={tab === 'ingest' ? 'h-full overflow-y-auto' : 'hidden'}>
+          <IngestPanel />
         </div>
         <div data-testid="panel-notes" className={tab === 'notes' ? 'h-full' : 'hidden'}>
           {notesPanel || <div />}
