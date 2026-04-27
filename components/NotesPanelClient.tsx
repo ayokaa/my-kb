@@ -120,13 +120,16 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   }
 
   useEffect(() => {
-    load();
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+    const source = new EventSource('/api/events');
+    source.onmessage = (e) => {
+      if (e.data === 'changed') {
         load();
       }
-    }, 3000);
-    return () => clearInterval(interval);
+    };
+    source.onerror = (err) => {
+      console.error('[NotesPanel] SSE error:', err);
+    };
+    return () => source.close();
   }, []);
 
   async function handleDelete(note: Note) {
@@ -136,17 +139,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.ok) {
-        const currentIndex = filtered.findIndex((n) => n.id === note.id);
-        const newNotes = notes.filter((n) => n.id !== note.id);
-        setNotes(newNotes);
-        setShowDeleteConfirm(false);
-        if (newNotes.length > 0) {
-          const nextIndex = Math.min(currentIndex, newNotes.length - 1);
-          const nextNote = filtered.filter((n) => n.id !== note.id)[nextIndex] || newNotes[0];
-          setSelected(nextNote);
-        } else {
-          setSelected(null);
-        }
+        await load();
       } else {
         setDeleteResult(`删除失败 · ${data.error}`);
       }
