@@ -164,11 +164,10 @@ export function listPending(): Task[] {
   return listTasks().filter((t) => t.status === 'pending' || t.status === 'running');
 }
 
-/** Return pending/running tasks that directly affect the inbox (ingest & web_fetch).
- *  rss_fetch is excluded because it's a background cron job unrelated to user inbox actions.
+/** Return pending/running tasks that directly affect the inbox (ingest, web_fetch & rss_fetch).
  */
 export function listInboxPending(): Task[] {
-  return listPending().filter((t) => t.type === 'ingest' || t.type === 'web_fetch');
+  return listPending().filter((t) => t.type === 'ingest' || t.type === 'web_fetch' || t.type === 'rss_fetch');
 }
 
 export function retryTask(id: string): Task | null {
