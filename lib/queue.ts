@@ -75,9 +75,15 @@ async function saveQueueState() {
       const queuePath = getQueuePath();
       try {
         await mkdir(dirname(queuePath), { recursive: true });
+        // Retain the most recent 100 tasks (by createdAt desc) to prevent unbounded growth
+        const allTasks = Array.from(tasks.values());
+        const trimmedTasks = allTasks
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, 100);
+
         const state = {
-          tasks: Array.from(tasks.values()),
-          pendingIds: (['ingest', 'rss_fetch', 'web_fetch'] as TaskType[]).flatMap((t) => pendingByType[t]),
+          tasks: trimmedTasks,
+          pendingIds: (['ingest', 'rss_fetch', 'web_fetch', 'relink'] as TaskType[]).flatMap((t) => pendingByType[t]),
         };
         const tmp = `${queuePath}.tmp.${Date.now()}`;
         await writeFile(tmp, JSON.stringify(state, null, 2));
@@ -106,7 +112,7 @@ async function loadQueueState() {
         pendingByType[task.type].push(id);
       }
     }
-    const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length;
+    const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length + pendingByType.relink.length;
     console.log(`[Queue] Restored ${totalPending} pending tasks`);
   } catch {
     // No state file, start fresh
