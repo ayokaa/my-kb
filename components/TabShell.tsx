@@ -51,11 +51,21 @@ export default function TabShell({ notesPanel }: TabShellProps) {
     <>
       <Sidebar active={tab} onChange={setTab} inboxCount={inboxCount} taskCount={taskCount} />
       <main className="flex-1 overflow-hidden p-5">
-        {tab === 'chat' && <ChatPanel />}
-        {tab === 'inbox' && <InboxPanel count={inboxCount} onChange={refreshInboxCount} taskCount={taskCount} />}
-        {tab === 'notes' && (notesPanel || <div />)}
-        {tab === 'rss' && <RSSPanel />}
-        {tab === 'tasks' && <TasksPanel />}
+        <div data-testid="panel-chat" className={tab === 'chat' ? 'h-full' : 'hidden'}>
+          <ChatPanel />
+        </div>
+        <div data-testid="panel-inbox" className={tab === 'inbox' ? 'h-full' : 'hidden'}>
+          <InboxPanel count={inboxCount} onChange={refreshInboxCount} taskCount={taskCount} isActive={tab === 'inbox'} />
+        </div>
+        <div data-testid="panel-notes" className={tab === 'notes' ? 'h-full' : 'hidden'}>
+          {notesPanel || <div />}
+        </div>
+        <div data-testid="panel-rss" className={tab === 'rss' ? 'h-full' : 'hidden'}>
+          <RSSPanel isActive={tab === 'rss'} />
+        </div>
+        <div data-testid="panel-tasks" className={tab === 'tasks' ? 'h-full' : 'hidden'}>
+          <TasksPanel isActive={tab === 'tasks'} />
+        </div>
       </main>
     </>
   );

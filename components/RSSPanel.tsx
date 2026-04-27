@@ -18,7 +18,7 @@ interface CheckResult {
   error?: string;
 }
 
-export default function RSSPanel() {
+export default function RSSPanel({ isActive }: { isActive?: boolean }) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -43,6 +43,12 @@ export default function RSSPanel() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (isActive) {
+      load();
+    }
+  }, [isActive, load]);
 
   async function addSubscription(e: React.FormEvent) {
     e.preventDefault();

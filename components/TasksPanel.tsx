@@ -15,6 +15,10 @@ interface Task {
   result?: any;
 }
 
+interface TasksPanelProps {
+  isActive?: boolean;
+}
+
 const STATUS_CONFIG: Record<Task['status'], { label: string; icon: React.ElementType; color: string; bg: string }> = {
   pending: { label: '等待中', icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
   running: { label: '执行中', icon: Loader2, color: 'text-[var(--accent)]', bg: 'bg-[var(--accent-dim)]' },
@@ -30,7 +34,7 @@ function formatDate(iso: string) {
   }
 }
 
-export default function TasksPanel() {
+export default function TasksPanel({ isActive }: TasksPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -71,6 +75,12 @@ export default function TasksPanel() {
     const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (isActive) {
+      load();
+    }
+  }, [isActive]);
 
   const filtered = filter === 'all' ? tasks : tasks.filter((t) => t.status === filter);
 

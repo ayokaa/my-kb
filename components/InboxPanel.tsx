@@ -16,9 +16,10 @@ interface InboxPanelProps {
   count?: number;
   onChange?: () => void;
   taskCount?: number;
+  isActive?: boolean;
 }
 
-export default function InboxPanel({ count, onChange, taskCount = 0 }: InboxPanelProps) {
+export default function InboxPanel({ count, onChange, taskCount = 0, isActive }: InboxPanelProps) {
   const [entries, setEntries] = useState<InboxEntry[]>([]);
   const [selected, setSelected] = useState<InboxEntry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,6 +47,12 @@ export default function InboxPanel({ count, onChange, taskCount = 0 }: InboxPane
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (isActive) {
+      load();
+    }
+  }, [isActive]);
 
   async function processEntry(entry: InboxEntry, action: 'approve' | 'reject') {
     const fileName = entry.filePath?.split('/').pop();

@@ -47,6 +47,7 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
           return (
             <button
               key={item.id}
+              data-testid={`nav-${item.id}`}
               onClick={() => onChange(item.id)}
               className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm transition-all duration-200 ${
                 isActive

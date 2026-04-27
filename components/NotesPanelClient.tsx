@@ -191,6 +191,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
           {(['all', 'seed', 'growing', 'evergreen', 'stale'] as const).map((s) => (
             <button
               key={s}
+              data-testid={`note-filter-${s}`}
               onClick={() => setStatusFilter(s)}
               className={`rounded-md px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
                 statusFilter === s
