@@ -1,5 +1,51 @@
+import { basename } from 'path';
 import yaml from 'js-yaml';
-import type { Note, NoteLink, TimelineEntry, QAEntry } from './types';
+import type { Note, NoteLink, TimelineEntry, QAEntry, InboxEntry, SourceType } from './types';
+
+export function parseInboxEntry(raw: string, path: string): InboxEntry {
+  // Robust frontmatter extraction: looks for --- at the very start,
+  // then finds the closing --- on its own line.
+  if (!raw.startsWith('---')) {
+    return {
+      sourceType: 'text',
+      title: basename(path, '.md'),
+      content: raw,
+      rawMetadata: {},
+      filePath: path,
+    };
+  }
+
+  const endMarker = raw.indexOf('\n---', 3);
+  if (endMarker === -1) {
+    return {
+      sourceType: 'text',
+      title: basename(path, '.md'),
+      content: raw,
+      rawMetadata: {},
+      filePath: path,
+    };
+  }
+
+  const fmRaw = raw.slice(3, endMarker).trim();
+  const content = raw.slice(endMarker + 4).trim();
+
+  const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
+  const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
+  const rawMetadata: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fm)) {
+    if (!known.has(k)) rawMetadata[k] = v;
+  }
+
+  return {
+    sourceType: ((fm.source_type as string) || 'text') as SourceType,
+    sourcePath: fm.source_path as string | undefined,
+    title: (fm.title as string) || basename(path, '.md'),
+    content,
+    extractedAt: fm.extracted_at as string | undefined,
+    rawMetadata,
+    filePath: path,
+  };
+}
 
 export function parseNote(raw: string, filePath?: string): Note {
   // Robust frontmatter extraction: looks for --- at the very start,

@@ -92,7 +92,7 @@ export interface Storage {
   saveIndex(index: InvertedIndex): Promise<void>;
   loadAliases(): Promise<AliasMapping[]>;
   saveAliases(aliases: AliasMapping[]): Promise<void>;
-  writeInbox(entry: InboxEntry): Promise<void>;
+  writeInbox(entry: InboxEntry): Promise<boolean>;
   listInbox(): Promise<InboxEntry[]>;
   archiveInbox(fileName: string): Promise<void>;
   listNoteSources(): Promise<Array<{ id: string; sources: string[] }>>;

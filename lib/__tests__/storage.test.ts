@@ -42,6 +42,32 @@ describe('FileSystemStorage', () => {
 
   // ===== Note CRUD =====
 
+  describe('listNoteSources', () => {
+    it('returns empty array when no notes directory', async () => {
+      const sources = await storage.listNoteSources();
+      expect(sources).toEqual([]);
+    });
+
+    it('returns sources from note frontmatters', async () => {
+      await storage.saveNote(createTestNote('note-a', { sources: ['https://a.com'] }));
+      await storage.saveNote(createTestNote('note-b', { sources: ['https://b.com', 'https://c.com'] }));
+      const sources = await storage.listNoteSources();
+      expect(sources).toHaveLength(2);
+      const map = new Map(sources.map(s => [s.id, s.sources]));
+      expect(map.get('note-a')).toEqual(['https://a.com']);
+      expect(map.get('note-b')).toEqual(['https://b.com', 'https://c.com']);
+    });
+
+    it('skips corrupted note files', async () => {
+      await storage.saveNote(createTestNote('good', { sources: ['https://good.com'] }));
+      // Write malformed YAML frontmatter to cause yaml.load to throw
+      writeFileSync(join(tmpDir, 'notes', 'bad.md'), '---\n{invalid: yaml\n---\n\nbody');
+      const sources = await storage.listNoteSources();
+      expect(sources).toHaveLength(1);
+      expect(sources[0].id).toBe('good');
+    });
+  });
+
   describe('saveNote / loadNote', () => {
     it('round-trips a note', async () => {
       const note = createTestNote('rag');
@@ -140,6 +166,12 @@ describe('FileSystemStorage', () => {
 
   // ===== Inbox =====
 
+  describe('getRoot', () => {
+    it('returns the storage root path', () => {
+      expect(storage.getRoot()).toBe(tmpDir);
+    });
+  });
+
   describe('writeInbox / listInbox', () => {
     it('writes and lists inbox entries', async () => {
       const entry: InboxEntry = {
@@ -149,7 +181,8 @@ describe('FileSystemStorage', () => {
         rawMetadata: { url: 'https://example.com' },
       };
 
-      await storage.writeInbox(entry);
+      const written = await storage.writeInbox(entry);
+      expect(written).toBe(true);
       expect(entry.filePath).toBeDefined();
 
       const entries = await storage.listInbox();
@@ -178,6 +211,30 @@ describe('FileSystemStorage', () => {
 
       expect(entries).toHaveLength(1);
       expect(warnLogs.some(l => l.includes('bad'))).toBe(true);
+    });
+
+    it('skips duplicate rss_link entries and returns false', async () => {
+      const entry1: InboxEntry = {
+        sourceType: 'web',
+        title: 'First',
+        content: 'content1',
+        rawMetadata: { rss_link: 'https://example.com/dup' },
+      };
+      const written1 = await storage.writeInbox(entry1);
+      expect(written1).toBe(true);
+
+      const entry2: InboxEntry = {
+        sourceType: 'web',
+        title: 'Second',
+        content: 'content2',
+        rawMetadata: { rss_link: 'https://example.com/dup' },
+      };
+      const written2 = await storage.writeInbox(entry2);
+      expect(written2).toBe(false);
+
+      const entries = await storage.listInbox();
+      expect(entries).toHaveLength(1);
+      expect(entries[0].title).toBe('First');
     });
 
     it('sorts inbox entries by extractedAt descending (newest first)', async () => {

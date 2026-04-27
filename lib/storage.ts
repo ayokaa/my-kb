@@ -4,7 +4,7 @@ import { readFile, writeFile, readdir, mkdir, rename, unlink, stat } from 'fs/pr
 import { join, dirname, basename } from 'path';
 import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
-import { parseNote, stringifyNote } from './parsers';
+import { parseNote, stringifyNote, parseInboxEntry } from './parsers';
 
 let invertedIndexModule: typeof import('./search/inverted-index') | null = null;
 
@@ -276,7 +276,7 @@ export class FileSystemStorage implements Storage {
 
   // ===== Inbox =====
 
-  async writeInbox(entry: InboxEntry): Promise<void> {
+  async writeInbox(entry: InboxEntry): Promise<boolean> {
     const timestamp = Date.now();
     const slug = entry.title
       .slice(0, 30)
@@ -294,7 +294,7 @@ export class FileSystemStorage implements Storage {
         if (duplicate) {
           console.log(`[Storage] Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
           entry.filePath = duplicate.filePath;
-          return;
+          return false;
         }
       } catch {
         // Ignore list errors, proceed with write
@@ -312,6 +312,7 @@ export class FileSystemStorage implements Storage {
     const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
     await this.atomicWrite(path, content);
     entry.filePath = path;
+    return true;
   }
 
   async listInbox(): Promise<InboxEntry[]> {
@@ -328,7 +329,7 @@ export class FileSystemStorage implements Storage {
       const path = join(dir, file);
       try {
         const raw = await readFile(path, 'utf-8');
-        entries.push(this.parseInboxEntry(raw, path));
+        entries.push(parseInboxEntry(raw, path));
       } catch (err) {
         console.warn(`[Storage] Skip corrupted inbox "${file}":`, (err as Error).message);
       }
@@ -440,47 +441,7 @@ export class FileSystemStorage implements Storage {
     return lines.join('\n');
   }
 
-  private parseInboxEntry(raw: string, path: string): InboxEntry {
-    if (!raw.startsWith('---')) {
-      return {
-        sourceType: 'text',
-        title: basename(path, '.md'),
-        content: raw,
-        rawMetadata: {},
-        filePath: path,
-      };
-    }
-    const endMarker = raw.indexOf('\n---', 3);
-    if (endMarker === -1) {
-      return {
-        sourceType: 'text',
-        title: basename(path, '.md'),
-        content: raw,
-        rawMetadata: {},
-        filePath: path,
-      };
-    }
 
-    const fmRaw = raw.slice(3, endMarker).trim();
-    const content = raw.slice(endMarker + 4).trim();
-    const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
-
-    const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
-    const rawMetadata: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(fm)) {
-      if (!known.has(k)) rawMetadata[k] = v;
-    }
-
-    return {
-      sourceType: ((fm.source_type as string) || 'text') as SourceType,
-      sourcePath: fm.source_path as string | undefined,
-      title: (fm.title as string) || basename(path, '.md'),
-      content,
-      extractedAt: fm.extracted_at as string | undefined,
-      rawMetadata,
-      filePath: path,
-    };
-  }
 
   private parseConversation(raw: string, path: string): Conversation {
     let fm: Record<string, unknown> = {};
