@@ -9,8 +9,8 @@ test.describe.serial('Ingest', () => {
   test('can ingest text via UI', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await expect(page.getByText('文本')).toBeVisible();
+    await page.getByTestId('nav-ingest').click();
+    await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
 
     await page.getByPlaceholder('标题（可选）').fill('UI Ingest Test');
     await page.getByPlaceholder('输入文本内容...').fill('Content added through the UI ingest form.');
@@ -27,8 +27,8 @@ test.describe.serial('Ingest', () => {
   test('ingest link form is present and submittable', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('链接').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-link').click();
 
     const linkInput = page.getByPlaceholder('https://...');
     await expect(linkInput).toBeVisible();
@@ -44,11 +44,11 @@ test.describe.serial('Ingest', () => {
   test('ingest tabs can be switched', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
+    await page.getByTestId('nav-ingest').click();
 
     await expect(page.getByPlaceholder('输入文本内容...')).toBeVisible();
 
-    await page.getByText('链接').click();
+    await page.getByTestId('ingest-tab-link').click();
     await expect(page.getByPlaceholder('https://...')).toBeVisible();
 
     await page.getByTestId('ingest-tab-file').click();
@@ -60,15 +60,15 @@ test.describe.serial('Ingest', () => {
   test('RSS tab is present in ingest panel', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
+    await page.getByTestId('nav-ingest').click();
     await expect(page.getByTestId('ingest-tab-rss')).toBeVisible();
   });
 
   test('submitting link shows queued message', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('链接').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-link').click();
 
     await page.getByPlaceholder('https://...').fill('https://example.com/article');
     await page.getByRole('button', { name: '抓取' }).click();
@@ -80,8 +80,8 @@ test.describe.serial('Ingest', () => {
   test('submit button is disabled when link input is empty', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('链接').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-link').click();
 
     const submitBtn = page.getByRole('button', { name: '抓取' });
     await expect(submitBtn).toBeDisabled();
@@ -93,7 +93,7 @@ test.describe.serial('Ingest', () => {
   test('text submit button is disabled when content is empty', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
+    await page.getByTestId('nav-ingest').click();
 
     const submitBtn = page.getByRole('button', { name: '入库' });
     await expect(submitBtn).toBeDisabled();

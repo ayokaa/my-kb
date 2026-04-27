@@ -4,10 +4,10 @@ test.describe('Chat', () => {
   test('can toggle ingest panel', async ({ page }) => {
     await page.goto('/');
 
-    const toggle = page.getByTestId('ingest-toggle');
-    await expect(toggle).toBeVisible();
+    const nav = page.getByTestId('nav-ingest');
+    await expect(nav).toBeVisible();
 
-    await toggle.click();
+    await nav.click();
     await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
     await expect(page.getByTestId('ingest-tab-link')).toBeVisible();
     await expect(page.getByTestId('ingest-tab-file')).toBeVisible();

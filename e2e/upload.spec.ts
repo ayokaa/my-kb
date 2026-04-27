@@ -11,7 +11,7 @@ test.describe.serial('Upload', () => {
   test('can upload a markdown file via UI', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
+    await page.getByTestId('nav-ingest').click();
     await page.getByTestId('ingest-tab-file').click();
 
     const fileInput = page.getByLabel('上传文件');
@@ -30,8 +30,8 @@ test.describe.serial('Upload', () => {
   test('can upload a plain text file via UI', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('文件').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-file').click();
 
     const fileInput = page.getByLabel('上传文件');
     const tmpFile = join(process.cwd(), 'knowledge-test', 'attachments', 'e2e-test-upload.txt');
@@ -48,8 +48,8 @@ test.describe.serial('Upload', () => {
   test('file input has correct accept attribute', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('文件').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-file').click();
 
     const fileInput = page.getByLabel('上传文件');
     await expect(fileInput).toHaveAttribute('accept', '.pdf,.md,.txt,.markdown,application/pdf,text/plain,text/markdown');
@@ -58,8 +58,8 @@ test.describe.serial('Upload', () => {
   test('shows supported file types hint', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByTestId('ingest-toggle').click();
-    await page.getByText('文件').click();
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-file').click();
 
     await expect(page.getByText('支持 PDF、Markdown、TXT')).toBeVisible();
   });
