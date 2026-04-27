@@ -18,6 +18,7 @@ import {
   ArrowUpRight,
   Trash2,
   Loader2,
+  CornerUpLeft,
 } from 'lucide-react';
 
 import type { Note } from '@/lib/types';
@@ -113,7 +114,16 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   }
 
   function navigateToNote(title: string) {
-    const target = notes.find((n) => n.title === title);
+    // 先精确匹配
+    let target = notes.find((n) => n.title === title);
+    // 再子串包含匹配（与链接校验逻辑一致）
+    if (!target) {
+      const lower = title.toLowerCase();
+      target = notes.find((n) => {
+        const t = n.title.toLowerCase();
+        return t.includes(lower) || lower.includes(t);
+      });
+    }
     if (target) {
       setSelected(target);
     }
@@ -460,6 +470,37 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
                             }`}
                           >
                             <ChevronRight className="h-3 w-3 shrink-0" />
+                            <span className="break-words">{link.target}</span>
+                            {link.context && (
+                              <span className="text-[10px] opacity-60 break-words">— {link.context}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Backlinks */}
+                  {selected.backlinks && selected.backlinks.length > 0 && (
+                    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+                      <h4 className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+                        <CornerUpLeft className="h-3 w-3 text-[var(--accent)]" />
+                        反向链接
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selected.backlinks.map((link, i) => (
+                          <button
+                            key={i}
+                            onClick={() => navigateToNote(link.target)}
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                              link.weight === 'strong'
+                                ? 'border-[var(--accent)]/30 bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent)]/20'
+                                : link.weight === 'context'
+                                  ? 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:border-[var(--accent)]/30 hover:text-[var(--accent)]'
+                                  : 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-tertiary)] hover:border-[var(--accent)]/30 hover:text-[var(--accent)]'
+                            }`}
+                          >
+                            <CornerUpLeft className="h-3 w-3 shrink-0" />
                             <span className="break-words">{link.target}</span>
                             {link.context && (
                               <span className="text-[10px] opacity-60 break-words">— {link.context}</span>
