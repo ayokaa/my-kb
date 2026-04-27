@@ -108,10 +108,8 @@ test.describe.serial('Tasks', () => {
 
     await expect(page.getByText('任务队列')).toBeVisible();
 
-    // Find and click the refresh button in the toolbar (last button with an svg icon)
-    const toolbar = page.locator('div').filter({ hasText: '任务队列' }).first();
-    const refreshBtn = toolbar.locator('button').last();
-    await refreshBtn.click();
+    // Find and click the refresh button
+    await page.getByTestId('tasks-refresh').click();
 
     // Should not throw and panel should still be visible
     await expect(page.getByText('任务队列')).toBeVisible();

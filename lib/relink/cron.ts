@@ -1,14 +1,16 @@
 import cron from 'node-cron';
 import { enqueue } from '@/lib/queue';
 
-let started = false;
+let task: cron.ScheduledTask | null = null;
 let isRunning = false;
 
-export function startRelinkCron() {
-  if (started) return;
-  started = true;
+export function startRelinkCron(cronExpr = '0 3 * * *') {
+  if (task) {
+    task.stop();
+    task.destroy();
+  }
 
-  cron.schedule('0 3 * * *', async () => {
+  task = cron.schedule(cronExpr, async () => {
     if (isRunning) {
       console.log('[Relink Cron] Previous job still running, skipping this tick');
       return;
@@ -25,5 +27,19 @@ export function startRelinkCron() {
     }
   });
 
-  console.log('[Relink Cron] Started, scheduled daily at 03:00 (0 3 * * *)');
+  console.log(`[Relink Cron] Started, scheduled daily at ${cronExpr}`);
+}
+
+export function stopRelinkCron() {
+  if (task) {
+    task.stop();
+    task.destroy();
+    task = null;
+    console.log('[Relink Cron] Stopped');
+  }
+}
+
+export function restartRelinkCron(cronExpr: string) {
+  stopRelinkCron();
+  startRelinkCron(cronExpr);
 }

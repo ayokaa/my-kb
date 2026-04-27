@@ -115,7 +115,7 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
             </button>
           ))}
         </div>
-        <button onClick={load} disabled={loading} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]">
+        <button data-testid="tasks-refresh" onClick={load} disabled={loading} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

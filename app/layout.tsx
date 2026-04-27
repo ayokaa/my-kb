@@ -9,17 +9,21 @@ export const metadata: Metadata = {
 // Start RSS auto-check cron on server boot (only in Node.js runtime, not edge)
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
   import('@/lib/queue').then(({ initQueue }) => initQueue()).catch(() => {});
-  import('@/lib/rss/cron').then(({ startRSSCron }) => {
-    const interval = parseInt(process.env.RSS_CHECK_INTERVAL_MINUTES || '60', 10);
-    startRSSCron(Number.isNaN(interval) ? 60 : interval);
-  }).catch(() => {
-    // Cron not available in some runtimes (e.g. edge), that's fine
-  });
-  import('@/lib/relink/cron').then(({ startRelinkCron }) => {
-    startRelinkCron();
-  }).catch(() => {
-    // Cron not available in some runtimes (e.g. edge), that's fine
-  });
+
+  (async () => {
+    try {
+      const { loadSettings } = await import('@/lib/settings');
+      const settings = await loadSettings();
+
+      const { startRSSCron } = await import('@/lib/rss/cron');
+      startRSSCron(settings.cron.rssIntervalMinutes);
+
+      const { startRelinkCron } = await import('@/lib/relink/cron');
+      startRelinkCron(settings.cron.relinkCronExpression);
+    } catch {
+      // Cron not available in some runtimes (e.g. edge), that's fine
+    }
+  })();
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

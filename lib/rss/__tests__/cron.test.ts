@@ -1,16 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock node-cron before importing cron.ts
-const scheduledTasks: Array<{ expression: string; callback: () => Promise<void> }> = [];
+const scheduledTasks: Array<{ expression: string; callback: () => Promise<void>; task: any }> = [];
+
+function createMockTask() {
+  return { stop: vi.fn(), destroy: vi.fn() };
+}
 
 vi.mock('node-cron', () => ({
   default: {
     schedule: vi.fn((expression: string, callback: () => Promise<void>) => {
-      scheduledTasks.push({ expression, callback });
+      const task = createMockTask();
+      scheduledTasks.push({ expression, callback, task });
+      return task;
     }),
   },
   schedule: vi.fn((expression: string, callback: () => Promise<void>) => {
-    scheduledTasks.push({ expression, callback });
+    const task = createMockTask();
+    scheduledTasks.push({ expression, callback, task });
+    return task;
   }),
 }));
 
@@ -82,11 +90,13 @@ describe('startRSSCron', () => {
     await firstTick;
   });
 
-  it('does not start multiple cron jobs on repeated calls', async () => {
+  it('replaces previous cron task on repeated calls', async () => {
     const { startRSSCron } = await loadCron();
     startRSSCron(60);
+    const firstTask = scheduledTasks[0].task;
     startRSSCron(60);
-    startRSSCron(60);
-    expect(scheduledTasks).toHaveLength(1);
+    expect(firstTask.stop).toHaveBeenCalled();
+    expect(firstTask.destroy).toHaveBeenCalled();
+    expect(scheduledTasks).toHaveLength(2);
   });
 });

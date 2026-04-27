@@ -1,16 +1,11 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import OpenAI from 'openai';
 import { formatStreamPart } from 'ai';
 import { FileSystemStorage } from '@/lib/storage';
 import { search, assembleContext } from '@/lib/search/engine';
 import { buildIndex } from '@/lib/search/inverted-index';
 import type { InvertedIndexMap } from '@/lib/search/types';
-
-const client = new OpenAI({
-  baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-  apiKey: process.env.MINIMAX_API_KEY || '',
-});
+import { getLLMClient, getLLMModel } from '@/lib/llm';
 
 /**
  * 加载或构建搜索索引。
@@ -129,8 +124,10 @@ export async function POST(req: Request) {
     ? `${baseSystem}\n\n【知识库检索结果】以下是从用户知识库中检索到的相关信息，请优先基于这些内容回答。如果信息不足，请明确说明。\n\n---\n${contextText}\n---\n\n【回答要求】\n1. 优先使用上述知识库内容\n2. 如果引用了知识库内容，请提及来源笔记名称\n3. 如果知识库内容不足以回答，明确说明"知识库中没有相关信息"\n4. 不要编造知识库中没有的信息`
     : `${baseSystem}\n\n【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。`;
 
+  const client = await getLLMClient();
+  const model = await getLLMModel();
   const response = await client.chat.completions.create({
-    model: 'MiniMax-M2.7',
+    model,
     messages: [
       { role: 'system', content: systemContent },
       ...messages.map((m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),

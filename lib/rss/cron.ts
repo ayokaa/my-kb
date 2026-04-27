@@ -2,18 +2,23 @@ import cron from 'node-cron';
 import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
 
-let started = false;
+let task: cron.ScheduledTask | null = null;
 let isRunning = false;
 
-export function startRSSCron(intervalMinutes = 60) {
-  if (started) return;
-  started = true;
-
-  // Build cron expression: hourly (0 * * * *) or every N minutes (*/N * * * *)
+function buildCronExpr(intervalMinutes: number): string {
   const n = Math.max(1, intervalMinutes);
-  const cronExpr = n >= 60 ? '0 * * * *' : `*/${n} * * * *`;
+  return n >= 60 ? '0 * * * *' : `*/${n} * * * *`;
+}
 
-  cron.schedule(cronExpr, async () => {
+export function startRSSCron(intervalMinutes = 60) {
+  if (task) {
+    task.stop();
+    task.destroy();
+  }
+
+  const cronExpr = buildCronExpr(intervalMinutes);
+
+  task = cron.schedule(cronExpr, async () => {
     if (isRunning) {
       console.log('[RSS Cron] Previous check still running, skipping this tick');
       return;
@@ -34,4 +39,18 @@ export function startRSSCron(intervalMinutes = 60) {
   });
 
   console.log(`[RSS Cron] Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
+}
+
+export function stopRSSCron() {
+  if (task) {
+    task.stop();
+    task.destroy();
+    task = null;
+    console.log('[RSS Cron] Stopped');
+  }
+}
+
+export function restartRSSCron(intervalMinutes: number) {
+  stopRSSCron();
+  startRSSCron(intervalMinutes);
 }

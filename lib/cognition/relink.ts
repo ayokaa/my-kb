@@ -1,16 +1,6 @@
-import OpenAI from 'openai';
 import type { Note, NoteLink } from '../types';
 import { selectCandidateTitles } from './ingest';
-
-const MODEL = 'MiniMax-M2.7';
-
-function getLLMClient(): OpenAI {
-  return new OpenAI({
-    apiKey: process.env.MINIMAX_API_KEY || '',
-    baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-    dangerouslyAllowBrowser: true,
-  });
-}
+import { getLLMClient, getLLMModel } from '../llm';
 
 function buildRelinkPrompt(existingTitles: string[] = []): string {
   const titleHint = existingTitles.length > 0
@@ -47,8 +37,10 @@ export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink
 
   async function callLLM(retries = 1): Promise<string> {
     try {
-      const response = await getLLMClient().chat.completions.create({
-        model: MODEL,
+      const client = await getLLMClient();
+      const model = await getLLMModel();
+      const response = await client.chat.completions.create({
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

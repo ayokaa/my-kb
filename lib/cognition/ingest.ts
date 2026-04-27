@@ -1,15 +1,8 @@
-import OpenAI from 'openai';
 import type { InboxEntry, Note, NoteLink, QAEntry, ExtractResult } from '../types';
 import { fetchWebContent } from '../ingestion/web';
 import { buildIndex } from '../search/inverted-index';
 import { search } from '../search/engine';
-
-const client = new OpenAI({
-  apiKey: process.env.MINIMAX_API_KEY || '',
-  baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
-});
-
-const MODEL = 'MiniMax-M2.7';
+import { getLLMClient, getLLMModel } from '../llm';
 
 function slugify(title: string): string {
   return title
@@ -86,8 +79,10 @@ ${titleHint}
 async function callLLM(systemPrompt: string, userPrompt: string, retries = 2): Promise<string> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      const client = await getLLMClient();
+      const model = await getLLMModel();
       const response = await client.chat.completions.create({
-        model: MODEL,
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
