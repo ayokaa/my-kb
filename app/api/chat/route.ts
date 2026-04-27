@@ -2,9 +2,35 @@ import { formatStreamPart } from 'ai';
 import { FileSystemStorage } from '@/lib/storage';
 import { search, assembleContext } from '@/lib/search/engine';
 import { loadOrBuildIndex } from '@/lib/search/cache';
+import { fetchWebContent } from '@/lib/ingestion/web';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
 
 const MAX_MESSAGE_LENGTH = 10000;
+
+/** 定义可用工具 */
+const tools = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_fetch',
+      description: '当知识库内容不足以回答用户问题时，抓取指定网页获取更详细、更新的信息。仅当用户明确提供了 URL 时才使用，不要编造 URL。',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description: '要抓取的完整 HTTP/HTTPS 链接',
+          },
+          reason: {
+            type: 'string',
+            description: '简要说明为什么需要抓取这个网页（1-2句话）',
+          },
+        },
+        required: ['url', 'reason'],
+      },
+    },
+  },
+];
 
 function validateMessages(messages: unknown): Array<{ role: string; content: string }> {
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -91,22 +117,101 @@ export async function POST(req: Request) {
 
   // 构建动态 system prompt
   const baseSystem = '你是用户的个人知识库助手。你的首要任务是使用下面提供的知识库内容来回答用户问题。如果知识库中有相关信息，请优先基于这些信息作答，并引用来源笔记。如果知识库中没有相关信息，请明确告知"根据我的知识库，没有找到相关信息"，然后可以补充你自己的一般性知识，但要明确区分两者。';
-  const systemContent = contextText
+  let systemContent = contextText
     ? `${baseSystem}\n\n【知识库检索结果】以下是从用户知识库中检索到的相关信息，请优先基于这些内容回答。如果信息不足，请明确说明。\n\n---\n${contextText}\n---\n\n【回答要求】\n1. 优先使用上述知识库内容\n2. 如果引用了知识库内容，请提及来源笔记名称\n3. 如果知识库内容不足以回答，明确说明"知识库中没有相关信息"\n4. 不要编造知识库中没有的信息`
     : `${baseSystem}\n\n【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。`;
 
+  // 添加工具使用说明
+  systemContent += `\n\n【可用工具】\n当知识库内容不足以回答问题时，你可以调用工具来获取更多信息。当前可用工具：\n- web_fetch(url, reason): 抓取指定网页内容。你可以从知识库笔记的"来源"中选择 URL 进行抓取，不要编造不存在的 URL。\n\n调用规则：仅在知识库内容明显不足时调用工具。如果知识库内容已足够，直接回答，不要调用工具。`;
+
   const client = await getLLMClient();
   const model = await getLLMModel();
+
+  const apiMessages: any[] = [
+    { role: 'system', content: systemContent },
+    ...messages.map((m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
+  ];
+
+  // 第一阶段：判断是否需要调用工具（非流式）
+  let toolCalls: any[] | undefined;
+  try {
+    const toolResponse = await client.chat.completions.create({
+      model,
+      messages: apiMessages,
+      tools,
+      tool_choice: 'auto',
+      stream: false,
+    } as any);
+    const assistantMsg = (toolResponse as any).choices?.[0]?.message;
+    if (assistantMsg?.tool_calls && assistantMsg.tool_calls.length > 0) {
+      toolCalls = assistantMsg.tool_calls;
+    }
+  } catch (err) {
+    console.error('[Chat] Tool detection error:', err);
+    // 降级：继续无工具调用
+  }
+
+  // 如果有工具调用，执行工具并构建新 messages
+  let streamMessages = apiMessages;
+  const toolResultItems: Array<{ id: string; name: string; url: string; content: string }> = [];
+
+  if (toolCalls && toolCalls.length > 0) {
+    for (const toolCall of toolCalls) {
+      if (toolCall.function?.name === 'web_fetch') {
+        let args: { url?: string; reason?: string };
+        try {
+          args = JSON.parse(toolCall.function.arguments || '{}');
+        } catch {
+          args = {};
+        }
+        const url = args.url || '';
+        console.log(`[Chat] Tool call web_fetch: ${url} (${args.reason || ''})`);
+
+        if (url) {
+          try {
+            const webContent = await fetchWebContent(url);
+            toolResultItems.push({
+              id: toolCall.id,
+              name: 'web_fetch',
+              url,
+              content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
+            });
+          } catch (err) {
+            console.error(`[Chat] web_fetch failed:`, err);
+            toolResultItems.push({
+              id: toolCall.id,
+              name: 'web_fetch',
+              url,
+              content: `抓取失败: ${(err as Error).message}`,
+            });
+          }
+        }
+      }
+    }
+
+    streamMessages = [
+      ...apiMessages,
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: toolCalls,
+      },
+      ...toolResultItems.map((r) => ({
+        role: 'tool',
+        tool_call_id: r.id,
+        content: r.content,
+      })),
+    ];
+  }
+
+  // 第二阶段：流式输出最终回答
   const response = await client.chat.completions.create({
     model,
-    messages: [
-      { role: 'system', content: systemContent },
-      ...messages.map((m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
-    ],
+    messages: streamMessages,
     stream: true,
-  });
+  } as any);
 
-  // 自定义 ReadableStream：过滤 think + 发送来源数据
+  // 自定义 ReadableStream：过滤 think + 发送来源数据 + 发送工具调用事件
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -115,6 +220,17 @@ export async function POST(req: Request) {
         controller.enqueue(
           encoder.encode(formatStreamPart('data', [{ type: 'sources', notes: searchResults }]))
         );
+      }
+
+      // 发送工具调用事件
+      if (toolResultItems.length > 0) {
+        for (const item of toolResultItems) {
+          controller.enqueue(
+            encoder.encode(
+              formatStreamPart('data', [{ type: 'tool_call', name: item.name, url: item.url }])
+            )
+          );
+        }
       }
 
       let inThink = false;

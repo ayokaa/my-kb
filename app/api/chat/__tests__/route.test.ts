@@ -31,6 +31,11 @@ describe('/api/chat', () => {
   });
 
   it('streams response with filtered think tags', async () => {
+    // 第一次调用: stream: false (工具检测)
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: '' } }],
+    });
+
     // Simulate OpenAI async iterable response
     async function* mockStream() {
       yield { choices: [{ delta: { content: 'Hello ' } }] };
@@ -92,6 +97,11 @@ describe('/api/chat', () => {
   });
 
   it('filters complete think blocks', async () => {
+    // 第一次调用: stream: false (工具检测)
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: '' } }],
+    });
+
     async function* mockStream() {
       yield { choices: [{ delta: { content: 'Start ' } }] };
       yield { choices: [{ delta: { content: '<think>' } }] };
