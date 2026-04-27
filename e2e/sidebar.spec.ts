@@ -10,7 +10,7 @@ test.describe.serial('Sidebar', () => {
     await page.goto('/');
 
     // Initially no badge
-    await expect(page.getByText('收件箱').locator('..').getByText('1')).not.toBeVisible();
+    await expect(page.getByTestId('nav-inbox').locator('..').getByText('1')).not.toBeVisible();
 
     // Add an inbox entry
     await request.post('/api/ingest', {
@@ -47,11 +47,11 @@ test.describe.serial('Sidebar', () => {
     await page.goto('/');
 
     // Default active tab is chat
-    const chatBtn = page.locator('button', { hasText: '对话' });
+    const chatBtn = page.getByTestId('nav-chat');
     await expect(chatBtn).toHaveClass(/bg-\[var\(--accent-dim\)\]/);
 
     // Switch to notes
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
     const notesBtn = page.locator('button', { hasText: '笔记' });
     await expect(notesBtn).toHaveClass(/bg-\[var\(--accent-dim\)\]/);
     await expect(chatBtn).not.toHaveClass(/bg-\[var\(--accent-dim\)\]/);
@@ -60,10 +60,10 @@ test.describe.serial('Sidebar', () => {
   test('all navigation items are visible', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByText('对话')).toBeVisible();
-    await expect(page.getByText('收件箱')).toBeVisible();
-    await expect(page.getByText('任务')).toBeVisible();
-    await expect(page.getByText('订阅')).toBeVisible();
-    await expect(page.getByText('笔记')).toBeVisible();
+    await expect(page.getByTestId('nav-chat')).toBeVisible();
+    await expect(page.getByTestId('nav-inbox')).toBeVisible();
+    await expect(page.getByTestId('nav-tasks')).toBeVisible();
+    await expect(page.getByTestId('nav-rss')).toBeVisible();
+    await expect(page.getByTestId('nav-notes')).toBeVisible();
   });
 });

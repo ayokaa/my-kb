@@ -4,32 +4,32 @@ test.describe('Chat', () => {
   test('can toggle ingest panel', async ({ page }) => {
     await page.goto('/');
 
-    const toggle = page.getByText('添加知识');
+    const toggle = page.getByTestId('ingest-toggle');
     await expect(toggle).toBeVisible();
 
     await toggle.click();
-    await expect(page.getByText('文本')).toBeVisible();
-    await expect(page.getByText('链接')).toBeVisible();
-    await expect(page.getByText('文件')).toBeVisible();
-    await expect(page.getByText('RSS')).toBeVisible();
+    await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
+    await expect(page.getByTestId('ingest-tab-link')).toBeVisible();
+    await expect(page.getByTestId('ingest-tab-file')).toBeVisible();
+    await expect(page.getByTestId('ingest-tab-rss')).toBeVisible();
   });
 
   test('chat input is present and clickable', async ({ page }) => {
     await page.goto('/');
 
-    const input = page.getByPlaceholder('问点什么...');
+    const input = page.getByLabel('聊天输入');
     await expect(input).toBeVisible();
     await expect(input).toBeEnabled();
 
-    const sendBtn = page.locator('button[type="submit"]');
+    const sendBtn = page.getByRole('button', { name: '发送' });
     await expect(sendBtn).toBeVisible();
   });
 
   test('send button is disabled when input is empty', async ({ page }) => {
     await page.goto('/');
 
-    const input = page.getByPlaceholder('问点什么...');
-    const sendBtn = page.locator('button[type="submit"]');
+    const input = page.getByLabel('聊天输入');
+    const sendBtn = page.getByRole('button', { name: '发送' });
 
     await expect(sendBtn).toBeDisabled();
 
@@ -43,7 +43,7 @@ test.describe('Chat', () => {
   test('typing in input updates value', async ({ page }) => {
     await page.goto('/');
 
-    const input = page.getByPlaceholder('问点什么...');
+    const input = page.getByLabel('聊天输入');
     await input.fill('Test message');
     await expect(input).toHaveValue('Test message');
   });

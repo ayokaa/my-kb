@@ -10,7 +10,7 @@ test.describe.serial('RSS Subscriptions', () => {
 
   test('RSS panel shows empty state', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('订阅').click();
+    await page.getByTestId('nav-rss').click();
 
     await expect(page.getByText('RSS 订阅')).toBeVisible();
     await expect(page.getByText('还没有订阅源')).toBeVisible();
@@ -18,7 +18,7 @@ test.describe.serial('RSS Subscriptions', () => {
 
   test('can add a subscription', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('订阅').click();
+    await page.getByTestId('nav-rss').click();
 
     const urlInput = page.getByPlaceholder('RSS URL');
     await urlInput.fill('https://overreacted.io/rss.xml');
@@ -39,7 +39,7 @@ test.describe.serial('RSS Subscriptions', () => {
     });
 
     await page.goto('/');
-    await page.getByText('订阅').click();
+    await page.getByTestId('nav-rss').click();
 
     await expect(page.getByText('Test Feed', { exact: true })).toBeVisible();
 
@@ -52,7 +52,7 @@ test.describe.serial('RSS Subscriptions', () => {
 
   test('can import OPML file', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('订阅').click();
+    await page.getByTestId('nav-rss').click();
 
     const opmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
@@ -75,7 +75,7 @@ test.describe.serial('RSS Subscriptions', () => {
 
   test('check all button is disabled when no subscriptions', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('订阅').click();
+    await page.getByTestId('nav-rss').click();
 
     const checkBtn = page.getByRole('button', { name: '检查更新' });
     await expect(checkBtn).toBeDisabled();

@@ -10,7 +10,7 @@ test.describe.serial('Inbox', () => {
 
   test('shows empty state when no entries', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('收件箱').click();
+    await page.getByTestId('nav-inbox').click();
 
     await expect(page.getByText('待审核')).toBeVisible();
     await expect(page.getByText('收件箱为空')).toBeVisible();
@@ -25,7 +25,7 @@ test.describe.serial('Inbox', () => {
     });
 
     await page.goto('/');
-    await page.getByText('收件箱').click();
+    await page.getByTestId('nav-inbox').click();
 
     await expect(page.getByText('E2E Test Article').first()).toBeVisible();
 
@@ -47,7 +47,7 @@ test.describe.serial('Inbox', () => {
     });
 
     await page.goto('/');
-    await page.getByText('收件箱').click();
+    await page.getByTestId('nav-inbox').click();
 
     await expect(page.getByText('Approve Test').first()).toBeVisible();
     await page.getByRole('button', { name: /Approve Test/ }).click();
@@ -65,7 +65,7 @@ test.describe.serial('Inbox', () => {
       data: { type: 'text', title: 'Badge Test', content: 'Testing badge count.' },
     });
 
-    await page.getByText('收件箱').click();
+    await page.getByTestId('nav-inbox').click();
     await expect(page.getByText('Badge Test').first()).toBeVisible();
 
     await page.getByRole('button', { name: '忽略' }).click();
@@ -93,7 +93,7 @@ This is the RSS content for E2E testing.
     await writeFile(join(root, 'inbox', fileName), content);
 
     await page.goto('/');
-    await page.getByText('收件箱').click();
+    await page.getByTestId('nav-inbox').click();
 
     await expect(page.getByText('RSS E2E Test Article').first()).toBeVisible();
     await page.getByRole('button', { name: /RSS E2E Test Article/ }).click();

@@ -8,7 +8,7 @@ test.describe.serial('Notes', () => {
 
   test('shows empty state when no notes', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await expect(page.getByRole('heading', { name: '笔记' })).toBeVisible();
     await expect(page.getByText('还没有笔记')).toBeVisible();
@@ -16,7 +16,7 @@ test.describe.serial('Notes', () => {
 
   test('search input is present and interactive', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     const searchInput = page.getByPlaceholder('搜索笔记标题、标签…');
     await expect(searchInput).toBeVisible();
@@ -28,19 +28,19 @@ test.describe.serial('Notes', () => {
 
   test('status filter buttons work', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
-    await expect(page.getByText('全部')).toBeVisible();
+    await expect(page.getByTestId('note-filter-all')).toBeVisible();
     await expect(page.getByRole('button', { name: '种子', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '生长中', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '常青', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '陈旧', exact: true })).toBeVisible();
 
-    await page.getByText('种子').click();
-    await page.getByText('生长中').click();
-    await page.getByText('常青').click();
-    await page.getByText('陈旧').click();
-    await page.getByText('全部').click();
+    await page.getByTestId('note-filter-seed').click();
+    await page.getByTestId('note-filter-growing').click();
+    await page.getByTestId('note-filter-evergreen').click();
+    await page.getByTestId('note-filter-stale').click();
+    await page.getByTestId('note-filter-all').click();
   });
 
   test('can view note detail', async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe.serial('Notes', () => {
     });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await page.getByRole('button', { name: /E2E Test Note/ }).click();
 
@@ -85,7 +85,7 @@ test.describe.serial('Notes', () => {
     });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     // Both visible initially
     await expect(page.getByRole('button', { name: /Alpha Note/ })).toBeVisible();
@@ -121,7 +121,7 @@ test.describe.serial('Notes', () => {
     });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await page.getByRole('button', { name: /Delete Me/ }).click();
     await expect(page.getByText('This note will be deleted.').first()).toBeVisible();
@@ -148,7 +148,7 @@ test.describe.serial('Notes', () => {
     });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await page.getByRole('button', { name: /Full Detail Note/ }).click();
 
@@ -169,7 +169,7 @@ test.describe.serial('Notes', () => {
     await createTestNote({ id: 'e2e-status-evergreen', title: 'Evergreen Status', status: 'evergreen' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await expect(page.getByRole('button', { name: /Seed Status.*种子/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Growing Status.*生长中/ })).toBeVisible();

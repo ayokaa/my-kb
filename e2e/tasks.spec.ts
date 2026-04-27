@@ -8,7 +8,7 @@ test.describe.serial('Tasks', () => {
 
   test('panel loads with toolbar and filters', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     await expect(page.getByText('任务队列')).toBeVisible();
     await expect(page.getByRole('button', { name: /^全部/ })).toBeVisible();
@@ -20,7 +20,7 @@ test.describe.serial('Tasks', () => {
 
   test('status filter buttons are clickable', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     await page.getByRole('button', { name: /^等待中/ }).click();
     await page.getByRole('button', { name: /^执行中/ }).click();
@@ -41,7 +41,7 @@ test.describe.serial('Tasks', () => {
     await request.post('/api/inbox/process', { data: { fileName } });
 
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     await expect(page.getByText(fileName)).toBeVisible();
   });
@@ -63,7 +63,7 @@ test.describe.serial('Tasks', () => {
     await request.post('/api/inbox/archive', { data: { fileName } });
 
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     // The task should appear in the list (status may vary depending on timing)
     await expect(page.getByText(fileName).first()).toBeVisible();
@@ -80,7 +80,7 @@ test.describe.serial('Tasks', () => {
     await request.post('/api/inbox/process', { data: { fileName } });
 
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     // Wait for tasks to load
     await expect(page.getByText('任务队列')).toBeVisible();
@@ -104,7 +104,7 @@ test.describe.serial('Tasks', () => {
 
   test('refresh button reloads tasks', async ({ page }) => {
     await page.goto('/');
-    await page.getByText('任务').click();
+    await page.getByTestId('nav-tasks').click();
 
     await expect(page.getByText('任务队列')).toBeVisible();
 

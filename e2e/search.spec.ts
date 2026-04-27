@@ -11,7 +11,7 @@ test.describe.serial('Search', () => {
     await createTestNote({ id: 'search-beta', title: 'Beta Note', tags: ['beta'], status: 'seed' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await expect(page.getByRole('button', { name: /Alpha Note/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Beta Note/ })).toBeVisible();
@@ -27,7 +27,7 @@ test.describe.serial('Search', () => {
     await createTestNote({ id: 'tag-search-b', title: 'Note B', tags: ['cooking'], status: 'seed' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await page.getByPlaceholder('搜索笔记标题、标签…').fill('machine-learning');
 
@@ -39,7 +39,7 @@ test.describe.serial('Search', () => {
     await createTestNote({ id: 'no-match', title: 'Existing Note', tags: [], status: 'seed' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     await page.getByPlaceholder('搜索笔记标题、标签…').fill('xyz-nonexistent');
 
@@ -51,7 +51,7 @@ test.describe.serial('Search', () => {
     await createTestNote({ id: 'clear-b', title: 'Clear B', tags: [], status: 'seed' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     const searchInput = page.getByPlaceholder('搜索笔记标题、标签…');
     await searchInput.fill('Clear A');
@@ -67,7 +67,7 @@ test.describe.serial('Search', () => {
     await createTestNote({ id: 'filter-evergreen', title: 'Evergreen Note', tags: [], status: 'evergreen' });
 
     await page.goto('/');
-    await page.getByText('笔记').click();
+    await page.getByTestId('nav-notes').click();
 
     // First filter by status
     await page.getByRole('button', { name: '常青', exact: true }).click();

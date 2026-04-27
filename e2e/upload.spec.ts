@@ -11,10 +11,10 @@ test.describe.serial('Upload', () => {
   test('can upload a markdown file via UI', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByText('添加知识').click();
-    await page.getByText('文件').click();
+    await page.getByTestId('ingest-toggle').click();
+    await page.getByTestId('ingest-tab-file').click();
 
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('上传文件');
     const tmpFile = join(process.cwd(), 'knowledge-test', 'attachments', 'e2e-test-upload.md');
     await writeFile(tmpFile, '# Test Upload\n\nThis is a test markdown file for E2E upload.');
 
@@ -23,17 +23,17 @@ test.describe.serial('Upload', () => {
     await expect(page.getByText('已入库')).toBeVisible({ timeout: 5000 });
 
     // Verify in inbox
-    await page.getByText('收件箱').click();
-    await expect(page.getByText('e2e-test-upload.md').first()).toBeVisible();
+    await page.getByTestId('nav-inbox').click();
+    await expect(page.getByTestId('panel-inbox').getByText('e2e-test-upload.md').first()).toBeVisible();
   });
 
   test('can upload a plain text file via UI', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByText('添加知识').click();
+    await page.getByTestId('ingest-toggle').click();
     await page.getByText('文件').click();
 
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('上传文件');
     const tmpFile = join(process.cwd(), 'knowledge-test', 'attachments', 'e2e-test-upload.txt');
     await writeFile(tmpFile, 'Plain text content for E2E testing.');
 
@@ -41,24 +41,24 @@ test.describe.serial('Upload', () => {
 
     await expect(page.getByText('已入库')).toBeVisible({ timeout: 5000 });
 
-    await page.getByText('收件箱').click();
-    await expect(page.getByText('e2e-test-upload.txt').first()).toBeVisible();
+    await page.getByTestId('nav-inbox').click();
+    await expect(page.getByTestId('panel-inbox').getByText('e2e-test-upload.txt').first()).toBeVisible();
   });
 
   test('file input has correct accept attribute', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByText('添加知识').click();
+    await page.getByTestId('ingest-toggle').click();
     await page.getByText('文件').click();
 
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('上传文件');
     await expect(fileInput).toHaveAttribute('accept', '.pdf,.md,.txt,.markdown,application/pdf,text/plain,text/markdown');
   });
 
   test('shows supported file types hint', async ({ page }) => {
     await page.goto('/');
 
-    await page.getByText('添加知识').click();
+    await page.getByTestId('ingest-toggle').click();
     await page.getByText('文件').click();
 
     await expect(page.getByText('支持 PDF、Markdown、TXT')).toBeVisible();
