@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 
 // Start RSS auto-check cron on server boot (only in Node.js runtime, not edge)
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
+  import('@/lib/queue').then(({ initQueue }) => initQueue()).catch(() => {});
   import('@/lib/rss/cron').then(({ startRSSCron }) => {
     startRSSCron(60);
   }).catch(() => {

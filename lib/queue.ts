@@ -1,14 +1,16 @@
-import { readFile, writeFile, rename, mkdir, stat } from 'fs/promises';
+
 import { join, dirname } from 'path';
+import { readFile, writeFile, rename, mkdir, stat } from 'fs/promises';
 import { randomUUID } from 'crypto';
-import yaml from 'js-yaml';
 import type { InboxEntry } from './types';
 import { processInboxEntry } from './cognition/ingest';
 import { FileSystemStorage } from './storage';
 import { fetchRSS } from './ingestion/rss';
+import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
+import { parseInboxEntry } from './parsers';
 
-export type TaskType = 'ingest' | 'rss_fetch';
+export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch';
 
 export interface IngestPayload {
   fileName: string;
@@ -21,7 +23,11 @@ export interface RSSFetchPayload {
   isSubscriptionCheck?: boolean;
 }
 
-export type TaskPayload = IngestPayload | RSSFetchPayload;
+export interface WebFetchPayload {
+  url: string;
+}
+
+export type TaskPayload = IngestPayload | RSSFetchPayload | WebFetchPayload;
 
 export interface Task {
   id: string;
@@ -36,9 +42,18 @@ export interface Task {
 }
 
 const tasks = new Map<string, Task>();
-const pendingIds: string[] = [];
-let workerRunning = false;
+const pendingByType: Record<TaskType, string[]> = {
+  ingest: [],
+  rss_fetch: [],
+  web_fetch: [],
+};
+const workerRunningByType: Record<TaskType, boolean> = {
+  ingest: false,
+  rss_fetch: false,
+  web_fetch: false,
+};
 let saveLock: Promise<void> = Promise.resolve();
+let workerInitialized = false;
 
 function getKnowledgeRoot(): string {
   return process.env.KNOWLEDGE_ROOT || 'knowledge';
@@ -56,7 +71,7 @@ async function saveQueueState() {
         await mkdir(dirname(queuePath), { recursive: true });
         const state = {
           tasks: Array.from(tasks.values()),
-          pendingIds: [...pendingIds],
+          pendingIds: (['ingest', 'rss_fetch', 'web_fetch'] as TaskType[]).flatMap((t) => pendingByType[t]),
         };
         const tmp = `${queuePath}.tmp.${Date.now()}`;
         await writeFile(tmp, JSON.stringify(state, null, 2));
@@ -82,10 +97,11 @@ async function loadQueueState() {
       const task = tasks.get(id);
       if (task && (task.status === 'pending' || task.status === 'running')) {
         task.status = 'pending';
-        pendingIds.push(id);
+        pendingByType[task.type].push(id);
       }
     }
-    console.log(`[Queue] Restored ${pendingIds.length} pending tasks`);
+    const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length;
+    console.log(`[Queue] Restored ${totalPending} pending tasks`);
   } catch {
     // No state file, start fresh
   }
@@ -105,10 +121,10 @@ export function enqueue(type: TaskType, payload: TaskPayload): string {
     createdAt: new Date().toISOString(),
   };
   tasks.set(id, task);
-  pendingIds.push(id);
+  pendingByType[type].push(id);
   console.log(`[Queue] Enqueued ${type} task ${id}`);
   saveQueueState();
-  startWorker();
+  startWorker(type);
   return id;
 }
 
@@ -126,6 +142,13 @@ export function listPending(): Task[] {
   return listTasks().filter((t) => t.status === 'pending' || t.status === 'running');
 }
 
+/** Return pending/running tasks that directly affect the inbox (ingest & web_fetch).
+ *  rss_fetch is excluded because it's a background cron job unrelated to user inbox actions.
+ */
+export function listInboxPending(): Task[] {
+  return listPending().filter((t) => t.type === 'ingest' || t.type === 'web_fetch');
+}
+
 export function retryTask(id: string): Task | null {
   const task = tasks.get(id);
   if (!task || task.status !== 'failed') return null;
@@ -135,19 +158,20 @@ export function retryTask(id: string): Task | null {
   task.startedAt = undefined;
   task.completedAt = undefined;
   task.result = undefined;
-  pendingIds.push(id);
+  pendingByType[task.type].push(id);
   saveQueueState();
-  startWorker();
+  startWorker(task.type);
   return task;
 }
 
 /* ---------- Worker ---------- */
 
-async function startWorker() {
-  if (workerRunning) return;
-  workerRunning = true;
-  console.log('[Queue] Worker started');
+async function startWorker(type: TaskType) {
+  if (workerRunningByType[type]) return;
+  workerRunningByType[type] = true;
+  console.log(`[Queue] Worker started for ${type}`);
 
+  const pendingIds = pendingByType[type];
   while (pendingIds.length > 0) {
     const id = pendingIds.shift()!;
     const task = tasks.get(id);
@@ -168,6 +192,11 @@ async function startWorker() {
         task.status = 'done';
         task.result = result;
         console.log(`[Queue] Task ${id} RSS fetch completed`, result.newItems !== undefined ? `(${result.newItems} new items)` : '');
+      } else if (task.type === 'web_fetch') {
+        const result = await runWebFetchTask(task.payload);
+        task.status = 'done';
+        task.result = result;
+        console.log(`[Queue] Task ${id} web fetch completed`, result.title || '');
       }
     } catch (err) {
       task.status = 'failed';
@@ -178,62 +207,41 @@ async function startWorker() {
     saveQueueState();
   }
 
-  workerRunning = false;
-  console.log('[Queue] Worker idle');
+  workerRunningByType[type] = false;
+  console.log(`[Queue] Worker idle for ${type}`);
 }
 
-// Restore state on module load
-loadQueueState().then(() => {
-  if (pendingIds.length > 0) {
-    console.log(`[Queue] Auto-starting worker with ${pendingIds.length} restored tasks`);
-    startWorker();
-  }
-});
+/** Explicitly initialize queue: restore persisted state and auto-start worker if needed.
+ *  Safe to call multiple times (subsequent calls are no-ops).
+ */
+export function initQueue() {
+  if (workerInitialized) return;
+  workerInitialized = true;
+  loadQueueState().then(() => {
+    for (const type of ['ingest', 'rss_fetch', 'web_fetch'] as TaskType[]) {
+      if (pendingByType[type].length > 0) {
+        console.log(`[Queue] Auto-starting worker for ${type} with ${pendingByType[type].length} restored tasks`);
+        startWorker(type);
+      }
+    }
+  });
+}
 
 /* ---------- Task handlers ---------- */
 
-export function parseInboxRaw(raw: string, path: string): InboxEntry {
-  // Robust frontmatter extraction: looks for --- at the very start,
-  // then finds the closing --- on its own line.
-  if (!raw.startsWith('---')) {
-    return {
-      sourceType: 'text',
-      title: path.split('/').pop()?.replace('.md', '') || 'untitled',
-      content: raw,
-      rawMetadata: {},
-      filePath: path,
-    };
-  }
 
-  const endMarker = raw.indexOf('\n---', 3);
-  if (endMarker === -1) {
-    return {
-      sourceType: 'text',
-      title: path.split('/').pop()?.replace('.md', '') || 'untitled',
-      content: raw,
-      rawMetadata: {},
-      filePath: path,
-    };
-  }
 
-  const fmRaw = raw.slice(3, endMarker).trim();
-  const content = raw.slice(endMarker + 4).trim();
-
-  const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
-  const rawMetadata: Record<string, unknown> = {};
-  const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
-  for (const [k, v] of Object.entries(fm)) {
-    if (!known.has(k)) rawMetadata[k] = v;
-  }
-  return {
-    sourceType: String(fm.source_type || 'text') as InboxEntry['sourceType'],
-    sourcePath: fm.source_path as string | undefined,
-    title: String(fm.title || 'untitled'),
-    content,
-    extractedAt: fm.extracted_at as string | undefined,
-    rawMetadata,
-    filePath: path,
-  };
+async function runWebFetchTask(payload: WebFetchPayload) {
+  const { url } = payload;
+  const web = await fetchWebContent(url);
+  const storage = new FileSystemStorage();
+  await storage.writeInbox({
+    sourceType: 'web',
+    title: web.title,
+    content: web.content,
+    rawMetadata: { source_url: url, excerpt: web.excerpt },
+  });
+  return { ok: true, title: web.title, url };
 }
 
 async function runRSSFetchTask(payload: RSSFetchPayload) {
@@ -259,7 +267,7 @@ async function runIngestTask(payload: IngestPayload) {
   }
 
   const raw = await readFile(filePath, 'utf-8');
-  const entry = parseInboxRaw(raw, filePath);
+  const entry = parseInboxEntry(raw, filePath);
 
   const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
 

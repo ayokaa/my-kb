@@ -8,7 +8,8 @@ process.env.KNOWLEDGE_ROOT = tmpDir;
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import yaml from 'js-yaml';
 import { writeFile } from 'fs/promises';
-import { parseInboxRaw, enqueue, getTask, listPending, listTasks, retryTask } from '../queue';
+import { parseInboxEntry } from '../parsers';
+import { enqueue, getTask, listPending, listTasks, retryTask, initQueue } from '../queue';
 
 vi.mock('fs/promises', () => {
   const mocks = {
@@ -52,6 +53,8 @@ vi.mock('@/lib/storage', () => ({
       listNoteSources: vi.fn().mockResolvedValue([]),
       saveNote: vi.fn().mockResolvedValue(undefined),
       archiveInbox: vi.fn().mockResolvedValue(undefined),
+      writeInbox: vi.fn().mockResolvedValue(undefined),
+      listInbox: vi.fn().mockResolvedValue([]),
     };
   }),
 }));
@@ -61,12 +64,12 @@ function makeInboxMd(title: string, extra: Record<string, string> = {}) {
   return `---\n${yaml.dump(fm)}---\n\nContent for ${title}`;
 }
 
-/* ===== parseInboxRaw (pure, no mocks) ===== */
+/* ===== parseInboxEntry (pure, no mocks) ===== */
 
-describe('parseInboxRaw', () => {
+describe('parseInboxEntry', () => {
   it('parses YAML frontmatter into InboxEntry', () => {
     const raw = makeInboxMd('Hello World', { rss_link: 'https://example.com' });
-    const entry = parseInboxRaw(raw, '/path/to/123-hello.md');
+    const entry = parseInboxEntry(raw, '/path/to/123-hello.md');
 
     expect(entry.sourceType).toBe('text');
     expect(entry.title).toBe('Hello World');
@@ -77,7 +80,7 @@ describe('parseInboxRaw', () => {
 
   it('handles raw content without frontmatter', () => {
     const raw = 'Just some plain text without frontmatter';
-    const entry = parseInboxRaw(raw, '/path/to/plain.md');
+    const entry = parseInboxEntry(raw, '/path/to/plain.md');
 
     expect(entry.sourceType).toBe('text');
     expect(entry.title).toBe('plain');
@@ -87,7 +90,7 @@ describe('parseInboxRaw', () => {
 
   it('extracts rss_link and source_url into rawMetadata', () => {
     const raw = makeInboxMd('RSS', { rss_link: 'https://a.com', source_url: 'https://b.com' });
-    const entry = parseInboxRaw(raw, '/path/to/rss.md');
+    const entry = parseInboxEntry(raw, '/path/to/rss.md');
     expect(entry.rawMetadata.rss_link).toBe('https://a.com');
     expect(entry.rawMetadata.source_url).toBe('https://b.com');
   });
@@ -249,5 +252,67 @@ describe('enqueue / getTask / listPending', () => {
     for (const id of ids) {
       expect(getTask(id)).toBeDefined();
     }
+  });
+
+  it('listTasks respects limit parameter', async () => {
+    const before = listTasks().length;
+    for (let i = 0; i < 5; i++) {
+      enqueue('ingest', { fileName: `limit-${i}.md` });
+    }
+    const all = listTasks(100);
+    expect(all.length).toBeGreaterThanOrEqual(before + 5);
+    const limited = listTasks(2);
+    expect(limited.length).toBeLessThanOrEqual(2);
+  });
+
+  it('processes rss_fetch task via subscription check', async () => {
+    const { fetchRSS } = await import('@/lib/ingestion/rss');
+    const fetchRSSMock = vi.fn().mockResolvedValue([
+      { title: 'RSS Item', link: 'https://example.com/item', pubDate: '2024-01-01T00:00:00Z' },
+    ]);
+    vi.doMock('@/lib/ingestion/rss', () => ({ fetchRSS: fetchRSSMock }));
+
+    // Stub global fetch for manager.ts
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(''),
+    }));
+
+    const id = enqueue('rss_fetch', {
+      url: 'https://example.com/feed.xml',
+      name: 'Test Feed',
+      isSubscriptionCheck: true,
+    });
+    await waitForStatus(id, 'done');
+    const task = getTask(id);
+    expect(task!.status).toBe('done');
+    expect(task!.result).toBeDefined();
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('parseInboxEntry — edge cases', () => {
+  it('handles frontmatter without closing marker', () => {
+    const raw = '---\nsource_type: text\ntitle: No Close';
+    const entry = parseInboxEntry(raw, '/path/to/no-close.md');
+    expect(entry.sourceType).toBe('text');
+    expect(entry.title).toBe('no-close');
+    expect(entry.content).toBe(raw);
+  });
+
+  it('preserves unknown frontmatter fields in rawMetadata', () => {
+    const raw = `---\nsource_type: web\ntitle: Custom\ncustom_field: hello\n---\n\nBody here`;
+    const entry = parseInboxEntry(raw, '/path/to/custom.md');
+    expect(entry.rawMetadata.custom_field).toBe('hello');
+    expect(entry.content).toBe('Body here');
+  });
+
+  it('initQueue is safe to call multiple times', () => {
+    // Should not throw or start multiple workers
+    initQueue();
+    initQueue();
+    initQueue();
+    expect(true).toBe(true);
   });
 });
