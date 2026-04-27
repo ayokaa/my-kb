@@ -255,6 +255,7 @@ export function assembleContext(
       const lines = [
         `【笔记: ${note.title}】`,
         `标签: ${note.tags.join(', ')}`,
+        `来源: ${note.sources.join(', ')}`,
         `摘要: ${note.summary}`,
       ];
 
