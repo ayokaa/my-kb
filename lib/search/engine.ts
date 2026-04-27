@@ -7,7 +7,7 @@ import type {
   ZoneWeights,
 } from './types';
 import { DEFAULT_ZONE_WEIGHTS } from './types';
-import { tokenize } from './index';
+import { tokenize } from './inverted-index';
 
 /** 构建 link 反向映射：目标标题 → 源笔记ID列表 */
 export function buildLinkMap(notes: Note[]): Map<string, Set<string>> {

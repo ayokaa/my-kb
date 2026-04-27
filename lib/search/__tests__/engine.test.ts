@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { buildIndex } from '../index';
+import { buildIndex } from '../inverted-index';
 import { scoreNote, buildLinkMap, diffuseLinks, search, assembleContext } from '../engine';
 import { DEFAULT_ZONE_WEIGHTS } from '../types';
 import { RAG_NOTE, VECTOR_DB_NOTE, COOKING_NOTE, ALL_TEST_NOTES } from './fixtures';

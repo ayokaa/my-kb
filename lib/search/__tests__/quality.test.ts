@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { buildIndex } from '../index';
+import { buildIndex } from '../inverted-index';
 import { search } from '../engine';
 import { evaluateCase, summarizeMetrics, generateErrorReport, checkQualityGates, QUALITY_GATES } from '../eval';
 import { ALL_TEST_NOTES, HIT_TEST_CASES, MISS_TEST_CASES, RANK_TEST_CASES } from './fixtures';
