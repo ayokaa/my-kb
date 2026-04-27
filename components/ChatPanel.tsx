@@ -331,9 +331,9 @@ export default function ChatPanel() {
   }, [conversations, activeId, loadingConv, handleNewConversation]);
 
   return (
-    <div className="flex h-full gap-4">
+    <div className="flex h-full gap-4 overflow-hidden">
       {/* Conversation List Sidebar */}
-      <div className="flex w-52 flex-col gap-3">
+      <div className="flex h-full w-52 flex-col gap-3">
         {/* New Conversation Button */}
         <button
           onClick={handleNewConversation}
@@ -388,7 +388,7 @@ export default function ChatPanel() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col">
+      <div className="flex h-full flex-1 flex-col overflow-hidden">
         {activeId ? (
           <ChatArea
             key={activeId}
