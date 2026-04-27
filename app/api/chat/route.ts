@@ -103,7 +103,6 @@ export async function POST(req: Request) {
   if (notes.length > 0 && query.length > 0) {
     const results = search(query, notes, index, {
       statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
-      limit: 10,
       enableDiffusion: true,
       diffusionDepth: 1,
       diffusionDecay: 0.3,

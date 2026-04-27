@@ -201,56 +201,82 @@ export function search(
     for (const [id, r] of diffused) scored.set(id, r);
   }
 
-  // 排序并截取
+  // 排序，如设置了 limit 则截取
   const results = Array.from(scored.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+    .sort((a, b) => b.score - a.score);
 
+  if (limit !== undefined && limit > 0) {
+    return results.slice(0, limit);
+  }
   return results;
 }
 
 /**
  * 组装检索结果为人类可读的上下文字符串。
  *
- * 包含笔记的完整元数据 + 正文前 800 字，让 LLM 能看到更完整的内容。
+ * 使用字符预算机制：按相关度从高到低依次包含笔记内容，
+ * 尽可能多地放入上下文，而不是硬截断到固定篇数。
  */
-export function assembleContext(results: SearchResult[], maxNotes = 10): string {
+export function assembleContext(
+  results: SearchResult[],
+  options: { maxChars?: number; contentChars?: number } = {}
+): string {
+  const { maxChars = 15000, contentChars = 2000 } = options;
   const chunks: string[] = [];
+  let usedChars = 0;
+  let includedCount = 0;
 
-  for (const result of results.slice(0, maxNotes)) {
+  for (const result of results) {
     const { note, isLinkDiffusion } = result;
 
+    let chunk: string;
     if (isLinkDiffusion) {
-      chunks.push(
+      chunk =
         `【相关笔记: ${note.title}】\n` +
         `摘要: ${note.summary}\n` +
-        `关联原因: 被其他笔记引用\n`
-      );
-      continue;
+        `关联原因: 被其他笔记引用\n`;
+    } else {
+      const lines = [
+        `【笔记: ${note.title}】`,
+        `标签: ${note.tags.join(', ')}`,
+        `摘要: ${note.summary}`,
+      ];
+
+      if (note.keyFacts.length > 0) {
+        lines.push(`关键事实:\n${note.keyFacts.map(f => `- ${f}`).join('\n')}`);
+      }
+
+      if (note.qas.length > 0) {
+        const qaLines = note.qas.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n');
+        lines.push(`问答:\n${qaLines}`);
+      }
+
+      const contentPreview = note.content.slice(0, contentChars);
+      if (contentPreview.length > 0) {
+        lines.push(
+          `正文:\n${contentPreview}${note.content.length > contentChars ? '...' : ''}`
+        );
+      }
+
+      chunk = lines.join('\n') + '\n';
     }
 
-    const lines = [
-      `【笔记: ${note.title}】`,
-      `标签: ${note.tags.join(', ')}`,
-      `摘要: ${note.summary}`,
-    ];
-
-    if (note.keyFacts.length > 0) {
-      lines.push(`关键事实:\n${note.keyFacts.map(f => `- ${f}`).join('\n')}`);
+    // 预算检查：如果加上这篇会超预算，跳过（但至少要包含一篇）
+    if (usedChars + chunk.length > maxChars && includedCount > 0) {
+      break;
     }
 
-    if (note.qas.length > 0) {
-      const qaLines = note.qas.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n');
-      lines.push(`问答:\n${qaLines}`);
-    }
+    chunks.push(chunk);
+    usedChars += chunk.length;
+    includedCount++;
+  }
 
-    // 加入正文前 800 字符（让 LLM 能看到更多内容）
-    const contentPreview = note.content.slice(0, 800);
-    if (contentPreview.length > 0) {
-      lines.push(`正文:\n${contentPreview}${note.content.length > 800 ? '...' : ''}`);
-    }
-
-    chunks.push(lines.join('\n') + '\n');
+  // 如果还有未展示的笔记，告知 LLM
+  const remaining = results.length - includedCount;
+  if (remaining > 0) {
+    chunks.push(
+      `【提示】知识库中还有 ${remaining} 篇相关笔记因上下文长度限制未展示。`
+    );
   }
 
   return chunks.join('\n---\n');

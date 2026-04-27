@@ -31,7 +31,7 @@ export interface SearchResult {
 export interface SearchOptions {
   /** 只检索指定状态的笔记 */
   statusFilter?: Array<Note['status']>;
-  /** 最大返回结果数 */
+  /** 最大返回结果数，不设置则返回所有符合条件的笔记 */
   limit?: number;
   /** 是否启用关联扩散 */
   enableDiffusion?: boolean;
