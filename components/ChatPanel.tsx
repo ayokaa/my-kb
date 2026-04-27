@@ -110,9 +110,9 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
   };
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Messages */}
-      <div className="mb-4 flex flex-1 flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+      <div className="mb-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
         {messages.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent-dim)]">
