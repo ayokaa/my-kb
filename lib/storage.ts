@@ -100,7 +100,32 @@ export class FileSystemStorage implements Storage {
     return entries.filter(Boolean) as Array<{ id: string; sources: string[] }>;
   }
 
-  async saveNote(note: Note): Promise<void> {
+  async saveNote(note: Note, options?: { skipBacklinkRebuild?: boolean }): Promise<void> {
+    if (!options?.skipBacklinkRebuild) {
+      // 自动构建当前笔记的反向链接（扫描其他笔记的 links）
+      const allNotes = await this.listNotes();
+      const backlinks: typeof note.backlinks = [];
+      const lowerTitle = note.title.toLowerCase();
+      for (const other of allNotes) {
+        if (other.id === note.id) continue;
+        for (const link of other.links) {
+          const lowerTarget = link.target.toLowerCase();
+          if (
+            lowerTarget === lowerTitle ||
+            lowerTarget.includes(lowerTitle) ||
+            lowerTitle.includes(lowerTarget)
+          ) {
+            backlinks.push({
+              target: other.title,
+              weight: link.weight,
+              context: link.context,
+            });
+          }
+        }
+      }
+      note.backlinks = backlinks;
+    }
+
     const path = this.notePath(note.id);
     await this.atomicWrite(path, stringifyNote(note));
     note.filePath = path;
@@ -160,6 +185,42 @@ export class FileSystemStorage implements Storage {
     return notes;
   }
 
+  async rebuildBacklinks(): Promise<void> {
+    const allNotes = await this.listNotes();
+    const titleToNote = new Map<string, typeof allNotes[0]>();
+    for (const n of allNotes) {
+      titleToNote.set(n.title, n);
+    }
+
+    // Reset all backlinks
+    for (const n of allNotes) {
+      n.backlinks = [];
+    }
+
+    // Rebuild from links（使用与链接校验一致的子串包含匹配）
+    for (const note of allNotes) {
+      for (const link of note.links) {
+        const lowerTarget = link.target.toLowerCase();
+        const targetNote = allNotes.find((n) => {
+          if (n.id === note.id) return false;
+          const t = n.title.toLowerCase();
+          return t === lowerTarget || t.includes(lowerTarget) || lowerTarget.includes(t);
+        });
+        if (!targetNote) continue;
+        targetNote.backlinks.push({
+          target: note.title,
+          weight: link.weight,
+          context: link.context,
+        });
+      }
+    }
+
+    // Save modified notes (skip auto-rebuild to avoid recursion)
+    for (const note of allNotes) {
+      await this.saveNote(note, { skipBacklinkRebuild: true });
+    }
+  }
+
   async deleteNote(id: string): Promise<void> {
     const src = this.notePath(id);
     const dst = this.archiveNotePath(id);
@@ -196,6 +257,13 @@ export class FileSystemStorage implements Storage {
       }
     } catch (err) {
       console.warn('[Storage] Failed to clean up search index:', (err as Error).message);
+    }
+
+    // Rebuild backlinks since a note was removed
+    try {
+      await this.rebuildBacklinks();
+    } catch (err) {
+      console.warn('[Storage] Failed to rebuild backlinks after delete:', (err as Error).message);
     }
   }
 
