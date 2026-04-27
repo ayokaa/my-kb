@@ -8,7 +8,7 @@ All API routes use standard Web API signatures (`export async function GET(req: 
 
 ### `POST /api/chat`
 
-Stream a chat completion from MiniMax API.
+Stream a chat completion from MiniMax API with RAG retrieval and optional `web_fetch` tool calling.
 
 **Request body:**
 ```json
@@ -19,7 +19,21 @@ Stream a chat completion from MiniMax API.
 }
 ```
 
-**Response:** `text/event-stream` (SSE) via `ai` SDK `streamText`.
+**Response:** `text/plain` stream (SSE via `ai` SDK `formatStreamPart`).
+
+The stream emits three kinds of events:
+
+1. **Text chunks** (`formatStreamPart('text', ...)`): The LLM's response content, streamed token-by-token. `<think>...</think>` blocks are filtered server-side.
+
+2. **Source metadata** (`formatStreamPart('data', [{ type: 'sources', notes: [...] }])`): Sent at the start of the stream when relevant knowledge base notes are found. Each note contains `id`, `title`, and `score`. The frontend renders these as clickable knowledge badges.
+
+3. **Tool call events** (`formatStreamPart('data', [{ type: 'tool_call', name: 'web_fetch', url: '...' }])`): Sent when the LLM invoked the `web_fetch` tool to scrape a web page. The frontend displays a "已抓取网页" indicator during loading.
+
+**Tool calling flow:**
+1. The server searches the knowledge base and assembles a context string.
+2. A non-streaming LLM call (`stream: false`) determines whether the LLM wants to invoke tools.
+3. If `web_fetch` is called, the server executes `fetchWebContent(url)` (Playwright + Readability) and injects the extracted content into the conversation.
+4. A second streaming LLM call produces the final response.
 
 **Error:** `500` if MiniMax API fails.
 

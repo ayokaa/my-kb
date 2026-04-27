@@ -79,16 +79,18 @@ If the process crashes and restarts, `loadQueueState()` restores pending tasks a
 
 The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RAG) before calling the LLM:
 
-1. Tokenizes the last user message (Chinese character-level + English word-level).
-2. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > content).
-3. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
-4. Assembles the top results into a structured context string.
-5. Injects the context into the system prompt sent to MiniMax.
-6. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
-7. Streams the LLM response back to the client.
-8. On stream completion, enqueues a `data:` SSE event containing source metadata (`{ type: 'sources', notes: [...] }`) so the UI can display knowledge references.
+1. Loads the search index via `loadOrBuildIndex()` (5-second TTL memory cache; concurrent requests share the same promise).
+2. Tokenizes the last 3 user messages concatenated (Chinese whole-word + 2/3-char combos + English word-level).
+3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts/links/backlinks > content).
+4. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
+5. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
+6. **Tool calling (optional)**: A non-streaming LLM call (`stream: false`) with `tools` + `tool_choice: 'auto'` determines whether the LLM wants to invoke `web_fetch`. If so, the server calls `fetchWebContent(url)` and injects the extracted article into the message history as a `tool` role message.
+7. Injects the context (+ tool results if any) into the system prompt sent to MiniMax.
+8. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
+9. Streams the LLM response back to the client.
+10. On stream start, enqueues `data:` SSE events for source metadata (`{ type: 'sources', notes: [...] }`) and any tool calls (`{ type: 'tool_call', name, url }`) so the UI can display knowledge references and fetch indicators.
 
-This provides grounded, knowledge-aware answers rather than generic conversational responses.
+This provides grounded, knowledge-aware answers rather than generic conversational responses. When the knowledge base is insufficient, the LLM can fetch fresh web content on-the-fly.
 
 ---
 
@@ -234,6 +236,32 @@ Solution: A daily `relink` cron job (default `0 3 * * *`) traverses all notes an
 
 The job is enqueued as a `relink` task type and processed by the queue's per-type worker, so it never blocks ingest or RSS tasks.
 
+### Backlinks (反向链接)
+
+Links are directional (`note A → note B`). Backlinks provide the reverse view (`note B ← note A`), enabling bidirectional navigation in the UI.
+
+**Data model:** `Note.backlinks: NoteLink[]`, persisted under a `## 反向链接` Markdown section. Format mirrors `## 关联`:
+```markdown
+## 反向链接
+- [[引用此笔记的标题]] #strong — 关联上下文
+```
+
+**Auto-build on save:** `saveNote()` computes backlinks by scanning all other notes' `links` arrays. A link matches when either title contains the other (bidirectional substring, case-insensitive). This is the same fuzzy rule used by `navigateToNote()` and `rebuildBacklinks()`, ensuring consistency between storage, navigation, and rebuild.
+
+**Full rebuild:** `rebuildBacklinks()`:
+1. Loads all notes.
+2. Resets `backlinks` on every note.
+3. For each link in each note, finds the target note by fuzzy title match.
+4. Appends `{ target: sourceNote.title, weight, context }` to the target's `backlinks`.
+5. Saves all modified notes with `skipBacklinkRebuild: true` to avoid recursion.
+
+**Trigger points:**
+- `saveNote()` — auto-builds for the saved note.
+- `deleteNote()` — rebuilds after archiving (the deleted note's backlinks are removed, and notes that linked to it are updated).
+- Queue workers — `ingest` and `relink` tasks call `rebuildBacklinks()` on completion.
+
+**Indexing:** `buildNoteIndex()` indexes `backlink.target` into the inverted index with field `backlink` (weight 1.5), so searching for a note title also surfaces notes that are referenced by it.
+
 ---
 
 ## Queue Design
@@ -256,10 +284,15 @@ Queue state is serialized as JSON after every state change:
 
 ```json
 {
-  "tasks": [ /* full history */ ],
+  "tasks": [ /* active + recent history */ ],
   "pendingIds": [ "task-...", "task-..." ]
 }
 ```
+
+Persistence strategy:
+- All `pending` and `running` tasks are **always** retained (never trimmed).
+- `done` and `failed` tasks are capped at the most recent 100, sorted by `createdAt` descending.
+- `pendingIds` covers all 4 task types (`ingest`, `rss_fetch`, `web_fetch`, `relink`).
 
 On module load, the queue reads `queue.json` and re-enqueues any tasks that were `pending` or `running` (the latter are reset to `pending`).
 
@@ -299,7 +332,7 @@ Two layers of defense prevent overlapping execution:
 
 ### Why Playwright?
 
-Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Playwright launches a headless Chromium browser, waits for `networkidle`, and extracts the fully rendered DOM.
+Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Playwright launches a headless Chromium browser, executes JavaScript, and extracts the fully rendered DOM.
 
 ### Pipeline
 
@@ -311,7 +344,10 @@ URL ──Playwright──→ rendered HTML ──JSDOM──→ Document
                                        └─fallback──→ body.innerText
 ```
 
-Timeout: 20 seconds. The browser is always closed in a `finally` block.
+- Wait strategy: `domcontentloaded` (with `load` fallback), avoiding indefinite hangs from persistent analytics/tracking requests that prevent `networkidle` from ever firing.
+- Timeout: 20 seconds.
+- The browser page is always closed in a `finally` block.
+- The browser instance is a singleton; graceful shutdown on `SIGTERM`/`SIGINT`.
 
 ---
 
