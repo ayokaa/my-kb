@@ -10,6 +10,9 @@ vi.mock('@/lib/queue', () => ({
   listPending: vi.fn().mockReturnValue([
     { id: 'task-2', type: 'ingest', status: 'pending', createdAt: '2024-01-02T00:00:00Z' },
   ]),
+  listInboxPending: vi.fn().mockReturnValue([
+    { id: 'task-2', type: 'ingest', status: 'pending', createdAt: '2024-01-02T00:00:00Z' },
+  ]),
   retryTask: mockRetryTask,
 }));
 
@@ -30,6 +33,15 @@ describe('/api/tasks', () => {
     const data = await res.json();
     expect(data.tasks).toHaveLength(1);
     expect(data.tasks[0].status).toBe('pending');
+  });
+
+  it('filters inbox_pending tasks excluding rss_fetch', async () => {
+    const req = new Request('http://localhost/api/tasks?filter=inbox_pending');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.tasks).toHaveLength(1);
+    expect(data.tasks[0].type).toBe('ingest');
   });
 
   describe('POST /api/tasks', () => {

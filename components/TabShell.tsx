@@ -30,7 +30,7 @@ export default function TabShell({ notesPanel }: TabShellProps) {
   useEffect(() => {
     const poll = () => {
       if (document.visibilityState === 'hidden') return;
-      fetch('/api/tasks?filter=pending', { cache: 'no-store' })
+      fetch('/api/tasks?filter=inbox_pending', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => setTaskCount(d.tasks?.length || 0))
         .catch((err) => console.error('[TabShell] Failed to poll tasks:', err));

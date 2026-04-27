@@ -61,7 +61,7 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
                   {inboxCount}
                 </span>
               )}
-              {item.id === 'inbox' && inboxCount === 0 && taskCount > 0 && (
+              {item.id === 'tasks' && taskCount > 0 && (
                 <span className="rounded-md bg-orange-500/20 px-2 py-0.5 text-[10px] font-bold text-orange-400">
                   {taskCount}
                 </span>

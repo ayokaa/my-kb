@@ -1,11 +1,18 @@
-import { listTasks, listPending, retryTask } from '@/lib/queue';
+import { listTasks, listPending, listInboxPending, retryTask } from '@/lib/queue';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const filter = searchParams.get('filter');
 
   try {
-    const tasks = filter === 'pending' ? listPending() : listTasks();
+    let tasks;
+    if (filter === 'pending') {
+      tasks = listPending();
+    } else if (filter === 'inbox_pending') {
+      tasks = listInboxPending();
+    } else {
+      tasks = listTasks();
+    }
     return Response.json({ tasks });
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 });
