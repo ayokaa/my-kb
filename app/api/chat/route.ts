@@ -1,34 +1,80 @@
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import { formatStreamPart } from 'ai';
 import { FileSystemStorage } from '@/lib/storage';
 import { search, assembleContext } from '@/lib/search/engine';
 import { buildIndex } from '@/lib/search/inverted-index';
 import type { InvertedIndexMap } from '@/lib/search/types';
+import type { Note } from '@/lib/types';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
+
+// 模块级内存缓存：避免每次聊天请求都重复读取索引文件
+let cachedIndex: InvertedIndexMap | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 5000;
+let loadPromise: Promise<InvertedIndexMap> | null = null;
 
 /**
  * 加载或构建搜索索引。
- * 优先使用缓存的 search-index.json，不存在时全量重建。
+ * - 优先使用内存缓存（带 TTL）
+ * - 其次读取 search-index.json
+ * - 最后全量重建（复用传入的 notes 避免重复 listNotes）
  */
-async function loadOrBuildIndex(storage: FileSystemStorage): Promise<InvertedIndexMap> {
+async function loadOrBuildIndex(storage: FileSystemStorage, notes?: Note[]): Promise<InvertedIndexMap> {
+  const now = Date.now();
+
+  // 1. 内存缓存命中且未过期
+  if (cachedIndex && now - cachedAt < CACHE_TTL_MS) {
+    return cachedIndex;
+  }
+
+  // 2. 避免并发加载/重建（多个请求同时进来只触发一次）
+  if (loadPromise) {
+    return loadPromise;
+  }
+
+  loadPromise = doLoadOrBuild(storage, notes);
+  const result = await loadPromise;
+  loadPromise = null;
+  return result;
+}
+
+async function doLoadOrBuild(storage: FileSystemStorage, notes?: Note[]): Promise<InvertedIndexMap> {
   const root = storage.getRoot();
   const indexPath = join(root, 'meta', 'search-index.json');
 
+  // 3. 尝试从文件加载
   try {
     const raw = await readFile(indexPath, 'utf-8');
     const { deserializeIndex } = await import('@/lib/search/inverted-index');
     const parsed = deserializeIndex(raw);
     if (parsed) {
-      return parsed.index;
+      cachedIndex = parsed.index;
+      cachedAt = Date.now();
+      return cachedIndex;
     }
   } catch {
-    // 缓存不存在或损坏，继续重建
+    // 文件不存在或损坏，继续重建
   }
 
-  // 全量重建
-  const notes = await storage.listNotes();
-  return buildIndex(notes);
+  // 4. 全量重建（复用传入的 notes，避免和外部 listNotes 重复）
+  const noteList = notes || await storage.listNotes();
+  const index = buildIndex(noteList);
+  cachedIndex = index;
+  cachedAt = Date.now();
+
+  // 5. 异步持久化到文件（不阻塞响应）
+  (async () => {
+    try {
+      const { serializeIndex } = await import('@/lib/search/inverted-index');
+      await mkdir(dirname(indexPath), { recursive: true });
+      await writeFile(indexPath, serializeIndex(index, noteList.map((n) => n.id)));
+    } catch (err) {
+      console.warn('[Chat] Failed to persist search index:', err);
+    }
+  })();
+
+  return index;
 }
 
 const MAX_MESSAGE_LENGTH = 10000;
@@ -85,12 +131,10 @@ export async function POST(req: Request) {
     .map(m => m.content);
   const query = recentUserMessages.join(' ');
 
-  // 加载笔记和索引
+  // 加载笔记和索引（先获取 notes，再传入 loadOrBuildIndex 避免重复 listNotes）
   const storage = new FileSystemStorage();
-  const [notes, index] = await Promise.all([
-    storage.listNotes(),
-    loadOrBuildIndex(storage),
-  ]);
+  const notes = await storage.listNotes();
+  const index = await loadOrBuildIndex(storage, notes);
 
   // 执行检索（包含所有状态的笔记）
   let contextText = '';
