@@ -458,12 +458,14 @@ export default function ChatPanel() {
     [loadConversations]
   );
 
-  // Auto-create first conversation on initial mount only (not after deletion)
-  const hasAutoCreated = useRef(false);
+  // Auto-create a new conversation whenever the list becomes empty
+  const isCreatingRef = useRef(false);
   useEffect(() => {
-    if (!hasAutoCreated.current && conversations.length === 0 && !activeId && !loadingConv) {
-      hasAutoCreated.current = true;
-      handleNewConversation();
+    if (conversations.length === 0 && !activeId && !loadingConv && !isCreatingRef.current) {
+      isCreatingRef.current = true;
+      handleNewConversation().finally(() => {
+        isCreatingRef.current = false;
+      });
     }
   }, [conversations, activeId, loadingConv, handleNewConversation]);
 
