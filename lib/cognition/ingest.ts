@@ -18,7 +18,12 @@ function slugify(title: string): string {
     .replace(/-+$/, '');
 }
 
-const SYSTEM_PROMPT = `你是一个个人知识库助手。请将用户提供的原始内容分析并转换成结构化的知识笔记。
+function buildSystemPrompt(existingTitles: string[] = []): string {
+  const titleHint = existingTitles.length > 0
+    ? `\n\n知识库中已有的笔记标题（links 只能关联这些真实存在的笔记，不要编造不存在的标题）：\n${existingTitles.map(t => `- ${t}`).join('\n')}`
+    : '\n\n知识库目前没有笔记，links 留空即可。';
+
+  return `你是一个个人知识库助手。请将用户提供的原始内容分析并转换成结构化的知识笔记。
 
 要求：
 1. 用中文输出所有分析内容（原始内容中的专有名词、引用、代码保持原样）
@@ -29,6 +34,7 @@ const SYSTEM_PROMPT = `你是一个个人知识库助手。请将用户提供的
 6. 如有明确时间事件，生成时间线
 7. 生成1-3个常见问题及答案
 8. 详细内容用 Markdown 格式重新组织，保留核心信息，去除冗余
+9. links 只关联知识库中真实存在的笔记，target 必须与已有笔记标题完全匹配或高度相似${titleHint}
 
 只输出纯 JSON，不要 markdown 代码块，不要其他解释文字。JSON 格式如下：
 {
@@ -42,6 +48,7 @@ const SYSTEM_PROMPT = `你是一个个人知识库助手。请将用户提供的
   "links": [{"target": "关联笔记标题", "weight": "weak", "context": "关联原因"}],
   "content": "详细 Markdown 内容"
 }`;
+}
 
 export interface ProcessResult {
   note: Note;
@@ -141,7 +148,7 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
   }
 }
 
-export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResult> {
+export async function processInboxEntry(entry: InboxEntry, existingTitles: string[] = []): Promise<ProcessResult> {
   // For RSS or web entries, fetch original article content in background
   let content = entry.content;
   const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
@@ -151,7 +158,6 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
       content = webContent.content || entry.content;
     } catch (err) {
       console.warn(`[Ingest] Failed to fetch original content from ${originalUrl}:`, (err as Error).message);
-      // Fallback to existing feed / stored content
     }
   }
 
@@ -164,13 +170,14 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
   ].filter(Boolean).join('\n');
 
   const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 20000)}`;
+  const systemPrompt = buildSystemPrompt(existingTitles);
 
   async function callLLM(prompt: string, retries = 1): Promise<string> {
     try {
       const response = await client.chat.completions.create({
         model: MODEL,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
         temperature: 0.3,
@@ -193,16 +200,35 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    // Fallback: try to extract JSON from the response
     const match = jsonText.match(/\{[\s\S]*\}/);
     parsed = match ? JSON.parse(match[0]) : {};
   }
 
-  // Schema validation — fail fast with a descriptive error instead of silent corruption
   validateLLMOutput(parsed);
 
   const now = new Date().toISOString();
   const id = slugify(parsed.title || entry.title);
+
+  // Filter links to only point to existing notes
+  const normalizedTitles = new Set(existingTitles.map(t => t.toLowerCase()));
+  const validLinks = Array.isArray(parsed.links)
+    ? parsed.links.filter((l: any) => {
+        const target = String(l.target || '').toLowerCase();
+        if (!target) return false;
+        // Allow exact match or one contains the other (same logic as diffuseLinks)
+        return Array.from(normalizedTitles).some(
+          (t: string) => t.includes(target) || target.includes(t)
+        );
+      }).map((l: any) => ({
+        target: String(l.target || ''),
+        weight: ['strong', 'weak', 'context'].includes(l.weight) ? l.weight : 'weak',
+        context: l.context ? String(l.context) : undefined,
+      }))
+    : [];
+
+  if (Array.isArray(parsed.links) && parsed.links.length > validLinks.length) {
+    console.log(`[Ingest] Filtered ${parsed.links.length - validLinks.length} void links, kept ${validLinks.length}`);
+  }
 
   const note: Note = {
     id,
@@ -223,13 +249,7 @@ export async function processInboxEntry(entry: InboxEntry): Promise<ProcessResul
     timeline: Array.isArray(parsed.timeline)
       ? parsed.timeline.map((t: any) => ({ date: String(t.date || ''), event: String(t.event || '') }))
       : [],
-    links: Array.isArray(parsed.links)
-      ? parsed.links.map((l: any) => ({
-          target: String(l.target || ''),
-          weight: ['strong', 'weak', 'context'].includes(l.weight) ? l.weight : 'weak',
-          context: l.context ? String(l.context) : undefined,
-        }))
-      : [],
+    links: validLinks,
     qas: Array.isArray(parsed.qas)
       ? parsed.qas.map((q: any) => ({
           question: String(q.question || ''),

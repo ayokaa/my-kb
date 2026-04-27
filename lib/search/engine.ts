@@ -9,11 +9,26 @@ import type {
 import { DEFAULT_ZONE_WEIGHTS } from './types';
 import { tokenize } from './inverted-index';
 
-/** 构建 link 反向映射：目标标题 → 源笔记ID列表 */
+/** 构建 link 反向映射：目标标题 → 源笔记ID列表
+ * 只包含能找到对应笔记的 link（过滤虚空链接）
+ */
 export function buildLinkMap(notes: Note[]): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
+  const allTitles = new Map(notes.map(n => [n.title.toLowerCase(), n.id]));
+
   for (const note of notes) {
     for (const link of note.links) {
+      const target = link.target.toLowerCase();
+      // 验证目标笔记是否存在（使用与 diffuseLinks 相同的匹配逻辑）
+      let found = false;
+      for (const [title] of allTitles) {
+        if (title.includes(target) || target.includes(title)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) continue;
+
       if (!map.has(link.target)) {
         map.set(link.target, new Set());
       }
@@ -87,10 +102,11 @@ export function diffuseLinks(
 
   for (const [, result] of scoredNotes) {
     for (const link of result.note.links) {
-      // 找到目标笔记（通过标题包含匹配）
+      const targetLower = link.target.toLowerCase();
+      // 找到目标笔记（通过标题包含匹配），过滤虚空链接
       const targetNote = allNotes.find(
-        n => n.title.toLowerCase().includes(link.target.toLowerCase()) ||
-             link.target.toLowerCase().includes(n.title.toLowerCase())
+        n => n.title.toLowerCase().includes(targetLower) ||
+             targetLower.includes(n.title.toLowerCase())
       );
       if (!targetNote) continue;
 

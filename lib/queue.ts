@@ -286,7 +286,9 @@ async function runIngestTask(payload: IngestPayload) {
     }
   }
 
-  const { note } = await processInboxEntry(entry);
+  const existingNotes = await storage.listNotes();
+  const existingTitles = existingNotes.map((n) => n.title);
+  const { note } = await processInboxEntry(entry, existingTitles);
   await storage.saveNote(note);
   await storage.archiveInbox(fileName);
   broadcastNoteChanged();
