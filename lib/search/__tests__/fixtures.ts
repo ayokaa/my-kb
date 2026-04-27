@@ -13,6 +13,7 @@ export const RAG_NOTE: Note = {
   keyFacts: ['RAG 减少幻觉', '检索质量决定生成质量', '比微调更灵活'],
   timeline: [{ date: '2023-01', event: 'RAG 概念提出' }],
   links: [{ target: '向量数据库', weight: 'strong', context: 'RAG 依赖向量数据库做语义检索' }],
+  backlinks: [{ target: 'LLM 大模型', weight: 'context', context: 'RAG 是 LLM 的应用模式' }],
   qas: [
     { question: '什么是 RAG？', answer: '检索增强生成是一种结合外部知识检索的生成方法。' },
     { question: 'RAG 和微调的区别？', answer: 'RAG 不需要训练模型，通过检索动态获取知识。' },
@@ -33,6 +34,7 @@ export const VECTOR_DB_NOTE: Note = {
   keyFacts: ['支持高维向量存储', '用余弦相似度计算距离'],
   timeline: [],
   links: [{ target: 'RAG 检索增强生成', weight: 'strong', context: '向量数据库是 RAG 的基础设施' }],
+  backlinks: [],
   qas: [
     { question: '什么是向量数据库？', answer: '专门存储和检索高维向量数据的数据库。' },
   ],
@@ -52,6 +54,7 @@ export const COOKING_NOTE: Note = {
   keyFacts: ['需要五花肉', '炒糖色是关键', '小火慢炖一小时'],
   timeline: [],
   links: [],
+  backlinks: [{ target: '家常菜合集', weight: 'weak' }],
   qas: [],
   content: '红烧肉的详细做法：选材、焯水、炒糖色、炖煮。',
 };

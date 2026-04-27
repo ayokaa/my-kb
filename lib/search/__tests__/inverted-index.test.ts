@@ -95,6 +95,9 @@ describe('buildNoteIndex', () => {
 
     expect(index['向量数据库']).toBeDefined();
     expect(index['向量数据库'].some((p) => p.field === 'link')).toBe(true);
+
+    expect(index['大模型']).toBeDefined();
+    expect(index['大模型'].some((p) => p.field === 'backlink')).toBe(true);
   });
 
   test('所有 posting 包含正确的 noteId', () => {

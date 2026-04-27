@@ -98,6 +98,28 @@ describe('parseNote', () => {
     const note = parseNote(sampleNote);
     expect(note.content).toBe('RAG 的详细技术说明...');
   });
+
+  it('parses backlinks', () => {
+    const note = parseNote(`---
+id: test
+title: Test
+---
+
+# Test
+
+## 反向链接
+- [[Source A]] #strong — 引用原因
+- [[Source B]]
+`);
+    expect(note.backlinks).toHaveLength(2);
+    expect(note.backlinks[0]).toEqual({ target: 'Source A', weight: 'strong', context: '引用原因' });
+    expect(note.backlinks[1]).toEqual({ target: 'Source B', weight: 'weak', context: '' });
+  });
+
+  it('defaults backlinks to empty array', () => {
+    const note = parseNote(sampleNote);
+    expect(note.backlinks).toEqual([]);
+  });
 });
 
 describe('stringifyNote', () => {
@@ -114,6 +136,7 @@ describe('stringifyNote', () => {
     expect(reparsed.keyFacts).toEqual(original.keyFacts);
     expect(reparsed.timeline).toEqual(original.timeline);
     expect(reparsed.links).toEqual(original.links);
+    expect(reparsed.backlinks).toEqual(original.backlinks);
     expect(reparsed.qas).toEqual(original.qas);
     expect(reparsed.content).toBe(original.content);
   });
@@ -132,8 +155,36 @@ title: Empty
     expect(serialized).not.toContain('关键事实');
     expect(serialized).not.toContain('时间线');
     expect(serialized).not.toContain('关联');
+    expect(serialized).not.toContain('反向链接');
     expect(serialized).not.toContain('常见问题');
     expect(serialized).not.toContain('详细内容');
+  });
+
+  it('serializes backlinks section', () => {
+    const note: Note = {
+      id: 'test',
+      title: 'Test',
+      tags: [],
+      status: 'seed',
+      created: '2024-01-01',
+      updated: '2024-01-01',
+      sources: [],
+      summary: '',
+      personalContext: '',
+      keyFacts: [],
+      timeline: [],
+      links: [],
+      backlinks: [
+        { target: 'Source A', weight: 'strong', context: 'reason' },
+        { target: 'Source B', weight: 'weak' },
+      ],
+      qas: [],
+      content: '',
+    };
+    const serialized = stringifyNote(note);
+    expect(serialized).toContain('## 反向链接');
+    expect(serialized).toContain('- [[Source A]] #strong — reason');
+    expect(serialized).toContain('- [[Source B]]');
   });
 });
 
