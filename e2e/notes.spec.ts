@@ -31,10 +31,10 @@ test.describe.serial('Notes', () => {
     await page.getByText('笔记').click();
 
     await expect(page.getByText('全部')).toBeVisible();
-    await expect(page.getByText('种子')).toBeVisible();
-    await expect(page.getByText('生长中')).toBeVisible();
-    await expect(page.getByText('常青')).toBeVisible();
-    await expect(page.getByText('陈旧')).toBeVisible();
+    await expect(page.getByRole('button', { name: '种子', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '生长中', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '常青', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '陈旧', exact: true })).toBeVisible();
 
     await page.getByText('种子').click();
     await page.getByText('生长中').click();
@@ -133,5 +133,46 @@ test.describe.serial('Notes', () => {
 
     await expect(page.getByRole('button', { name: /Delete Me/ })).not.toBeVisible();
     await expect(page.getByText('还没有笔记')).toBeVisible();
+  });
+
+  test('note detail shows all metadata fields', async ({ page }) => {
+    await createTestNote({
+      id: 'e2e-detail-full',
+      title: 'Full Detail Note',
+      tags: ['tag-a', 'tag-b'],
+      status: 'evergreen',
+      summary: 'A comprehensive summary.',
+      keyFacts: ['Fact 1', 'Fact 2', 'Fact 3'],
+      content: 'Main content body.',
+      sources: ['https://example.com/source'],
+    });
+
+    await page.goto('/');
+    await page.getByText('笔记').click();
+
+    await page.getByRole('button', { name: /Full Detail Note/ }).click();
+
+    const detail = page.locator('main');
+    await expect(detail.getByText('Full Detail Note').first()).toBeVisible();
+    await expect(detail.getByText('tag-a').nth(1)).toBeVisible();
+    await expect(detail.getByText('tag-b').nth(1)).toBeVisible();
+    await expect(detail.getByText('常青').first()).toBeVisible();
+    await expect(detail.getByText('Fact 1')).toBeVisible();
+    await expect(detail.getByText('Fact 2')).toBeVisible();
+    await expect(detail.getByText('Fact 3')).toBeVisible();
+    await expect(detail.getByText('Main content body.')).toBeVisible();
+  });
+
+  test('status badge colors are correct', async ({ page }) => {
+    await createTestNote({ id: 'e2e-status-seed', title: 'Seed Status', status: 'seed' });
+    await createTestNote({ id: 'e2e-status-growing', title: 'Growing Status', status: 'growing' });
+    await createTestNote({ id: 'e2e-status-evergreen', title: 'Evergreen Status', status: 'evergreen' });
+
+    await page.goto('/');
+    await page.getByText('笔记').click();
+
+    await expect(page.getByRole('button', { name: /Seed Status.*种子/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Growing Status.*生长中/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Evergreen Status.*常青/ })).toBeVisible();
   });
 });

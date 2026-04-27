@@ -1,5 +1,7 @@
 import { test, expect } from './fixtures';
 import { resetTestData } from './fixtures';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
 
 test.describe.serial('RSS Subscriptions', () => {
   test.beforeEach(async () => {
@@ -46,5 +48,36 @@ test.describe.serial('RSS Subscriptions', () => {
 
     await expect(page.getByText('Test Feed', { exact: true })).not.toBeVisible();
     await expect(page.getByText('还没有订阅源')).toBeVisible();
+  });
+
+  test('can import OPML file', async ({ page }) => {
+    await page.goto('/');
+    await page.getByText('订阅').click();
+
+    const opmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline type="rss" text="Test Blog" xmlUrl="https://testblog.example.com/feed.xml" />
+    <outline type="rss" text="Another Blog" xmlUrl="https://another.example.com/rss.xml" />
+  </body>
+</opml>`;
+
+    const tmpFile = join(process.cwd(), 'knowledge-test', 'attachments', 'e2e-subscriptions.opml');
+    await writeFile(tmpFile, opmlContent);
+
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(tmpFile);
+
+    // After import, subscriptions should appear
+    await expect(page.getByText('Test Blog', { exact: true })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Another Blog', { exact: true })).toBeVisible();
+  });
+
+  test('check all button is disabled when no subscriptions', async ({ page }) => {
+    await page.goto('/');
+    await page.getByText('订阅').click();
+
+    const checkBtn = page.getByRole('button', { name: '检查更新' });
+    await expect(checkBtn).toBeDisabled();
   });
 });

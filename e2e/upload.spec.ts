@@ -44,4 +44,23 @@ test.describe.serial('Upload', () => {
     await page.getByText('收件箱').click();
     await expect(page.getByText('e2e-test-upload.txt').first()).toBeVisible();
   });
+
+  test('file input has correct accept attribute', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByText('添加知识').click();
+    await page.getByText('文件').click();
+
+    const fileInput = page.locator('input[type="file"]');
+    await expect(fileInput).toHaveAttribute('accept', '.pdf,.md,.txt,.markdown,application/pdf,text/plain,text/markdown');
+  });
+
+  test('shows supported file types hint', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByText('添加知识').click();
+    await page.getByText('文件').click();
+
+    await expect(page.getByText('支持 PDF、Markdown、TXT')).toBeVisible();
+  });
 });

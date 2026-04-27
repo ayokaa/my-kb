@@ -60,4 +60,42 @@ test.describe.serial('Ingest', () => {
     await page.getByText('添加知识').click();
     await expect(page.getByText('RSS')).toBeVisible();
   });
+
+  test('submitting link shows queued message', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByText('添加知识').click();
+    await page.getByText('链接').click();
+
+    await page.getByPlaceholder('https://...').fill('https://example.com/article');
+    await page.getByRole('button', { name: '抓取' }).click();
+
+    // Should show success feedback (either queued or immediate result)
+    await expect(page.locator('p').filter({ hasText: /已入库|已加入/ }).first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('submit button is disabled when link input is empty', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByText('添加知识').click();
+    await page.getByText('链接').click();
+
+    const submitBtn = page.getByRole('button', { name: '抓取' });
+    await expect(submitBtn).toBeDisabled();
+
+    await page.getByPlaceholder('https://...').fill('https://example.com');
+    await expect(submitBtn).toBeEnabled();
+  });
+
+  test('text submit button is disabled when content is empty', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByText('添加知识').click();
+
+    const submitBtn = page.getByRole('button', { name: '入库' });
+    await expect(submitBtn).toBeDisabled();
+
+    await page.getByPlaceholder('输入文本内容...').fill('Some content');
+    await expect(submitBtn).toBeEnabled();
+  });
 });

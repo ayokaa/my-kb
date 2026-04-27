@@ -24,4 +24,27 @@ test.describe('Chat', () => {
     const sendBtn = page.locator('button[type="submit"]');
     await expect(sendBtn).toBeVisible();
   });
+
+  test('send button is disabled when input is empty', async ({ page }) => {
+    await page.goto('/');
+
+    const input = page.getByPlaceholder('问点什么...');
+    const sendBtn = page.locator('button[type="submit"]');
+
+    await expect(sendBtn).toBeDisabled();
+
+    await input.fill('Hello');
+    await expect(sendBtn).toBeEnabled();
+
+    await input.fill('');
+    await expect(sendBtn).toBeDisabled();
+  });
+
+  test('typing in input updates value', async ({ page }) => {
+    await page.goto('/');
+
+    const input = page.getByPlaceholder('问点什么...');
+    await input.fill('Test message');
+    await expect(input).toHaveValue('Test message');
+  });
 });

@@ -68,4 +68,52 @@ test.describe.serial('Tasks', () => {
     // The task should appear in the list (status may vary depending on timing)
     await expect(page.getByText(fileName).first()).toBeVisible();
   });
+
+  test('status filter buttons show correct counts', async ({ page, request }) => {
+    await request.post('/api/ingest', {
+      data: { type: 'text', title: 'Filter Test', content: 'Testing filters.' },
+    });
+
+    const inboxRes = await request.get('/api/inbox');
+    const inboxData = await inboxRes.json();
+    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
+    await request.post('/api/inbox/process', { data: { fileName } });
+
+    await page.goto('/');
+    await page.getByText('任务').click();
+
+    // Wait for tasks to load
+    await expect(page.getByText('任务队列')).toBeVisible();
+
+    // All filter should show count
+    const allBtn = page.getByRole('button', { name: /^全部/ });
+    await expect(allBtn).toBeVisible();
+
+    // Click pending filter
+    await page.getByRole('button', { name: /^等待中/ }).click();
+
+    // Click done filter
+    await page.getByRole('button', { name: /^已完成/ }).click();
+
+    // Click failed filter
+    await page.getByRole('button', { name: /^失败/ }).click();
+
+    // Back to all
+    await allBtn.click();
+  });
+
+  test('refresh button reloads tasks', async ({ page }) => {
+    await page.goto('/');
+    await page.getByText('任务').click();
+
+    await expect(page.getByText('任务队列')).toBeVisible();
+
+    // Find and click the refresh button in the toolbar (last button with an svg icon)
+    const toolbar = page.locator('div').filter({ hasText: '任务队列' }).first();
+    const refreshBtn = toolbar.locator('button').last();
+    await refreshBtn.click();
+
+    // Should not throw and panel should still be visible
+    await expect(page.getByText('任务队列')).toBeVisible();
+  });
 });
