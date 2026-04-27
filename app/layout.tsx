@@ -15,6 +15,11 @@ if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
   }).catch(() => {
     // Cron not available in some runtimes (e.g. edge), that's fine
   });
+  import('@/lib/relink/cron').then(({ startRelinkCron }) => {
+    startRelinkCron();
+  }).catch(() => {
+    // Cron not available in some runtimes (e.g. edge), that's fine
+  });
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

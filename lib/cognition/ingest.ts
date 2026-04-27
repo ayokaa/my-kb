@@ -153,12 +153,17 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
 const FULL_PASS_THRESHOLD = 10;
 const CANDIDATE_LIMIT = 5;
 
-export function selectCandidateTitles(entry: InboxEntry, existingNotes: Note[]): string[] {
+interface TextSource {
+  title: string;
+  content: string;
+}
+
+export function selectCandidateTitles(source: TextSource, existingNotes: Note[]): string[] {
   if (existingNotes.length <= FULL_PASS_THRESHOLD) {
     return existingNotes.map((n) => n.title);
   }
 
-  const query = `${entry.title} ${entry.content.slice(0, 5000)}`;
+  const query = `${source.title} ${source.content.slice(0, 5000)}`;
   const index = buildIndex(existingNotes);
   const results = search(query, existingNotes, index, {
     limit: CANDIDATE_LIMIT,

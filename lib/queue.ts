@@ -10,8 +10,9 @@ import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
 import { broadcastNoteChanged } from './events';
+import { runRelinkJob } from './cognition/relink';
 
-export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch';
+export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink';
 
 export interface IngestPayload {
   fileName: string;
@@ -28,7 +29,9 @@ export interface WebFetchPayload {
   url: string;
 }
 
-export type TaskPayload = IngestPayload | RSSFetchPayload | WebFetchPayload;
+export interface RelinkPayload {}
+
+export type TaskPayload = IngestPayload | RSSFetchPayload | WebFetchPayload | RelinkPayload;
 
 export interface Task {
   id: string;
@@ -47,11 +50,13 @@ const pendingByType: Record<TaskType, string[]> = {
   ingest: [],
   rss_fetch: [],
   web_fetch: [],
+  relink: [],
 };
 const workerRunningByType: Record<TaskType, boolean> = {
   ingest: false,
   rss_fetch: false,
   web_fetch: false,
+  relink: false,
 };
 let saveLock: Promise<void> = Promise.resolve();
 let workerInitialized = false;
@@ -198,6 +203,11 @@ async function startWorker(type: TaskType) {
         task.status = 'done';
         task.result = result;
         console.log(`[Queue] Task ${id} web fetch completed`, result.title || '');
+      } else if (task.type === 'relink') {
+        const result = await runRelinkTask();
+        task.status = 'done';
+        task.result = result;
+        console.log(`[Queue] Task ${id} relink completed`, result);
       }
     } catch (err) {
       task.status = 'failed';
@@ -219,7 +229,7 @@ export function initQueue() {
   if (workerInitialized) return;
   workerInitialized = true;
   loadQueueState().then(() => {
-    for (const type of ['ingest', 'rss_fetch', 'web_fetch'] as TaskType[]) {
+    for (const type of ['ingest', 'rss_fetch', 'web_fetch', 'relink'] as TaskType[]) {
       if (pendingByType[type].length > 0) {
         console.log(`[Queue] Auto-starting worker for ${type} with ${pendingByType[type].length} restored tasks`);
         startWorker(type);
@@ -256,6 +266,14 @@ async function runRSSFetchTask(payload: RSSFetchPayload) {
   const items = await fetchRSS(url);
   const entries = await ingestRSSItems(url, name || url, items, maxItems);
   return { count: entries.length, url, name: name || url };
+}
+
+async function runRelinkTask() {
+  const storage = new FileSystemStorage();
+  return await runRelinkJob(
+    () => storage.listNotes(),
+    (note) => storage.saveNote(note)
+  );
 }
 
 async function runIngestTask(payload: IngestPayload) {
