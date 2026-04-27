@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { processInboxEntry, validateLLMOutput } from '../ingest';
+import { processInboxEntry, validateLLMOutput, selectCandidateTitles } from '../ingest';
+import type { Note } from '../../types';
 
 vi.mock('openai', () => ({
   default: vi.fn(function() {
@@ -134,6 +135,73 @@ describe('processInboxEntry', () => {
     const { note } = await processInboxEntry(entry);
     expect(note.title).toBe('AI Agents in Zed'); // LLM mock still returns same title
     // The content passed to LLM should still contain the original entry content
+  });
+});
+
+describe('selectCandidateTitles', () => {
+  function makeNote(title: string, tags: string[] = [], summary = ''): Note {
+    return {
+      id: title.toLowerCase().replace(/\s+/g, '-'),
+      title,
+      tags,
+      status: 'seed',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      sources: [],
+      summary,
+      personalContext: '',
+      keyFacts: [],
+      timeline: [],
+      links: [],
+      qas: [],
+      content: summary || title,
+    };
+  }
+
+  it('returns all titles when note count <= 10', () => {
+    const notes = Array.from({ length: 10 }, (_, i) => makeNote(`Note ${i}`));
+    const entry = { sourceType: 'text' as const, title: 'Test', content: 'hello world', rawMetadata: {} };
+    const candidates = selectCandidateTitles(entry, notes);
+    expect(candidates).toHaveLength(10);
+    expect(candidates).toContain('Note 0');
+    expect(candidates).toContain('Note 9');
+  });
+
+  it('returns top 15 candidates via search when note count > 10', () => {
+    // 15 irrelevant notes + 5 relevant notes
+    const irrelevant = Array.from({ length: 15 }, (_, i) =>
+      makeNote(`Irrelevant ${i}`, ['random', 'noise'], 'something unrelated')
+    );
+    const relevant = [
+      makeNote('React Hooks Guide', ['react', 'hooks'], 'A guide to React hooks and state management'),
+      makeNote('TypeScript Tips', ['typescript', 'types'], 'Advanced TypeScript patterns'),
+      makeNote('Node.js Performance', ['nodejs', 'performance'], 'Optimizing Node.js applications'),
+      makeNote('Frontend Architecture', ['frontend', 'architecture'], 'Scalable frontend design'),
+      makeNote('CSS Grid Layout', ['css', 'layout'], 'Modern CSS layout techniques'),
+    ];
+    const allNotes = [...irrelevant, ...relevant];
+
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Advanced React Patterns with TypeScript',
+      content: 'This article covers React hooks, TypeScript integration, and frontend architecture best practices.',
+      rawMetadata: {},
+    };
+
+    const candidates = selectCandidateTitles(entry, allNotes);
+
+    // Should be limited to 5
+    expect(candidates.length).toBeLessThanOrEqual(5);
+    // Should prefer relevant notes
+    expect(candidates).toContain('React Hooks Guide');
+    expect(candidates).toContain('TypeScript Tips');
+    expect(candidates).toContain('Frontend Architecture');
+  });
+
+  it('returns empty array when no notes exist', () => {
+    const entry = { sourceType: 'text' as const, title: 'Test', content: 'hello', rawMetadata: {} };
+    const candidates = selectCandidateTitles(entry, []);
+    expect(candidates).toEqual([]);
   });
 });
 

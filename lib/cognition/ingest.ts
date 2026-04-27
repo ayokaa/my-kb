@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import type { InboxEntry, Note, NoteLink, TimelineEntry, QAEntry } from '../types';
 import { fetchWebContent } from '../ingestion/web';
+import { buildIndex } from '../search/inverted-index';
+import { search } from '../search/engine';
 
 const client = new OpenAI({
   apiKey: process.env.MINIMAX_API_KEY || '',
@@ -148,7 +150,26 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
   }
 }
 
-export async function processInboxEntry(entry: InboxEntry, existingTitles: string[] = []): Promise<ProcessResult> {
+const FULL_PASS_THRESHOLD = 10;
+const CANDIDATE_LIMIT = 5;
+
+export function selectCandidateTitles(entry: InboxEntry, existingNotes: Note[]): string[] {
+  if (existingNotes.length <= FULL_PASS_THRESHOLD) {
+    return existingNotes.map((n) => n.title);
+  }
+
+  const query = `${entry.title} ${entry.content.slice(0, 5000)}`;
+  const index = buildIndex(existingNotes);
+  const results = search(query, existingNotes, index, {
+    limit: CANDIDATE_LIMIT,
+    enableDiffusion: false,
+    statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
+  });
+
+  return results.map((r) => r.note.title);
+}
+
+export async function processInboxEntry(entry: InboxEntry, existingNotes: Note[] = []): Promise<ProcessResult> {
   // For RSS or web entries, fetch original article content in background
   let content = entry.content;
   const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
@@ -169,8 +190,9 @@ export async function processInboxEntry(entry: InboxEntry, existingTitles: strin
     entry.rawMetadata?.original_filename && `原始文件: ${entry.rawMetadata.original_filename}`,
   ].filter(Boolean).join('\n');
 
+  const candidateTitles = selectCandidateTitles(entry, existingNotes);
   const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 20000)}`;
-  const systemPrompt = buildSystemPrompt(existingTitles);
+  const systemPrompt = buildSystemPrompt(candidateTitles);
 
   async function callLLM(prompt: string, retries = 1): Promise<string> {
     try {
@@ -210,7 +232,8 @@ export async function processInboxEntry(entry: InboxEntry, existingTitles: strin
   const id = slugify(parsed.title || entry.title);
 
   // Filter links to only point to existing notes
-  const normalizedTitles = new Set(existingTitles.map(t => t.toLowerCase()));
+  const allTitles = existingNotes.map((n) => n.title);
+  const normalizedTitles = new Set(allTitles.map((t) => t.toLowerCase()));
   const validLinks = Array.isArray(parsed.links)
     ? parsed.links.filter((l: any) => {
         const target = String(l.target || '').toLowerCase();
