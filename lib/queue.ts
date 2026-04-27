@@ -9,6 +9,7 @@ import { fetchRSS } from './ingestion/rss';
 import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
+import { broadcastNoteChanged } from './events';
 
 export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch';
 
@@ -241,6 +242,7 @@ async function runWebFetchTask(payload: WebFetchPayload) {
     content: web.content,
     rawMetadata: { source_url: url, excerpt: web.excerpt },
   });
+  broadcastNoteChanged();
   return { ok: true, title: web.title, url };
 }
 
@@ -287,4 +289,5 @@ async function runIngestTask(payload: IngestPayload) {
   const { note } = await processInboxEntry(entry);
   await storage.saveNote(note);
   await storage.archiveInbox(fileName);
+  broadcastNoteChanged();
 }

@@ -1,4 +1,5 @@
 import { FileSystemStorage } from '@/lib/storage';
+import { broadcastNoteChanged } from '@/lib/events';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,6 +17,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const storage = new FileSystemStorage();
   try {
     await storage.deleteNote(decodeURIComponent(id));
+    broadcastNoteChanged();
     return Response.json({ ok: true });
   } catch (err: any) {
     return Response.json({ error: err.message }, { status: 500 });
