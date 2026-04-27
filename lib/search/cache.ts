@@ -30,9 +30,12 @@ export async function loadOrBuildIndex(storage: FileSystemStorage, notes?: Note[
   }
 
   loadPromise = doLoadOrBuild(storage, notes);
-  const result = await loadPromise;
-  loadPromise = null;
-  return result;
+  try {
+    const result = await loadPromise;
+    return result;
+  } finally {
+    loadPromise = null;
+  }
 }
 
 async function doLoadOrBuild(storage: FileSystemStorage, notes?: Note[]): Promise<InvertedIndexMap> {

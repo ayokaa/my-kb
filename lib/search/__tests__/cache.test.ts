@@ -117,4 +117,19 @@ describe('loadOrBuildIndex', () => {
     const index = await loadOrBuildIndex(storage);
     expect(index['second']).toBeDefined();
   });
+
+  it('recovers from failed index build (loadPromise deadlock)', async () => {
+    // First call: make listNotes throw to trigger a build failure
+    const listNotesSpy = vi.spyOn(storage, 'listNotes').mockRejectedValue(new Error('disk error'));
+
+    await expect(loadOrBuildIndex(storage)).rejects.toThrow('disk error');
+
+    listNotesSpy.mockRestore();
+
+    // Second call: should succeed, not be permanently blocked by the failed promise
+    const notes = [makeNote('n1', 'Recovery Note')];
+    const index = await loadOrBuildIndex(storage, notes);
+    expect(index).toBeDefined();
+    expect(Object.keys(index).length).toBeGreaterThan(0);
+  });
 });
