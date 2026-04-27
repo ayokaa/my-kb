@@ -164,6 +164,70 @@ describe('FileSystemStorage', () => {
     });
   });
 
+  describe('backlinks', () => {
+    it('saveNote auto-builds backlinks from other notes links', async () => {
+      // Note A links to Note B
+      await storage.saveNote(createTestNote('note-a', {
+        links: [{ target: 'note-b', weight: 'strong', context: 'related' }],
+      }));
+      // Note B should get a backlink from Note A
+      await storage.saveNote(createTestNote('note-b'));
+
+      const noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(1);
+      expect(noteB.backlinks[0]).toEqual({ target: 'note-a', weight: 'strong', context: 'related' });
+    });
+
+    it('saveNote uses fuzzy substring match for backlinks', async () => {
+      // Note A links to "GPU" (substring of "GPU 并行计算")
+      await storage.saveNote(createTestNote('note-a', {
+        title: 'Note A',
+        links: [{ target: 'GPU', weight: 'context' }],
+      }));
+      // Note B's title is "GPU 并行计算" — should match via substring
+      await storage.saveNote(createTestNote('note-b', { title: 'GPU 并行计算' }));
+
+      const noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(1);
+      expect(noteB.backlinks[0].target).toBe('Note A');
+    });
+
+    it('rebuildBacklinks rebuilds all backlinks', async () => {
+      await storage.saveNote(createTestNote('note-a', {
+        links: [{ target: 'note-b', weight: 'strong' }],
+      }));
+      await storage.saveNote(createTestNote('note-b'), { skipBacklinkRebuild: true });
+      await storage.saveNote(createTestNote('note-c', {
+        links: [{ target: 'note-b', weight: 'weak', context: 'refs' }],
+      }));
+
+      // Note B was saved with skipBacklinkRebuild, so its backlinks are empty
+      let noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(0);
+
+      await storage.rebuildBacklinks();
+
+      noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(2);
+      expect(noteB.backlinks.map(b => b.target).sort()).toEqual(['note-a', 'note-c']);
+    });
+
+    it('deleteNote removes backlinks referencing deleted note', async () => {
+      await storage.saveNote(createTestNote('note-a', {
+        links: [{ target: 'note-b', weight: 'strong' }],
+      }));
+      await storage.saveNote(createTestNote('note-b'));
+
+      let noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(1);
+
+      await storage.deleteNote('note-a');
+
+      noteB = await storage.loadNote('note-b');
+      expect(noteB.backlinks).toHaveLength(0);
+    });
+  });
+
   // ===== Inbox =====
 
   describe('getRoot', () => {
