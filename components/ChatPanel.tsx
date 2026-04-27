@@ -54,8 +54,10 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
   const [sources, setSources] = useState<SourceNote[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const savedRef = useRef(false);
+  const pendingQueueRef = useRef<string[]>([]);
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, data, setMessages } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, data, setMessages, append } = useChat({
     id: conversationId,
     initialMessages: initialMessages.map((m) => ({
       id: m.id,
@@ -80,12 +82,19 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
               createdAt: new Date().toISOString(),
             })),
           ];
-          // Also include the assistant message that just finished
-          // useChat hasn't added it to messages yet at onFinish time in some versions
-          // So we trigger save after a short delay
           onSave(conversationId, allMessages);
         }, 100);
       }
+      // Process queued messages
+      setTimeout(() => {
+        if (pendingQueueRef.current.length > 0) {
+          const next = pendingQueueRef.current.shift();
+          setQueuedMessages((prev) => prev.slice(1));
+          if (next) {
+            append({ role: 'user', content: next });
+          }
+        }
+      }, 50);
     },
   });
 
@@ -116,7 +125,18 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
   }, [data, onSources]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     savedRef.current = false;
+    if (!input.trim()) return;
+
+    if (isLoading) {
+      // Queue the message
+      pendingQueueRef.current.push(input);
+      setQueuedMessages((prev) => [...prev, input]);
+      handleInputChange({ target: { value: '' } } as any);
+      return;
+    }
+
     handleSubmit(e);
   };
 
@@ -217,6 +237,28 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
           </div>
         )}
 
+        {/* Queued messages */}
+        {queuedMessages.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {queuedMessages.map((q, i) => (
+              <div key={`queued-${i}`} className="flex justify-end">
+                <div className="flex max-w-[82%] flex-row-reverse gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)]">
+                    <User className="h-3.5 w-3.5 text-[var(--bg-primary)]" />
+                  </div>
+                  <div className="rounded-2xl rounded-br-md bg-[var(--accent)] px-4 py-3 text-sm text-[var(--bg-primary)] opacity-60">
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] opacity-70">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      排队中
+                    </div>
+                    <div className="whitespace-pre-wrap break-words">{q}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -263,10 +305,17 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
         <button
           type="submit"
           aria-label="发送"
-          disabled={isLoading || !input.trim()}
+          disabled={!input.trim()}
           className="btn-primary flex items-center gap-2 px-5 py-3.5 text-sm disabled:opacity-40"
         >
-          <Send className="h-4 w-4" />
+          {isLoading ? (
+            <span className="flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {queuedMessages.length > 0 && <span className="text-[10px]">+{queuedMessages.length}</span>}
+            </span>
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </button>
       </form>
     </>
