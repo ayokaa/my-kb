@@ -14,6 +14,7 @@ export type SearchField =
   | 'keyFact'
   | 'summary'
   | 'link'
+  | 'backlink'
   | 'content';
 
 /** 内存中的倒排索引 */
@@ -54,6 +55,7 @@ export const DEFAULT_ZONE_WEIGHTS: ZoneWeights = {
   summary: 1.8,
   keyFact: 1.5,
   link: 1.5,
+  backlink: 1.2,
   content: 0.8,
 };
 

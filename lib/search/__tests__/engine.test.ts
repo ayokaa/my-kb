@@ -176,6 +176,16 @@ describe('search', () => {
     // rag-overview 的 title 同时包含 RAG 和 检索
     expect(results[0].note.id).toBe('rag-overview');
   });
+
+  test('backlink field has non-zero weight in scoring', () => {
+    // Verify that 'backlink' is a valid SearchField with a positive weight
+    expect(DEFAULT_ZONE_WEIGHTS.backlink).toBeGreaterThan(0);
+    // Verify backlink postings actually contribute to score
+    const idx = buildIndex([RAG_NOTE]);
+    const { score } = scoreNote('rag-overview', ['大模型'], idx);
+    // '大模型' appears in backlinks of RAG_NOTE — should contribute positive score
+    expect(score).toBeGreaterThan(0);
+  });
 });
 
 describe('assembleContext', () => {
