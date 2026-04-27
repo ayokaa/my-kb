@@ -31,8 +31,8 @@ export class FileSystemStorage implements Storage {
     return join(this.root, 'notes', `${id}.md`);
   }
 
-  private conversationPath(date: string): string {
-    return join(this.root, 'conversations', `${date}.md`);
+  private conversationPath(id: string): string {
+    return join(this.root, 'conversations', `${id}.md`);
   }
 
   private searchIndexPath(): string {
@@ -201,16 +201,27 @@ export class FileSystemStorage implements Storage {
 
   // ===== Conversation =====
 
-  async loadConversation(date: string): Promise<Conversation> {
-    const path = this.conversationPath(date);
+  async loadConversation(id: string): Promise<Conversation> {
+    const path = this.conversationPath(id);
     const raw = await readFile(path, 'utf-8');
     return this.parseConversation(raw, path);
   }
 
   async saveConversation(conv: Conversation): Promise<void> {
-    const path = this.conversationPath(conv.date);
+    const id = conv.id || conv.date;
+    const path = this.conversationPath(id);
+    conv.id = id;
+    conv.updatedAt = new Date().toISOString();
     await this.atomicWrite(path, this.stringifyConversation(conv));
     conv.filePath = path;
+  }
+
+  async deleteConversation(id: string): Promise<void> {
+    try {
+      await unlink(this.conversationPath(id));
+    } catch {
+      // ignore if not exists
+    }
   }
 
   async listConversations(): Promise<Conversation[]> {
@@ -224,14 +235,16 @@ export class FileSystemStorage implements Storage {
 
     const convs: Conversation[] = [];
     for (const file of files.filter(f => f.endsWith('.md'))) {
-      const date = basename(file, '.md');
+      const id = basename(file, '.md');
       try {
-        convs.push(await this.loadConversation(date));
+        const conv = await this.loadConversation(id);
+        if (!conv.id) conv.id = id;
+        convs.push(conv);
       } catch (err) {
-        console.warn(`[Storage] Skip corrupted conversation "${date}":`, (err as Error).message);
+        console.warn(`[Storage] Skip corrupted conversation "${id}":`, (err as Error).message);
       }
     }
-    return convs.sort((a, b) => a.date.localeCompare(b.date));
+    return convs.sort((a, b) => (b.updatedAt || b.date).localeCompare(a.updatedAt || a.date));
   }
 
   // ===== Meta: Inverted Index =====
@@ -455,13 +468,16 @@ export class FileSystemStorage implements Storage {
       }
     }
 
+    const id = String(fm.id || basename(path, '.md'));
     const conv: Conversation = {
-      date: String(fm.date || basename(path, '.md')),
+      id,
+      date: String(fm.date || id),
       topics: Array.isArray(fm.topics) ? fm.topics.map(String) : [],
       status: (fm.status as Conversation['status']) || 'open',
       turns: [],
       agentActions: Array.isArray(fm.agent_actions) ? fm.agent_actions.map(String) : [],
       filePath: path,
+      updatedAt: String(fm.updated_at || fm.date || ''),
     };
 
     // Simple parser for Q/A blocks
@@ -480,10 +496,12 @@ export class FileSystemStorage implements Storage {
 
   private stringifyConversation(conv: Conversation): string {
     const fm = {
+      id: conv.id,
       date: conv.date,
       topics: conv.topics,
       status: conv.status,
       agent_actions: conv.agentActions,
+      updated_at: conv.updatedAt,
     };
 
     const lines: string[] = [

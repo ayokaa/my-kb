@@ -47,12 +47,14 @@ export interface ConversationTurn {
 }
 
 export interface Conversation {
+  id: string;
   date: string;
   topics: string[];
   status: 'open' | 'resolved';
   turns: ConversationTurn[];
   agentActions: string[];
   filePath?: string;
+  updatedAt?: string;
 }
 
 export interface InboxEntry {
@@ -86,8 +88,10 @@ export interface Storage {
   saveNote(note: Note): Promise<void>;
   listNotes(): Promise<Note[]>;
   deleteNote(id: string): Promise<void>;
-  loadConversation(date: string): Promise<Conversation>;
+  loadConversation(id: string): Promise<Conversation>;
   saveConversation(conv: Conversation): Promise<void>;
+  deleteConversation(id: string): Promise<void>;
+  listConversations(): Promise<Conversation[]>;
   loadIndex(): Promise<InvertedIndex>;
   saveIndex(index: InvertedIndex): Promise<void>;
   loadAliases(): Promise<AliasMapping[]>;

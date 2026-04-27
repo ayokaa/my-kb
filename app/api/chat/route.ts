@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import OpenAI from 'openai';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { formatStreamPart } from 'ai';
 import { FileSystemStorage } from '@/lib/storage';
 import { search, assembleContext } from '@/lib/search/engine';
 import { buildIndex } from '@/lib/search/inverted-index';
@@ -61,6 +61,12 @@ function validateMessages(messages: unknown): Array<{ role: string; content: str
   return messages as Array<{ role: string; content: string }>;
 }
 
+/** 过滤 think 标签及其内容 */
+function filterThink(content: string): string {
+  // 处理多行 <think>...</think>
+  return content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
 export async function POST(req: Request) {
   let body: { messages?: unknown };
   try {
@@ -90,6 +96,7 @@ export async function POST(req: Request) {
 
   // 执行检索
   let contextText = '';
+  let searchResults: Array<{ id: string; title: string; score: number }> = [];
   if (notes.length > 0 && query.length > 0) {
     const results = search(query, notes, index, {
       statusFilter: ['evergreen', 'growing'],
@@ -101,6 +108,11 @@ export async function POST(req: Request) {
 
     if (results.length > 0) {
       contextText = assembleContext(results);
+      searchResults = results.map((r) => ({
+        id: r.note.id,
+        title: r.note.title,
+        score: r.score,
+      }));
     }
   }
 
@@ -114,11 +126,81 @@ export async function POST(req: Request) {
     model: 'MiniMax-M2.7',
     messages: [
       { role: 'system', content: systemContent },
-      ...messages,
+      ...messages.map((m) => ({ role: m.role as 'user' | 'assistant' | 'system', content: m.content })),
     ],
     stream: true,
   });
 
-  const stream = OpenAIStream(response as any);
-  return new StreamingTextResponse(stream);
+  // 自定义 ReadableStream：过滤 think + 发送来源数据
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      // 先发送检索来源数据
+      if (searchResults.length > 0) {
+        controller.enqueue(
+          encoder.encode(formatStreamPart('data', [{ type: 'sources', notes: searchResults }]))
+        );
+      }
+
+      let inThink = false;
+      let thinkBuffer = '';
+
+      try {
+        for await (const chunk of response as any) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          if (!content) continue;
+
+          // 处理 think 标签（支持跨 chunk）
+          let output = '';
+          for (let i = 0; i < content.length; i++) {
+            const char = content[i];
+            if (!inThink) {
+              thinkBuffer += char;
+              if (thinkBuffer.endsWith('<think>')) {
+                inThink = true;
+                thinkBuffer = '';
+              } else if (thinkBuffer.length > 7) {
+                output += thinkBuffer[0];
+                thinkBuffer = thinkBuffer.slice(1);
+              }
+            } else {
+              thinkBuffer += char;
+              if (thinkBuffer.endsWith('</think>')) {
+                inThink = false;
+                thinkBuffer = '';
+              }
+            }
+          }
+
+          // 如果不在 think 中，输出 buffer 中剩余的非 think 前缀
+          if (!inThink && thinkBuffer.length > 0 && !thinkBuffer.includes('<think>')) {
+            output += thinkBuffer;
+            thinkBuffer = '';
+          }
+
+          if (output) {
+            controller.enqueue(encoder.encode(formatStreamPart('text', output)));
+          }
+        }
+
+        // 处理结尾：如果还有剩余的非 think 内容，输出
+        if (!inThink && thinkBuffer.length > 0) {
+          controller.enqueue(encoder.encode(formatStreamPart('text', thinkBuffer)));
+        }
+
+        // stream finished
+      } catch (err) {
+        console.error('[Chat] Stream error:', err);
+        controller.error(err);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
 }
