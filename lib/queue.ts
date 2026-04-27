@@ -75,11 +75,14 @@ async function saveQueueState() {
       const queuePath = getQueuePath();
       try {
         await mkdir(dirname(queuePath), { recursive: true });
-        // Retain the most recent 100 tasks (by createdAt desc) to prevent unbounded growth
+        // Retain the most recent 100 tasks, but never drop pending/running ones
         const allTasks = Array.from(tasks.values());
-        const trimmedTasks = allTasks
+        const activeTasks = allTasks.filter((t) => t.status === 'pending' || t.status === 'running');
+        const doneTasks = allTasks.filter((t) => t.status !== 'pending' && t.status !== 'running');
+        const trimmedDone = doneTasks
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .slice(0, 100);
+          .slice(0, Math.max(0, 100 - activeTasks.length));
+        const trimmedTasks = [...activeTasks, ...trimmedDone];
 
         const state = {
           tasks: trimmedTasks,
@@ -110,6 +113,13 @@ async function loadQueueState() {
       if (task && (task.status === 'pending' || task.status === 'running')) {
         task.status = 'pending';
         pendingByType[task.type].push(id);
+      }
+    }
+    // Also recover any running tasks that were in progress during shutdown
+    for (const t of state.tasks || []) {
+      if (t.status === 'running' && !pendingByType[t.type].includes(t.id)) {
+        t.status = 'pending';
+        pendingByType[t.type].push(t.id);
       }
     }
     const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length + pendingByType.relink.length;
