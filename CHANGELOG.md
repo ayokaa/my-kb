@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 - **`runIngestTask` missing-file handling**: The queue worker now calls `stat()` on the inbox file before `readFile()`. If the file is missing, the task is marked `failed` with a clear error message (`Inbox file not found: {fileName}`) instead of crashing the worker with an unhandled `ENOENT`. (`f0f6cd5`)
 - **RSS cron missed-execution pile-up**: `lib/rss/cron.ts` now guards the callback with an `isRunning` lock. If a previous tick is still enqueueing feed checks, subsequent ticks are skipped with a log message instead of overlapping and producing `missed execution` warnings. (`21110d2`)
 - **Playwright dev-server collision**: `playwright.config.ts` now launches the test server on port `3001` (`npx next dev -p 3001`) with `baseURL: http://localhost:3001`. This prevents Playwright from accidentally reusing a user's regular dev server on `:3000` (which uses the production `knowledge/` directory instead of `knowledge-test/`). (`b9cca0c`)
+- **PDF parsing ESM import**: Fixed `pdf-parse` v2.4.5 ESM compatibility by using `new PDFParse({ data: buffer })` with an explicit `PDFJS_WORKER_PATH`, resolving `dist` path resolution failures. (`e03d236`)
+- **Task queue blocking**: Replaced the single serial worker with per-type isolated workers (`ingest`, `rss_fetch`, `web_fetch`). Tasks of different types no longer block each other, improving throughput. (`25e263c`)
 
 ### Added
 
@@ -23,10 +25,31 @@ All notable changes to this project are documented in this file.
 - **RSS Panel accessibility**: Delete-subscription button now has `aria-label="删除订阅"` for reliable E2E targeting and screen-reader support. (`eed491d`)
 - **Unit tests for cron lock**: `lib/rss/__tests__/cron.test.ts` (4 tests) covers interval expression, enqueue behavior, overlap-skipping logic, and duplicate-start prevention. (`21110d2`)
 - **Unit tests for missing-file resilience**: `lib/__tests__/storage.test.ts` and `lib/__tests__/queue.test.ts` each gained one test verifying graceful handling when an inbox file disappears mid-processing. (`f0f6cd5`)
+- **SSE event bus**: New `/api/events` endpoint provides a Server-Sent Events stream for server-to-client push notifications. (`46eb289`)
+- **Note change broadcasting**: `saveNote()` and `deleteNote()` now emit `changed` events through the event bus after completing, driving real-time UI refreshes. (`a1242e5`)
+- **Conversation management API**: Added `/api/conversations` (list/create) and `/api/conversations/[id]` (load/save) endpoints for multi-session persistence. Conversation IDs use `conv-{timestamp}-{random}` format and are sorted by `updatedAt` descending. (`32f3504`)
+- **web_fetch task type**: Link ingestion (`POST /api/ingest` with `type: 'link'`) is now asynchronous via the task queue, returning `202 Accepted` + `taskId` immediately. (`81b9bc1`)
+- **inbox_pending filtering**: Added `listInboxPending()` and `GET /api/inbox?filter=inbox_pending` for retrieving inbox entries that have not yet been queued for processing. (`48e04e2`)
+- **Upload file type restriction**: Frontend `<input accept=".pdf,.txt,.md">` + backend MIME type validation (`application/pdf`, `text/plain`, `text/markdown`). Illegal types are rejected with `415 Unsupported Media Type`. (`c0b8dea`)
+- **Upload duplicate detection**: `POST /api/upload` returns `skipped: true` when a file with the same hash already exists in the attachments directory, avoiding duplicate storage. (`0d02010`)
+- **Notes panel SSE real-time refresh**: `NotesPanel` switched from 3-second polling to listening on `/api/events` SSE; the list auto-reloads when notes change. (`d77902e`)
+- **Panel activation auto-refresh**: `InboxPanel`, `TasksPanel`, and `RSSPanel` trigger data refresh when activated via `TabShell` tab switching. (`040f34d`)
+- **ChatPanel overhaul**: Rebuilt with conversation list sidebar, Markdown rendering (`react-markdown` + `remark-gfm`), auto-scroll to bottom, knowledge source badges, and a "New Conversation" button. (`1b95a91`)
+- **Chat retrieval source display**: LLM responses return retrieval source metadata via SSE `data:` events (`{ type: 'sources', notes: [...] }`). `ChatPanel` parses `useChat`'s `data` array and renders clickable knowledge badges below assistant messages. (`32f3504`)
+- **Test coverage expansion**:
+  - Unit tests: `lib/events.ts` (4 tests), `lib/search/inverted-index.ts` (extended), `lib/cognition/ingest.ts` (LLM JSON fallback + `validateLLMOutput` boundary cases).
+  - API route tests: `/api/events`, `/api/rss/subscriptions/check`, `/api/rss/import-opml`.
+  - E2E tests: `sidebar.spec.ts` (badge), `notes.spec.ts` (search), plus extensive coverage for `chat.spec.ts`, `ingest.spec.ts`, `rss.spec.ts`, `tasks.spec.ts`, `upload.spec.ts`.
 
 ### Changed
 
-- **Test counts**: 179 Vitest unit tests (+6), 28 Playwright E2E tests (+8).
+- **TabShell rendering strategy**: Switched from conditional rendering (`{tab === 'x' && <Panel />}`) to CSS `hidden` (`className={tab === 'x' ? '' : 'hidden'}`). All panels remain mounted, preserving component state (especially chat sessions) across tab switches. (`040f34d`)
+- **Task badge location**: Moved from the Inbox panel to the Tasks panel sidebar icon, reducing visual clutter. (`48e04e2`)
+- **Search barrel file removed**: Deleted `lib/search/index.ts`; imports now go directly to `lib/search/inverted-index.ts`, eliminating circular-dependency risk. (`709d1ed`)
+- **parseInboxEntry extraction**: Moved `parseInboxEntry` from `lib/storage.ts` to `lib/parsers.ts`. `writeInbox` now returns `boolean` indicating whether a write actually occurred (`false` when skipping duplicates). (`242e7ab`)
+- **RSS subscription check parallelization**: `checkAllFeeds()` now executes subscription checks in parallel, reducing batch refresh latency. (`da54cb0`)
+- **RSS OPML strict validation**: `parseOPML` now throws descriptive errors for invalid or empty OPML instead of failing silently. (`da54cb0`)
+- **Test counts**: 260 Vitest unit tests (+81), 50 Playwright E2E tests (+22).
 
 ## 2026-04-26
 

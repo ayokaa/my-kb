@@ -41,7 +41,7 @@ When the user clicks **Approve** in the Inbox panel:
 
 ### 3. Queue → Notes
 
-The queue worker (`lib/queue.ts`) processes tasks serially. Supported task types:
+The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, and `web_fetch` tasks never block each other. Supported task types:
 
 **`ingest`** — Convert an inbox entry to a structured note:
 1. Verifies the inbox file still exists (`stat` check); if missing, marks task `failed` with `Inbox file not found`.
@@ -54,10 +54,16 @@ The queue worker (`lib/queue.ts`) processes tasks serially. Supported task types
 8. `saveQueueState()` records task completion.
 
 **`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
+
+**`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
 1. Calls `fetchRSS(url)` to retrieve and parse the feed.
 2. Calls `processFeedItems()` which applies `lastPubDate` filtering and deduplication.
 3. Writes new items to `knowledge/inbox/` as Markdown files.
 4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
+
+**`web_fetch`** — Scrape a web page and write to the inbox:
+1. Calls `fetchWebContent(url)` (Playwright + Readability) to extract article content.
+2. Writes the extracted content to `knowledge/inbox/` as a Markdown file.
 
 **Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
 
@@ -72,7 +78,9 @@ The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RA
 3. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
 4. Assembles the top results into a structured context string.
 5. Injects the context into the system prompt sent to MiniMax.
-6. Streams the LLM response back to the client.
+6. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
+7. Streams the LLM response back to the client.
+8. On stream completion, enqueues a `data:` SSE event containing source metadata (`{ type: 'sources', notes: [...] }`) so the UI can display knowledge references.
 
 This provides grounded, knowledge-aware answers rather than generic conversational responses.
 
@@ -86,23 +94,26 @@ app/                — HTTP layer (routing, JSON serialization)
 ├── layout.tsx      — Root layout, cron bootstrap
 └── page.tsx        — Tab shell
 
-components/         — React UI (all Client Components)
+components/         — React UI (Client Components + Server Components)
 ├── Sidebar.tsx
 ├── ChatPanel.tsx
 ├── InboxPanel.tsx
-├── NotesPanel.tsx
+├── NotesPanel.tsx          — Server Component (fetches initial data)
+├── NotesPanelClient.tsx    — Client Component (interactivity + SSE)
 ├── RSSPanel.tsx
 ├── TasksPanel.tsx
-└── SearchPanel.tsx
+└── TabShell.tsx            — Tab container (CSS hidden for state preservation)
 
 lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
-├── parsers.ts      — Note Markdown ↔ object serialization
-├── queue.ts        — Task queue + worker + persistence (ingest, rss_fetch)
+├── parsers.ts      — Note Markdown ↔ object serialization + inbox parsing
+├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch)
+├── events.ts       — SSE event bus (server-to-client push for note changes)
 ├── search/
-│   ├── index.ts    — Inverted index (tokenize, build, add, remove)
-│   └── engine.ts   — Search scoring, link diffusion, context assembly
+│   ├── inverted-index.ts  — Inverted index (tokenize, build, add, remove)
+│   ├── engine.ts          — Search scoring, link diffusion, context assembly
+│   └── eval.ts            — Quantified evaluation framework (golden dataset, quality gates)
 ├── cognition/
 │   └── ingest.ts   — **Only module allowed to call LLM for note generation**
 ├── ingestion/

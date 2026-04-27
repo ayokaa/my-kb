@@ -37,7 +37,8 @@
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
 - **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (185 unit tests) + Playwright (28 E2E tests)
+- **Testing**: Vitest (260 unit tests) + Playwright (50 E2E tests)
+- **Real-time**: SSE event bus for server-to-client push (note changes, chat data events)
 
 ## Quick Start
 
@@ -99,6 +100,7 @@ my-kb/
 │   ├── ChatPanel.tsx
 │   ├── InboxPanel.tsx
 │   ├── NotesPanel.tsx
+│   ├── NotesPanelClient.tsx
 │   ├── RSSPanel.tsx
 │   └── TasksPanel.tsx
 ├── lib/                    # Core business logic
@@ -113,6 +115,7 @@ my-kb/
 ├── knowledge/              # Data storage (.gitignore, local only)
 │   ├── notes/              # Structured notes
 │   ├── inbox/              # Pending review entries
+│   ├── conversations/      # Chat history (*.md)
 │   ├── meta/               # Metadata (index, queue, RSS subscriptions)
 │   └── attachments/        # Uploaded original files
 ├── knowledge-test/         # E2E test data isolation (.gitignore, local only)
