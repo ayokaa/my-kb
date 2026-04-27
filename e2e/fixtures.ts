@@ -38,6 +38,7 @@ export async function createTestNote(note: Partial<Note> & { id: string; title: 
     keyFacts: note.keyFacts ?? [],
     timeline: note.timeline ?? [],
     links: note.links ?? [],
+    backlinks: note.backlinks ?? [],
     qas: note.qas ?? [],
     content: note.content ?? '',
     filePath: join(root, 'notes', `${note.id}.md`),

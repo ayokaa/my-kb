@@ -84,7 +84,7 @@ describe('FileSystemStorage', () => {
       await storage.saveNote(createTestNote('note-b'));
 
       const listNotesSpy = vi.spyOn(storage, 'listNotes');
-      await storage.saveNote(createTestNote('note-c'));
+      await storage.saveNote(createTestNote('note-c'), { skipBacklinkRebuild: true });
 
       expect(listNotesSpy).not.toHaveBeenCalled();
       listNotesSpy.mockRestore();
