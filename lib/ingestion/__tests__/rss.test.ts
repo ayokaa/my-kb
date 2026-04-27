@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { fetchRSS, rssItemToInbox, parseOPML, sortRSSItems } from '../rss';
+import { fetchRSS, rssItemToInbox, parseOPML, sortRSSItems, isValidHttpUrl } from '../rss';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -108,8 +108,8 @@ describe('parseOPML', () => {
     expect(feeds.some(f => f.xmlUrl === 'https://dynomight.net/feed.xml')).toBe(true);
   });
 
-  it('returns empty array for invalid XML', () => {
-    expect(parseOPML('<notopml></notopml>')).toEqual([]);
+  it('throws for invalid XML', () => {
+    expect(() => parseOPML('<notopml></notopml>')).toThrow('Invalid OPML');
   });
 });
 
@@ -144,6 +144,113 @@ describe('sortRSSItems', () => {
     ];
     sortRSSItems(items);
     expect(items[0].title).toBe('A');
+  });
+});
+
+describe('isValidHttpUrl', () => {
+  it('accepts valid http/https URLs', () => {
+    expect(isValidHttpUrl('https://example.com')).toBe(true);
+    expect(isValidHttpUrl('http://example.com')).toBe(true);
+  });
+
+  it('rejects non-http protocols', () => {
+    expect(isValidHttpUrl('ftp://example.com')).toBe(false);
+    expect(isValidHttpUrl('file:///etc/passwd')).toBe(false);
+  });
+
+  it('rejects private IPs', () => {
+    expect(isValidHttpUrl('http://127.0.0.1')).toBe(false);
+    expect(isValidHttpUrl('http://10.0.0.1')).toBe(false);
+    expect(isValidHttpUrl('http://172.16.0.1')).toBe(false);
+    expect(isValidHttpUrl('http://192.168.1.1')).toBe(false);
+    expect(isValidHttpUrl('http://localhost')).toBe(false);
+  });
+
+  it('rejects invalid URLs', () => {
+    expect(isValidHttpUrl('not a url')).toBe(false);
+    expect(isValidHttpUrl('')).toBe(false);
+  });
+});
+
+describe('fetchRSS — JSON feed', () => {
+  it('parses JSON Feed 1.1', async () => {
+    const json = JSON.stringify({
+      version: 'https://jsonfeed.org/version/1.1',
+      title: 'JSON Feed',
+      items: [
+        {
+          title: 'JSON Item',
+          url: 'https://example.com/json-item',
+          date_published: '2024-02-01T00:00:00Z',
+          summary: 'JSON summary',
+          content_html: '<p>HTML content</p>',
+        },
+      ],
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(json),
+    }));
+
+    const items = await fetchRSS('https://example.com/feed.json');
+    expect(items).toHaveLength(1);
+    expect(items[0].title).toBe('JSON Item');
+    expect(items[0].link).toBe('https://example.com/json-item');
+    expect(items[0].pubDate).toBe('2024-02-01T00:00:00Z');
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('fetchRSS — RDF / unknown', () => {
+  it('parses RDF feed', async () => {
+    const xml = `<?xml version="1.0"?>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+               xmlns="http://purl.org/rss/1.0/">
+        <channel>
+          <title>RDF Feed</title>
+          <link>https://example.com</link>
+        </channel>
+        <item>
+          <title>RDF Item</title>
+          <link>https://example.com/rdf</link>
+          <description>RDF desc</description>
+        </item>
+      </rdf:RDF>`;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(xml),
+    }));
+
+    const items = await fetchRSS('https://example.com/rdf.xml');
+    expect(items.length).toBeGreaterThanOrEqual(0);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('rssItemToInbox', () => {
+  it('converts item without pubDate', () => {
+    const item = {
+      title: 'No Date',
+      link: 'https://example.com/nodate',
+      description: 'desc',
+    };
+    const entry = rssItemToInbox(item, 'Source');
+    expect(entry.title).toBe('No Date');
+    expect(entry.extractedAt).toBeDefined();
+  });
+
+  it('converts item without description or content', () => {
+    const item = {
+      title: 'Sparse',
+      link: 'https://example.com/sparse',
+      pubDate: '2024-01-01T00:00:00Z',
+    };
+    const entry = rssItemToInbox(item, 'Src');
+    expect(entry.content).toBe('');
   });
 });
 

@@ -37,7 +37,10 @@ export interface OPMLFeed {
 export function parseOPML(xml: string): OPMLFeed[] {
   try {
     const opml = parseOpml(xml);
-    const outlines = opml.body?.outlines ?? [];
+    if (!opml || typeof opml !== 'object' || !opml.body || typeof opml.body !== 'object') {
+      throw new Error('Missing OPML body');
+    }
+    const outlines = opml.body.outlines ?? [];
     return outlines
       .filter((o: any) => o.type === 'rss' && o.xmlUrl)
       .map((o: any) => ({
@@ -45,8 +48,8 @@ export function parseOPML(xml: string): OPMLFeed[] {
         xmlUrl: o.xmlUrl,
         htmlUrl: o.htmlUrl || '',
       }));
-  } catch {
-    return [];
+  } catch (err: any) {
+    throw new Error(`Invalid OPML: ${err.message || 'unable to parse XML'}`);
   }
 }
 

@@ -116,7 +116,7 @@ async function processFeedItems(
         continue;
       }
 
-      await storage.writeInbox({
+      const written = await storage.writeInbox({
         sourceType: 'web',
         title: item.title,
         content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
@@ -131,7 +131,7 @@ async function processFeedItems(
       // Add to dedup set so we don't write the same link again in this batch
       if (item.link) existingLinks.add(item.link);
 
-      count++;
+      if (written) count++;
     }
 
     return { count, latestPubDate };
@@ -171,7 +171,12 @@ export async function removeSubscription(url: string): Promise<void> {
 }
 
 export async function importOPML(xml: string): Promise<{ added: number; errors: string[] }> {
-  const feeds = parseOPML(xml);
+  let feeds: OPMLFeed[];
+  try {
+    feeds = parseOPML(xml);
+  } catch (err: any) {
+    return { added: 0, errors: [err.message] };
+  }
   const errors: string[] = [];
   let added = 0;
   for (const feed of feeds) {
@@ -222,14 +227,7 @@ export async function checkFeed(url: string): Promise<CheckResult> {
 
 export async function checkAllFeeds(): Promise<CheckResult[]> {
   const sources = await loadSources();
-  const results: CheckResult[] = [];
-  for (const source of sources) {
-    const result = await checkFeed(source.url);
-    results.push(result);
-    // Small delay between feeds to be polite
-    await new Promise(r => setTimeout(r, 500));
-  }
-  return results;
+  return Promise.all(sources.map(source => checkFeed(source.url)));
 }
 
 /** Manual RSS ingest (e.g. from ChatPanel). Respects lastPubDate if feed is subscribed. */
