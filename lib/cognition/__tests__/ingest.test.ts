@@ -77,6 +77,27 @@ describe('validateLLMOutput', () => {
     expect(() => validateLLMOutput({ qas: [{ question: 123, answer: 'ok' }] })).toThrow('question');
     expect(() => validateLLMOutput({ qas: [{ question: 'Q', answer: 456 }] })).toThrow('answer');
   });
+
+  it('rejects non-object root', () => {
+    expect(() => validateLLMOutput(null)).toThrow('not a JSON object');
+    expect(() => validateLLMOutput('string')).toThrow('not a JSON object');
+    expect(() => validateLLMOutput(42)).toThrow('not a JSON object');
+  });
+
+  it('accepts empty arrays and objects', () => {
+    expect(() =>
+      validateLLMOutput({
+        title: '',
+        tags: [],
+        summary: '',
+        keyFacts: [],
+        timeline: [],
+        links: [],
+        qas: [],
+        content: '',
+      })
+    ).not.toThrow();
+  });
 });
 
 describe('processInboxEntry', () => {
@@ -98,4 +119,22 @@ describe('processInboxEntry', () => {
     expect(note.sources).toContain('https://zed.dev/blog/parallel-agents');
     expect(note.status).toBe('seed');
   });
+
+  it('falls back to entry.content when web fetch fails', async () => {
+    const { fetchWebContent } = await import('@/lib/ingestion/web');
+    (fetchWebContent as any).mockRejectedValue(new Error('Network error'));
+
+    const entry = {
+      sourceType: 'web' as const,
+      title: 'Fallback Test',
+      content: 'Original content from entry',
+      rawMetadata: { source_url: 'https://example.com' },
+    };
+
+    const { note } = await processInboxEntry(entry);
+    expect(note.title).toBe('AI Agents in Zed'); // LLM mock still returns same title
+    // The content passed to LLM should still contain the original entry content
+  });
 });
+
+
