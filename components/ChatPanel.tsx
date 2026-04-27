@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useChat } from 'ai/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Loader2, Bot, User, Plus, MessageSquare, Trash2, BookOpen, Sparkles } from 'lucide-react';
+import { Send, Loader2, Bot, User, Plus, MessageSquare, Trash2, BookOpen, Sparkles, Globe } from 'lucide-react';
 
 interface ConversationItem {
   id: string;
@@ -40,6 +40,7 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
   const savedRef = useRef(false);
   const pendingQueueRef = useRef<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
+  const [toolCalls, setToolCalls] = useState<Array<{ name: string; url: string }>>([]);
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, data, append } = useChat({
     id: conversationId,
@@ -50,6 +51,7 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
     })),
     body: {},
     onFinish: () => {
+      setToolCalls([]);
       if (conversationId && !savedRef.current) {
         savedRef.current = true;
         setTimeout(() => {
@@ -89,6 +91,9 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
             if (d && d.type === 'sources' && Array.isArray(d.notes)) {
               setSources(d.notes);
               onSources(d.notes);
+            }
+            if (d && d.type === 'tool_call' && d.name && d.url) {
+              setToolCalls((prev) => [...prev, { name: d.name, url: d.url }]);
             }
           }
         }
@@ -155,9 +160,22 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
               <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]">
                 <Bot className="h-3.5 w-3.5 text-[var(--accent)]" />
               </div>
-              <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-tertiary)]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                思考中...
+              <div className="flex flex-col gap-1.5">
+                {toolCalls.length > 0 && (
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
+                    <Globe className="h-3 w-3 text-[var(--accent)]" />
+                    已抓取网页:
+                    {toolCalls.map((tc, i) => (
+                      <span key={i} className="max-w-[200px] truncate text-[var(--accent)]">
+                        {tc.url}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-tertiary)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  思考中...
+                </div>
               </div>
             </div>
           </div>
