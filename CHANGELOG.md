@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-04-28
+
+### Fixed
+
+- **Search cache deadlock** (`lib/search/cache.ts`): `doLoadOrBuild` exceptions left `loadPromise` permanently set to a rejected Promise, causing all subsequent requests to hang. Fixed with `try/finally` to always reset `loadPromise` to `null`. (`50f6dfe`)
+- **Search backlink field type** (`lib/search/types.ts`): `SearchField` was missing `backlink`, causing backlink-indexed terms to receive zero weight during scoring. Added `backlink` to the union type and `DEFAULT_ZONE_WEIGHTS` (weight 1.2). (`de2a210`)
+- **LLM client caching** (`lib/llm.ts`): `getLLMClient` was instantiating a fresh `OpenAI` client on every call, causing unnecessary overhead and TOCTOU races on the settings file. Added instance caching with settings-change detection. New `getLLM()` helper returns both `client` and `model` atomically. (`29bbe04`)
+- **Chat SSRF protection & tool-call concurrency** (`app/api/chat/route.ts`):
+  - `web_fetch` URLs are validated to be HTTP/HTTPS only; private/internal addresses (e.g., `192.168.x.x`, `10.x.x.x`, `127.x.x.x`, `localhost`) are rejected before any outbound request.
+  - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
+  - Tests refactored to use top-level `vi.mock` to avoid `vi.doMock` module-cache timeouts. (`4f8ef97`)
+- **Backlinks rebuild multi-match** (`lib/storage.ts`): `rebuildBacklinks()` used `find()` which stopped after the first fuzzy title match, while `saveNote()` auto-build used multi-match logic. This inconsistency meant some valid backlinks were dropped during full rebuilds. Replaced with a `for...of` loop over all notes so every matching target receives the backlink. (`1c21162`)
+
 ## 2026-04-27
 
 ### Added

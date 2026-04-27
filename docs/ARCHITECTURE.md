@@ -79,12 +79,15 @@ If the process crashes and restarts, `loadQueueState()` restores pending tasks a
 
 The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RAG) before calling the LLM:
 
-1. Loads the search index via `loadOrBuildIndex()` (5-second TTL memory cache; concurrent requests share the same promise).
+1. Loads the search index via `loadOrBuildIndex()` (5-second TTL memory cache; concurrent requests share the same promise). If loading fails, the cached promise is cleared via `try/finally` so subsequent requests retry instead of hanging on a permanently rejected promise.
 2. Tokenizes the last 3 user messages concatenated (Chinese whole-word + 2/3-char combos + English word-level).
 3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts/links/backlinks > content).
 4. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
 5. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
-6. **Tool calling (optional)**: A non-streaming LLM call (`stream: false`) with `tools` + `tool_choice: 'auto'` determines whether the LLM wants to invoke `web_fetch`. If so, the server calls `fetchWebContent(url)` and injects the extracted article into the message history as a `tool` role message.
+6. **Tool calling (optional)**: A non-streaming LLM call (`stream: false`) with `tools` + `tool_choice: 'auto'` determines whether the LLM wants to invoke `web_fetch`.
+   - URLs are validated before fetching: only HTTP/HTTPS schemes are allowed; private/internal addresses (localhost, RFC 1918 ranges) are rejected to prevent SSRF.
+   - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
+   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` and injects the extracted article into the message history as a `tool` role message.
 7. Injects the context (+ tool results if any) into the system prompt sent to MiniMax.
 8. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
 9. Streams the LLM response back to the client.
@@ -174,12 +177,13 @@ knowledge/                    — Production data (default)
 ├── inbox/               — Pending review entries (*.md)
 ├── archive/
 │   └── inbox/           — Rejected or processed inbox files
-├── conversations/       — Chat history (*.md)
 ├── meta/
-│   ├── inverted-index.md
+│   ├── search-index.json  — Inverted index (JSON)
 │   ├── aliases.yml
-│   ├── rss-sources.yml  — Subscriptions + lastPubDate
-│   └── queue.json       — Serialized task queue
+│   ├── rss-sources.yml    — Subscriptions + lastPubDate
+│   ├── queue.json         — Serialized task queue
+│   └── settings.yml       — Runtime settings
+├── conversations/       — Chat history (*.md)
 └── attachments/         — Uploaded original files
 
 knowledge-test/               — E2E test data (isolated)
@@ -201,7 +205,7 @@ LLM credentials, model names, and cron intervals were statically baked into envi
 
 1. **Persistence**: Settings are stored as YAML at `knowledge/meta/settings.yml` via atomic write (tmp+rename).
 2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`MINIMAX_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
-3. **Hot reload**: `lib/llm.ts` instantiates a fresh `OpenAI` client on every call by reading current settings. No server restart is needed after changing API keys or models.
+3. **Hot reload**: `lib/llm.ts` caches the `OpenAI` client instance and invalidates the cache when settings change (detected via settings content hash). This avoids the overhead of reconstructing the client on every call while still enabling hot reload without server restart.
 4. **Cron restartability**: Both `lib/rss/cron.ts` and `lib/relink/cron.ts` expose `stop/restart` functions. The Settings API (`POST /api/settings`) calls them when interval/expression changes.
 5. **Security**: `GET /api/settings` returns a *safe* copy where the API key is masked (`sk-...xxxx`). Only `POST` accepts the full key.
 
@@ -251,8 +255,8 @@ Links are directional (`note A → note B`). Backlinks provide the reverse view 
 **Full rebuild:** `rebuildBacklinks()`:
 1. Loads all notes.
 2. Resets `backlinks` on every note.
-3. For each link in each note, finds the target note by fuzzy title match.
-4. Appends `{ target: sourceNote.title, weight, context }` to the target's `backlinks`.
+3. For each link in each note, finds **all** target notes by fuzzy title match (bidirectional substring, case-insensitive). Unlike the older single-match behavior, every note whose title matches the link target receives a backlink entry.
+4. Appends `{ target: sourceNote.title, weight, context }` to each matching target's `backlinks`.
 5. Saves all modified notes with `skipBacklinkRebuild: true` to avoid recursion.
 
 **Trigger points:**

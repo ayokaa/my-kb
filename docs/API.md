@@ -10,6 +10,8 @@ All API routes use standard Web API signatures (`export async function GET(req: 
 
 Stream a chat completion from MiniMax API with RAG retrieval and optional `web_fetch` tool calling.
 
+**Security:** `web_fetch` URLs are validated to reject non-HTTP/HTTPS schemes and private/internal addresses (localhost, RFC 1918 ranges). A single request is limited to at most 3 tool calls.
+
 **Request body:**
 ```json
 {
@@ -36,6 +38,89 @@ The stream emits three kinds of events:
 4. A second streaming LLM call produces the final response.
 
 **Error:** `500` if MiniMax API fails.
+
+---
+
+## Conversations
+
+### `GET /api/conversations`
+
+List all conversations, sorted by `updatedAt` descending.
+
+**Response:**
+```json
+{
+  "conversations": [
+    {
+      "id": "conv-1234567890-abc123",
+      "date": "2026-04-27T12:00:00.000Z",
+      "title": "对话标题",
+      "topics": ["对话标题"],
+      "status": "open",
+      "updatedAt": "2026-04-27T12:00:00.000Z",
+      "turnCount": 5
+    }
+  ]
+}
+```
+
+### `POST /api/conversations`
+
+Create a new conversation.
+
+**Request body:** `{ "title": "optional title" }`
+
+**Response:** `{ "ok": true, "conversation": { ... } }`
+
+---
+
+## Conversation Detail
+
+### `GET /api/conversations/[id]`
+
+Load a single conversation with its message history.
+
+**Response:**
+```json
+{
+  "id": "conv-...",
+  "title": "...",
+  "messages": [
+    { "id": "turn-0", "role": "user", "content": "...", "createdAt": "..." },
+    { "id": "turn-1", "role": "assistant", "content": "...", "createdAt": "..." }
+  ]
+}
+```
+
+**Error:** `404` if conversation does not exist.
+
+### `POST /api/conversations/[id]`
+
+Save (or create) a conversation's message history.
+
+**Request body:** `{ "messages": [{ "role": "user", "content": "...", "createdAt": "..." }] }`
+
+**Response:** `{ "ok": true }`
+
+If the conversation does not exist, it is created automatically.
+
+### `DELETE /api/conversations/[id]`
+
+Delete a conversation.
+
+**Response:** `{ "ok": true }`
+
+---
+
+## Events (SSE)
+
+### `GET /api/events`
+
+Server-Sent Events stream for real-time server-to-client push notifications.
+
+**Response:** `text/event-stream`
+
+The stream emits `note:changed` events whenever a note is saved or deleted, driving real-time UI refreshes in `NotesPanel`, `InboxPanel`, `TasksPanel`, and `RSSPanel`.
 
 ---
 
@@ -104,7 +189,12 @@ Manually ingest content into the inbox.
 
 For `type: "link"`, the server fetches the original article via Playwright + Readability and writes the enriched content to the inbox.
 
-**Response:** `{ "ok": true, "fileName": "123-hello.md" }`
+**Response:**
+- For `type: "text"`: `{ "ok": true }`
+- For `type: "link"`: `202 Accepted`
+  ```json
+  { "ok": true, "taskId": "task-...", "message": "已加入抓取队列" }
+  ```
 
 ---
 
@@ -235,6 +325,52 @@ Import subscriptions from OPML XML.
 
 ---
 
+## Settings
+
+### `GET /api/settings`
+
+Load runtime settings. The API key is masked (`sk-...xxxx`) for security.
+
+**Response:**
+```json
+{
+  "llm": {
+    "model": "MiniMax-M2.7",
+    "apiKey": "sk-...xxxx",
+    "baseUrl": "https://api.minimaxi.com/v1"
+  },
+  "cron": {
+    "rssIntervalMinutes": 60,
+    "relinkCronExpression": "0 3 * * *"
+  }
+}
+```
+
+### `POST /api/settings`
+
+Update runtime settings. Changes are persisted to `knowledge/meta/settings.yml` and take effect immediately (cron jobs are restarted if interval/expression changed).
+
+**Request body:**
+```json
+{
+  "llm": {
+    "model": "MiniMax-M2.7",
+    "apiKey": "sk-xxxxxxxx",
+    "baseUrl": "https://api.minimaxi.com/v1"
+  },
+  "cron": {
+    "rssIntervalMinutes": 60,
+    "relinkCronExpression": "0 3 * * *"
+  }
+}
+```
+
+**Validation:** Returns `400` if `relinkCronExpression` is invalid or `rssIntervalMinutes` is not a positive number.
+
+**Response:** `{ "success": true }`
+
+---
+
 ## Search
 
 ### `POST /api/search`
@@ -263,7 +399,7 @@ List tasks.
   "tasks": [
     {
       "id": "task-...",
-      "type": "ingest" | "rss_fetch",
+      "type": "ingest" | "rss_fetch" | "web_fetch" | "relink",
       "status": "pending" | "running" | "done" | "failed",
       "createdAt": "...",
       "startedAt": "...",
@@ -298,4 +434,6 @@ Upload a file (PDF, TXT, MD). File is saved to `knowledge/attachments/` with a t
 
 **Request:** `multipart/form-data` with `file` field.
 
-**Response:** `{ "ok": true, "fileName": "20250425-abc.pdf" }`
+**Response:** `{ "ok": true, "fileName": "20250425-abc.pdf", "skipped": false }`
+
+If a file with the same hash already exists in `knowledge/attachments/`, returns `skipped: true` to avoid duplicate storage.
