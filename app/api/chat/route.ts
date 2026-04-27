@@ -94,12 +94,12 @@ export async function POST(req: Request) {
     loadOrBuildIndex(storage),
   ]);
 
-  // 执行检索
+  // 执行检索（包含所有状态的笔记）
   let contextText = '';
   let searchResults: Array<{ id: string; title: string; score: number }> = [];
   if (notes.length > 0 && query.length > 0) {
     const results = search(query, notes, index, {
-      statusFilter: ['evergreen', 'growing'],
+      statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
       limit: 5,
       enableDiffusion: true,
       diffusionDepth: 1,
@@ -113,14 +113,19 @@ export async function POST(req: Request) {
         title: r.note.title,
         score: r.score,
       }));
+      console.log(`[Chat] Retrieved ${results.length} notes for query: "${query.slice(0, 50)}"`);
+    } else {
+      console.log(`[Chat] No relevant notes found for query: "${query.slice(0, 50)}"`);
     }
+  } else {
+    console.log(`[Chat] Skipping search: ${notes.length} notes, query length ${query.length}`);
   }
 
   // 构建动态 system prompt
-  const baseSystem = '你是用户的个人知识库助手。基于已有知识回答，不确定时坦诚告知。';
+  const baseSystem = '你是用户的个人知识库助手。你的首要任务是使用下面提供的知识库内容来回答用户问题。如果知识库中有相关信息，请优先基于这些信息作答，并引用来源笔记。如果知识库中没有相关信息，请明确告知"根据我的知识库，没有找到相关信息"，然后可以补充你自己的一般性知识，但要明确区分两者。';
   const systemContent = contextText
-    ? `${baseSystem}\n\n以下是从知识库中检索到的相关信息，请基于这些信息回答用户问题。如果信息不足以回答，请坦诚告知。\n\n---\n${contextText}\n---`
-    : baseSystem;
+    ? `${baseSystem}\n\n【知识库检索结果】以下是从用户知识库中检索到的相关信息，请优先基于这些内容回答。如果信息不足，请明确说明。\n\n---\n${contextText}\n---\n\n【回答要求】\n1. 优先使用上述知识库内容\n2. 如果引用了知识库内容，请提及来源笔记名称\n3. 如果知识库内容不足以回答，明确说明"知识库中没有相关信息"\n4. 不要编造知识库中没有的信息`
+    : `${baseSystem}\n\n【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。`;
 
   const response = await client.chat.completions.create({
     model: 'MiniMax-M2.7',

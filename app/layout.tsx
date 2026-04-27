@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
   import('@/lib/queue').then(({ initQueue }) => initQueue()).catch(() => {});
   import('@/lib/rss/cron').then(({ startRSSCron }) => {
-    startRSSCron(60);
+    const interval = parseInt(process.env.RSS_CHECK_INTERVAL_MINUTES || '60', 10);
+    startRSSCron(Number.isNaN(interval) ? 60 : interval);
   }).catch(() => {
     // Cron not available in some runtimes (e.g. edge), that's fine
   });

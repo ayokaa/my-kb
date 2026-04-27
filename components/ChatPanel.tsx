@@ -19,6 +19,7 @@ import {
   MessageSquare,
   BookOpen,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 interface ConversationItem {
@@ -46,9 +47,10 @@ interface ChatAreaProps {
   initialMessages: ChatMessage[];
   onSources: (sources: SourceNote[]) => void;
   onSave: (id: string, messages: Array<{ role: string; content: string; createdAt?: string }>) => void;
+  onNewConversation: () => void;
 }
 
-function ChatArea({ conversationId, initialMessages, onSources, onSave }: ChatAreaProps) {
+function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewConversation }: ChatAreaProps) {
   const [sources, setSources] = useState<SourceNote[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const savedRef = useRef(false);
@@ -250,6 +252,15 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave }: ChatAr
           className="input-dark flex-1 px-4 py-3.5 text-sm"
         />
         <button
+          type="button"
+          aria-label="新对话"
+          title="新对话"
+          onClick={onNewConversation}
+          className="flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+        <button
           type="submit"
           aria-label="发送"
           disabled={isLoading || !input.trim()}
@@ -268,6 +279,7 @@ export default function ChatPanel() {
   const [activeMessages, setActiveMessages] = useState<ChatMessage[]>([]);
   const [currentSources, setCurrentSources] = useState<SourceNote[]>([]);
   const [loadingConv, setLoadingConv] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
   const [showIngest, setShowIngest] = useState(false);
   const [ingestTab, setIngestTab] = useState<'text' | 'link' | 'file' | 'rss'>('text');
@@ -346,6 +358,41 @@ export default function ChatPanel() {
     }
   }, []);
 
+  const handleDeleteConversation = useCallback(
+    async (id: string) => {
+      if (confirmingDeleteId !== id) {
+        setConfirmingDeleteId(id);
+        // Auto-cancel after 3s
+        setTimeout(() => {
+          setConfirmingDeleteId((current) => (current === id ? null : current));
+        }, 3000);
+        return;
+      }
+      setConfirmingDeleteId(null);
+      try {
+        const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setConversations((prev) => {
+            const next = prev.filter((c) => c.id !== id);
+            if (activeId === id) {
+              if (next.length > 0) {
+                handleSelectConversation(next[0].id);
+              } else {
+                setActiveId(null);
+                setActiveMessages([]);
+                setCurrentSources([]);
+              }
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error('[ChatPanel] Failed to delete conversation:', err);
+      }
+    },
+    [activeId, confirmingDeleteId, handleSelectConversation]
+  );
+
   const handleSave = useCallback(
     async (id: string, messages: Array<{ role: string; content: string; createdAt?: string }>) => {
       try {
@@ -362,12 +409,16 @@ export default function ChatPanel() {
     [loadConversations]
   );
 
-  // Auto-create first conversation if none exists
+  // Auto-create first conversation on initial mount only (not after deletion)
+  const hasAutoCreated = useRef(false);
   useEffect(() => {
-    if (conversations.length === 0 && !activeId && !loadingConv) {
+    if (!hasAutoCreated.current && conversations.length === 0 && !activeId && !loadingConv) {
+      hasAutoCreated.current = true;
       handleNewConversation();
     }
   }, [conversations, activeId, loadingConv, handleNewConversation]);
+
+
 
   async function submitIngest(type: string, body: object) {
     setIngestLoading(true);
@@ -405,14 +456,6 @@ export default function ChatPanel() {
     <div className="flex h-full gap-4">
       {/* Conversation List Sidebar */}
       <div className="flex w-56 flex-col gap-3">
-        <button
-          onClick={handleNewConversation}
-          className="btn-primary flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-medium"
-        >
-          <Plus className="h-4 w-4" />
-          新对话
-        </button>
-
         <div className="flex-1 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
           {conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-[var(--text-tertiary)]">
@@ -422,23 +465,43 @@ export default function ChatPanel() {
           ) : (
             <div className="space-y-1">
               {conversations.map((conv) => (
-                <button
+                <div
                   key={conv.id}
-                  onClick={() => handleSelectConversation(conv.id)}
-                  className={`group flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs transition-all ${
+                  className={`group flex items-center gap-1 rounded-lg transition-all ${
                     activeId === conv.id
                       ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
                       : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                  <span className="flex-1 truncate font-medium">{conv.title}</span>
-                  {conv.turnCount > 0 && (
-                    <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">
-                      {conv.turnCount}
-                    </span>
-                  )}
-                </button>
+                  <button
+                    onClick={() => handleSelectConversation(conv.id)}
+                    className="flex flex-1 items-center gap-2 px-3 py-2.5 text-left text-xs"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                    <span className="flex-1 truncate font-medium">{conv.title}</span>
+                    {conv.turnCount > 0 && (
+                      <span className="shrink-0 rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">
+                        {conv.turnCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteConversation(conv.id);
+                    }}
+                    aria-label={confirmingDeleteId === conv.id ? '确认删除' : '删除对话'}
+                    title={confirmingDeleteId === conv.id ? '确认删除' : '删除对话'}
+                    className={`mr-1.5 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] transition-all ${
+                      confirmingDeleteId === conv.id
+                        ? 'bg-red-900/30 text-[var(--error)] opacity-100'
+                        : 'p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-900/20 hover:text-[var(--error)]'
+                    }`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {confirmingDeleteId === conv.id && <span>确认</span>}
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -604,6 +667,7 @@ export default function ChatPanel() {
             initialMessages={activeMessages}
             onSources={setCurrentSources}
             onSave={handleSave}
+            onNewConversation={handleNewConversation}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">

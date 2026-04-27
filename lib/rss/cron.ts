@@ -9,8 +9,9 @@ export function startRSSCron(intervalMinutes = 60) {
   if (started) return;
   started = true;
 
-  // Run every N minutes
-  const cronExpr = `*/${Math.max(1, Math.min(intervalMinutes, 59))} * * * *`;
+  // Build cron expression: hourly (0 * * * *) or every N minutes (*/N * * * *)
+  const n = Math.max(1, intervalMinutes);
+  const cronExpr = n >= 60 ? '0 * * * *' : `*/${n} * * * *`;
 
   cron.schedule(cronExpr, async () => {
     if (isRunning) {
@@ -32,5 +33,5 @@ export function startRSSCron(intervalMinutes = 60) {
     }
   });
 
-  console.log(`[RSS Cron] Started, checking every ${intervalMinutes} minutes`);
+  console.log(`[RSS Cron] Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
 }

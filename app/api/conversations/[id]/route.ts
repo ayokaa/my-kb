@@ -34,6 +34,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const storage = new FileSystemStorage();
+    await storage.deleteConversation(id);
+    return Response.json({ ok: true });
+  } catch (err) {
+    console.error(`[Conversations API] Failed to delete ${(await params).id}:`, err);
+    return Response.json({ error: 'Internal error' }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
