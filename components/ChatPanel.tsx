@@ -524,7 +524,7 @@ export default function ChatPanel() {
                 >
                   <button
                     onClick={() => handleSelectConversation(conv.id)}
-                    className="flex flex-1 items-center gap-2 px-3 py-2.5 text-left text-xs"
+                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left text-xs"
                   >
                     <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
                     <span className="flex-1 truncate font-medium">{conv.title}</span>
@@ -541,14 +541,14 @@ export default function ChatPanel() {
                     }}
                     aria-label={confirmingDeleteId === conv.id ? '确认删除' : '删除对话'}
                     title={confirmingDeleteId === conv.id ? '确认删除' : '删除对话'}
-                    className={`mr-1.5 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] transition-all ${
+                    className={`mr-1.5 shrink-0 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] transition-all ${
                       confirmingDeleteId === conv.id
                         ? 'bg-red-900/30 text-[var(--error)] opacity-100'
                         : 'p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-900/20 hover:text-[var(--error)]'
                     }`}
                   >
-                    <Trash2 className="h-3 w-3" />
-                    {confirmingDeleteId === conv.id && <span>确认</span>}
+                    <Trash2 className="h-3 w-3 shrink-0" />
+                    {confirmingDeleteId === conv.id && <span className="shrink-0">确认</span>}
                   </button>
                 </div>
               ))}
