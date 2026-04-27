@@ -187,31 +187,27 @@ export class FileSystemStorage implements Storage {
 
   async rebuildBacklinks(): Promise<void> {
     const allNotes = await this.listNotes();
-    const titleToNote = new Map<string, typeof allNotes[0]>();
-    for (const n of allNotes) {
-      titleToNote.set(n.title, n);
-    }
 
     // Reset all backlinks
     for (const n of allNotes) {
       n.backlinks = [];
     }
 
-    // Rebuild from links（使用与链接校验一致的子串包含匹配）
+    // Rebuild from links（使用与 saveNote 自动构建一致的多匹配逻辑）
     for (const note of allNotes) {
       for (const link of note.links) {
         const lowerTarget = link.target.toLowerCase();
-        const targetNote = allNotes.find((n) => {
-          if (n.id === note.id) return false;
-          const t = n.title.toLowerCase();
-          return t === lowerTarget || t.includes(lowerTarget) || lowerTarget.includes(t);
-        });
-        if (!targetNote) continue;
-        targetNote.backlinks.push({
-          target: note.title,
-          weight: link.weight,
-          context: link.context,
-        });
+        for (const targetNote of allNotes) {
+          if (targetNote.id === note.id) continue;
+          const t = targetNote.title.toLowerCase();
+          if (t === lowerTarget || t.includes(lowerTarget) || lowerTarget.includes(t)) {
+            targetNote.backlinks.push({
+              target: note.title,
+              weight: link.weight,
+              context: link.context,
+            });
+          }
+        }
       }
     }
 

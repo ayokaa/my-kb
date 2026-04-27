@@ -226,6 +226,27 @@ describe('FileSystemStorage', () => {
       noteB = await storage.loadNote('note-b');
       expect(noteB.backlinks).toHaveLength(0);
     });
+
+    it('rebuildBacklinks matches all notes for a fuzzy link target', async () => {
+      // Note A links to "GPU" which matches both "GPU 基础" and "GPU 编程"
+      await storage.saveNote(createTestNote('gpu-basics', { title: 'GPU 基础' }));
+      await storage.saveNote(createTestNote('gpu-programming', { title: 'GPU 编程' }));
+      await storage.saveNote(createTestNote('note-a', {
+        title: 'Note A',
+        links: [{ target: 'GPU', weight: 'strong' }],
+      }));
+
+      await storage.rebuildBacklinks();
+
+      // Both GPU notes should get a backlink from Note A
+      const basics = await storage.loadNote('gpu-basics');
+      const programming = await storage.loadNote('gpu-programming');
+
+      expect(basics.backlinks).toHaveLength(1);
+      expect(basics.backlinks[0].target).toBe('Note A');
+      expect(programming.backlinks).toHaveLength(1);
+      expect(programming.backlinks[0].target).toBe('Note A');
+    });
   });
 
   // ===== Inbox =====
