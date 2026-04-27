@@ -1,5 +1,5 @@
+import { enqueue } from '@/lib/queue';
 import { FileSystemStorage } from '@/lib/storage';
-import { fetchWebContent } from '@/lib/ingestion/web';
 
 export async function POST(req: Request) {
   let body: { type?: unknown; content?: unknown; title?: unknown; url?: unknown };
@@ -26,14 +26,8 @@ export async function POST(req: Request) {
       if (typeof url !== 'string') {
         return Response.json({ error: 'URL required for link ingest' }, { status: 400 });
       }
-      const web = await fetchWebContent(url);
-      await storage.writeInbox({
-        sourceType: 'web',
-        title: web.title,
-        content: web.content,
-        rawMetadata: { source_url: url, excerpt: web.excerpt },
-      });
-      return Response.json({ ok: true, title: web.title });
+      const taskId = enqueue('web_fetch', { url });
+      return Response.json({ ok: true, taskId, message: '已加入抓取队列' }, { status: 202 });
     }
 
     return Response.json({ error: 'Unknown ingest type' }, { status: 400 });

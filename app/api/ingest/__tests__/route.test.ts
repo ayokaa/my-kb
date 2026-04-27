@@ -9,12 +9,8 @@ vi.mock('@/lib/storage', () => ({
   }),
 }));
 
-vi.mock('@/lib/ingestion/web', () => ({
-  fetchWebContent: vi.fn().mockResolvedValue({
-    title: 'Fetched Title',
-    content: 'Fetched content',
-    excerpt: 'Excerpt',
-  }),
+vi.mock('@/lib/queue', () => ({
+  enqueue: vi.fn().mockReturnValue('task-mock-id'),
 }));
 
 describe('/api/ingest', () => {
@@ -30,17 +26,17 @@ describe('/api/ingest', () => {
     expect(data.ok).toBe(true);
   });
 
-  it('ingests link', async () => {
+  it('queues link fetch', async () => {
     const req = new Request('http://localhost/api/ingest', {
       method: 'POST',
       body: JSON.stringify({ type: 'link', url: 'https://example.com' }),
     });
 
     const res = await POST(req);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     const data = await res.json();
     expect(data.ok).toBe(true);
-    expect(data.title).toBe('Fetched Title');
+    expect(data.taskId).toBe('task-mock-id');
   });
 
   it('returns 400 for unknown type', async () => {
