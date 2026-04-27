@@ -83,9 +83,12 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid messages' }, { status: 400 });
   }
 
-  // 获取最后一轮用户消息作为查询
-  const lastUserMessage = messages[messages.length - 1];
-  const query = lastUserMessage.content;
+  // 构建查询：取最近 3 轮用户消息拼接，让检索能利用对话上下文
+  const recentUserMessages = messages
+    .filter(m => m.role === 'user')
+    .slice(-3)
+    .map(m => m.content);
+  const query = recentUserMessages.join(' ');
 
   // 加载笔记和索引
   const storage = new FileSystemStorage();
@@ -100,7 +103,7 @@ export async function POST(req: Request) {
   if (notes.length > 0 && query.length > 0) {
     const results = search(query, notes, index, {
       statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
-      limit: 5,
+      limit: 10,
       enableDiffusion: true,
       diffusionDepth: 1,
       diffusionDecay: 0.3,

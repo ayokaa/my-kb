@@ -27,7 +27,8 @@ export function buildLinkMap(notes: Note[]): Map<string, Set<string>> {
  * 对单个笔记按查询词计算 Zone 加权分数。
  *
  * 规则：
- * - 每个查询词在笔记中只计一次分（取最高权重字段）
+ * - 每个查询词的多个字段命中分数累加（高权重字段命中多次得分更高）
+ * - 加入简单 IDF：出现在越多笔记中的词，分数越低
  * - 多查询词分数累加（OR 语义）
  */
 export function scoreNote(
@@ -46,21 +47,21 @@ export function scoreNote(
     const matching = postings.filter(p => p.noteId === noteId);
     if (matching.length === 0) continue;
 
-    // 取最高权重字段
-    let maxWeight = 0;
-    let bestField: SearchField = 'content';
+    // 简单 IDF：该词出现在多少篇不同笔记中
+    const docFreq = new Set(postings.map(p => p.noteId)).size;
+    const idf = Math.max(0.3, 1 - Math.log(1 + docFreq) / 5);
+
+    // 多个字段命中分数累加（乘以 IDF）
+    let termScore = 0;
     for (const p of matching) {
       const w = weights[p.field] ?? 0;
-      if (w > maxWeight) {
-        maxWeight = w;
-        bestField = p.field;
+      termScore += w * idf;
+      if (!hitFields.includes(p.field)) {
+        hitFields.push(p.field);
       }
     }
 
-    score += maxWeight;
-    if (!hitFields.includes(bestField)) {
-      hitFields.push(bestField);
-    }
+    score += termScore;
   }
 
   return { score, hitFields };
@@ -133,6 +134,16 @@ export function diffuseLinks(
  * 4. 关联扩散（可选）
  * 5. 排序并返回 Top N
  */
+/**
+ * 执行搜索。
+ *
+ * 流程：
+ * 1. Tokenize 查询
+ * 2. 从倒排索引获取候选笔记（OR 语义）
+ * 3. 计算 Zone 加权分数（含 IDF）
+ * 4. 关联扩散（可选）
+ * 5. 按分数排序并返回 Top N
+ */
 export function search(
   query: string,
   allNotes: Note[],
@@ -141,7 +152,7 @@ export function search(
 ): SearchResult[] {
   const {
     statusFilter = ['evergreen', 'growing'],
-    limit = 5,
+    limit = 10,
     enableDiffusion = true,
     diffusionDepth = 1,
     diffusionDecay = 0.3,
@@ -173,7 +184,7 @@ export function search(
     if (!note) continue;
 
     const { score, hitFields } = scoreNote(noteId, queryTerms, index);
-    if (score > 0) {
+    if (score > 0.5) {
       scored.set(noteId, {
         note,
         score,
@@ -201,16 +212,15 @@ export function search(
 /**
  * 组装检索结果为人类可读的上下文字符串。
  *
- * 根据命中字段动态裁剪内容，控制 token 预算。
+ * 包含笔记的完整元数据 + 正文前 800 字，让 LLM 能看到更完整的内容。
  */
-export function assembleContext(results: SearchResult[], maxNotes = 5): string {
+export function assembleContext(results: SearchResult[], maxNotes = 10): string {
   const chunks: string[] = [];
 
   for (const result of results.slice(0, maxNotes)) {
-    const { note, hitFields, isLinkDiffusion } = result;
+    const { note, isLinkDiffusion } = result;
 
     if (isLinkDiffusion) {
-      // 扩散笔记只取摘要
       chunks.push(
         `【相关笔记: ${note.title}】\n` +
         `摘要: ${note.summary}\n` +
@@ -219,41 +229,28 @@ export function assembleContext(results: SearchResult[], maxNotes = 5): string {
       continue;
     }
 
-    // 根据命中字段决定呈现内容
-    const hasQA = hitFields.includes('qa');
-    const hasKeyFact = hitFields.includes('keyFact');
+    const lines = [
+      `【笔记: ${note.title}】`,
+      `标签: ${note.tags.join(', ')}`,
+      `摘要: ${note.summary}`,
+    ];
 
-    if (hasQA && note.qas.length > 0) {
-      // QA 命中：呈现问答对
-      const qa = note.qas[0];
-      chunks.push(
-        `【笔记: ${note.title}】\n` +
-        `相关问答:\n` +
-        `Q: ${qa.question}\n` +
-        `A: ${qa.answer}\n`
-      );
-    } else if (hasKeyFact && note.keyFacts.length > 0) {
-      // KeyFact 命中：呈现摘要 + 相关事实
-      const facts = note.keyFacts.slice(0, 3);
-      chunks.push(
-        `【笔记: ${note.title}】\n` +
-        `摘要: ${note.summary}\n` +
-        `相关事实:\n${facts.map(f => `- ${f}`).join('\n')}\n`
-      );
-    } else {
-      // 默认：呈现摘要 + keyFacts + 第一个 QA
-      const lines = [
-        `【笔记: ${note.title}】`,
-        `摘要: ${note.summary}`,
-      ];
-      if (note.keyFacts.length > 0) {
-        lines.push(`关键事实:\n${note.keyFacts.slice(0, 3).map(f => `- ${f}`).join('\n')}`);
-      }
-      if (note.qas.length > 0) {
-        lines.push(`常见问题:\nQ: ${note.qas[0].question}\nA: ${note.qas[0].answer}`);
-      }
-      chunks.push(lines.join('\n') + '\n');
+    if (note.keyFacts.length > 0) {
+      lines.push(`关键事实:\n${note.keyFacts.map(f => `- ${f}`).join('\n')}`);
     }
+
+    if (note.qas.length > 0) {
+      const qaLines = note.qas.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n');
+      lines.push(`问答:\n${qaLines}`);
+    }
+
+    // 加入正文前 800 字符（让 LLM 能看到更多内容）
+    const contentPreview = note.content.slice(0, 800);
+    if (contentPreview.length > 0) {
+      lines.push(`正文:\n${contentPreview}${note.content.length > 800 ? '...' : ''}`);
+    }
+
+    chunks.push(lines.join('\n') + '\n');
   }
 
   return chunks.join('\n---\n');

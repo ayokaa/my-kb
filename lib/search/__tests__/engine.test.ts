@@ -16,28 +16,30 @@ describe('scoreNote', () => {
   const index = buildIndex([RAG_NOTE, VECTOR_DB_NOTE]);
 
   test('tag 命中得分最高', () => {
-    const { score, hitFields } = scoreNote('rag-overview', ['ai'], index);
-    expect(score).toBe(DEFAULT_ZONE_WEIGHTS.tag);
+    const { score, hitFields } = scoreNote('rag-overview', ['llm'], index);
+    // 'llm' 只在 rag-overview 的 tag 中命中
+    expect(score).toBeGreaterThan(0);
     expect(hitFields).toContain('tag');
   });
 
-  test('title 命中得分正确', () => {
-    const { score } = scoreNote('rag-overview', ['rag'], index);
-    // 'rag' 同时在 tag(3.0) 和 title(2.0) 中，取最高 tag
-    expect(score).toBe(DEFAULT_ZONE_WEIGHTS.tag);
+  test('多字段命中分数累加高于单字段', () => {
+    const scoreLlm = scoreNote('rag-overview', ['llm'], index).score; // 只命中 tag
+    const scoreRag = scoreNote('rag-overview', ['rag'], index).score; // 命中多个字段
+    expect(scoreRag).toBeGreaterThan(scoreLlm);
   });
 
-  test('content 命中得分最低', () => {
+  test('content 命中得分低于 title/tag', () => {
     const { score, hitFields } = scoreNote('rag-overview', ['retrieval'], index);
-    expect(score).toBe(DEFAULT_ZONE_WEIGHTS.content);
+    expect(score).toBeGreaterThan(0);
+    expect(score).toBeLessThan(DEFAULT_ZONE_WEIGHTS.title);
     expect(hitFields).toContain('content');
   });
 
   test('多 term 分数累加', () => {
     const scoreRag = scoreNote('rag-overview', ['rag'], index).score;
     const scoreRagWhat = scoreNote('rag-overview', ['rag', '什么是'], index).score;
-    // '什么是' 命中 qa 字段
-    expect(scoreRagWhat).toBe(scoreRag + DEFAULT_ZONE_WEIGHTS.qa);
+    // 增加第二个查询词后总分应更高
+    expect(scoreRagWhat).toBeGreaterThan(scoreRag);
   });
 
   test('未命中返回 0 分', () => {
@@ -45,11 +47,11 @@ describe('scoreNote', () => {
     expect(score).toBe(0);
   });
 
-  test('同一 term 多字段命中只取最高权重', () => {
-    // 'rag' 在 tag(3.0) 和 title(2.0) 中都有
+  test('同一 term 多字段命中分数累加（含 IDF）', () => {
+    // 'rag' 在 tag/title/keyFact/content/qa 等多个字段中都有，分数累加
     const { score } = scoreNote('rag-overview', ['rag'], index);
-    expect(score).toBe(DEFAULT_ZONE_WEIGHTS.tag);
-    expect(score).not.toBe(DEFAULT_ZONE_WEIGHTS.tag + DEFAULT_ZONE_WEIGHTS.title);
+    // 多字段累加后分数应显著高于单个最高权重字段
+    expect(score).toBeGreaterThan(DEFAULT_ZONE_WEIGHTS.tag * 1.5);
   });
 });
 

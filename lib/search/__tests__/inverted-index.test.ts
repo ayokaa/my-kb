@@ -26,20 +26,20 @@ describe('tokenize', () => {
 
   test('中文按字和子词切分', () => {
     const tokens = tokenize('向量数据库');
-    expect(tokens).toContain('向');
-    expect(tokens).toContain('量');
-    expect(tokens).toContain('数');
-    expect(tokens).toContain('据');
-    expect(tokens).toContain('库');
+    // 单字已去除，只保留双字组合及以上
     expect(tokens).toContain('向量');
     expect(tokens).toContain('量数');
+    expect(tokens).toContain('数据');
+    expect(tokens).toContain('据库');
+    expect(tokens).toContain('向量数');
+    expect(tokens).toContain('量数据');
+    expect(tokens).toContain('数据库');
+    expect(tokens).toContain('向量数据库');
   });
 
   test('中英文混合在边界处分割', () => {
     const tokens = tokenize('RAG技术');
     expect(tokens).toContain('rag');
-    expect(tokens).toContain('技');
-    expect(tokens).toContain('术');
     expect(tokens).toContain('技术');
   });
 
@@ -65,7 +65,7 @@ describe('tokenize', () => {
   test('数字被保留', () => {
     const tokens = tokenize('2024年');
     expect(tokens).toContain('2024');
-    expect(tokens).toContain('年');
+    // 单字'年'已去除
   });
 
   test('去重', () => {

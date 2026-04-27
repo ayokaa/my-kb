@@ -2,7 +2,7 @@ import type { Note } from '../types';
 import type { InvertedIndexMap, Posting, SearchIndexFile } from './types';
 
 /** 索引版本号，结构变化时递增 */
-export const INDEX_VERSION = 1;
+export const INDEX_VERSION = 2;
 
 /**
  * 将文本分词为检索词列表。
@@ -33,26 +33,37 @@ const STOP_WORDS = new Set([
 ]);
 
 /**
- * 将纯中文字符串生成所有子词（所有长度 >=2 的连续子串 + 单字）。
- * 对于短文本（<20 字），O(n²) 是可接受的。
+ * 将纯中文字符串生成检索词。
+ * - 保留完整片段（整句）
+ * - 相邻双字组合（滑动窗口）
+ * - 去掉单字（噪声太大、区分度差）
+ * - 限制最大长度 6（避免无意义超长串）
  */
 function expandChineseTokens(segment: string): string[] {
   const tokens: string[] = [];
-  // 所有长度 >=2 的连续子串
-  for (let len = 2; len <= segment.length; len++) {
-    for (let i = 0; i <= segment.length - len; i++) {
-      const substr = segment.slice(i, i + len);
-      if (!STOP_WORDS.has(substr)) {
-        tokens.push(substr);
-      }
+  const maxLen = Math.min(segment.length, 6);
+
+  // 保留完整片段（如果长度在合理范围内）
+  if (segment.length >= 2 && segment.length <= 6 && !STOP_WORDS.has(segment)) {
+    tokens.push(segment);
+  }
+
+  // 相邻双字组合（滑动窗口，步长 1）
+  for (let i = 0; i <= segment.length - 2; i++) {
+    const bigram = segment.slice(i, i + 2);
+    if (!STOP_WORDS.has(bigram)) {
+      tokens.push(bigram);
     }
   }
-  // 单字
-  for (let i = 0; i < segment.length; i++) {
-    if (!STOP_WORDS.has(segment[i])) {
-      tokens.push(segment[i]);
+
+  // 三字组合（增加语义粒度）
+  for (let i = 0; i <= segment.length - 3; i++) {
+    const trigram = segment.slice(i, i + 3);
+    if (!STOP_WORDS.has(trigram)) {
+      tokens.push(trigram);
     }
   }
+
   return tokens;
 }
 
