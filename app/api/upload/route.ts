@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     }
 
     // Write to inbox
-    await storage.writeInbox({
+    const written = await storage.writeInbox({
       sourceType: fileType.startsWith('image/') ? 'image' : fileType.startsWith('audio/') ? 'audio' : 'text',
       title,
       content,
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return Response.json({ ok: true, fileName, title });
+    return Response.json({ ok: true, fileName, title, skipped: !written });
   } catch (err) {
     console.error('[Upload] Failed to process upload:', err);
     return Response.json({ error: 'Internal error' }, { status: 500 });
