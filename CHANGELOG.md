@@ -14,6 +14,17 @@ All notable changes to this project are documented in this file.
 - **Centralized LLM client** (`lib/llm.ts`): Async factory replaces 3 scattered `new OpenAI()` instantiations. Credentials are read fresh on every call, enabling runtime reconfiguration. (`09cdf11`)
 - **Relink cron job** (`lib/relink/cron.ts`): Daily background task that re-evaluates note-to-note associations for the entire knowledge base. Existing notes get links to newer notes they missed at ingest time. Merge strategy: additive (new links appended, old links preserved). (`9530fe3`)
 - **Mechanical pre-filter for link generation** (`lib/cognition/ingest.ts`): When the knowledge base has >10 notes, the LLM no longer receives all titles. Instead, the existing search engine ranks notes against the incoming entry and only the top 5 candidates are passed to the LLM for judgment. This prevents LLM degradation as the note count grows. (`dc6d508`)
+- **AI real-time web fetch tool calling** (`app/api/chat/route.ts`): The chat API now supports LLM-driven `web_fetch` tool calls. When the knowledge base content is insufficient, the LLM can invoke `fetchWebContent` (Playwright + Readability) to scrape web pages on-the-fly and inject the extracted content into the conversation context. Two-phase calling: tool detection (`stream: false`) → execute fetch → streaming response (`stream: true`). (`23580f2`)
+- **Backlinks (反向链接)**: Complete bidirectional link tracking across the knowledge base.
+  - `Note` model gains `backlinks: NoteLink[]`, persisted to YAML Markdown under a new `## 反向链接` section. (`7a781a8`)
+  - `parseNote`/`stringifyNote` support the new section. (`7a781a8`)
+  - `buildNoteIndex` indexes `backlink.target` into the inverted index (field: `backlink`). (`7a781a8`)
+  - `saveNote()` auto-builds backlinks for the current note using bidirectional substring matching. (`1a71bfc`)
+  - `rebuildBacklinks()` performs a full rebuild across all notes. (`1a71bfc`)
+  - `deleteNote()` triggers `rebuildBacklinks()` after archiving. (`1a71bfc`)
+  - Queue `ingest`/`relink` tasks call `rebuildBacklinks()` on completion. (`d6d22c9`)
+  - Frontend `NotesPanelClient` displays a "反向链接" section below "关联"; clicking navigates to the source note. (`be59173`)
+- **Search index memory cache** (`lib/search/cache.ts`): Extracted from `chat/route.ts` for testability. `loadOrBuildIndex` provides a 5-second TTL in-memory cache plus request deduplication (concurrent calls share the same promise). Eliminates redundant `search-index.json` reads across chat requests. (`601fd9e`, `e14fd9b`)
 
 ### Changed
 
@@ -31,6 +42,8 @@ All notable changes to this project are documented in this file.
 - **Message queue** (`components/ChatPanel.tsx`): While the LLM is generating a response, new user messages enter a queue instead of spawning concurrent requests. Queued messages display as semi-transparent "排队中" bubbles and are auto-sent when the current turn completes. Send button shows queue count during loading. (`712a581`)
 - **IngestPanel extraction** (`components/IngestPanel.tsx`): The ingest UI (text/link/file/rss tabs) was extracted from `ChatPanel` into a standalone `IngestPanel` component accessed via a new Sidebar tab. `ChatPanel` now focuses solely on conversation management and chat. (`2a9c9b6`)
 - **E2E ingest navigation fix**: Updated E2E tests to navigate via `nav-ingest` instead of the removed `ingest-toggle` button, and switched to `data-testid` locators to avoid strict-mode violations on ambiguous text matches. (`78f2c4e`)
+- **Search context sources visibility** (`lib/search/engine.ts`): `assembleContext` now includes each note's `sources` URLs in the context string, enabling the LLM to discover and fetch from referenced web pages during tool calls. (`2fac0f3`)
+- **Note link navigation consistency** (`components/NotesPanelClient.tsx`, `lib/storage.ts`): Link creation, validation, `navigateToNote`, `saveNote`, and `rebuildBacklinks` all use the same bidirectional substring matching (`t.includes(target) || target.includes(t)`), eliminating "link stored but navigation fails" mismatches. (`be59173`)
 
 ### Fixed
 
@@ -49,6 +62,10 @@ All notable changes to this project are documented in this file.
 - **Playwright dev-server collision**: `playwright.config.ts` now launches the test server on port `3001` (`npx next dev -p 3001`) with `baseURL: http://localhost:3001`. This prevents Playwright from accidentally reusing a user's regular dev server on `:3000` (which uses the production `knowledge/` directory instead of `knowledge-test/`). (`b9cca0c`)
 - **PDF parsing ESM import**: Fixed `pdf-parse` v2.4.5 ESM compatibility by using `new PDFParse({ data: buffer })` with an explicit `PDFJS_WORKER_PATH`, resolving `dist` path resolution failures. (`e03d236`)
 - **Task queue blocking**: Replaced the single serial worker with per-type isolated workers (`ingest`, `rss_fetch`, `web_fetch`). Tasks of different types no longer block each other, improving throughput. (`25e263c`)
+- **Duplicate conversation creation** (`components/ChatPanel.tsx`): `handleNewConversation` now guards with `isCreatingRef` to prevent double-click, React Strict Mode double-invocation, and auto-create + button-click overlap from spawning duplicate conversations. (`6bd24c2`)
+- **Task count accuracy** (`lib/queue.ts`): `listInboxPending()` once again includes `rss_fetch` tasks in the count, restoring correct badge numbers in the sidebar. (`87ddf06`)
+- **Queue persistence trimming** (`lib/queue.ts`): `queue.json` caps done/failed tasks at the most recent 100; `pending`/`running` tasks are never trimmed. Recovery resets `status === 'running'` to `pending` and re-queues them. `pendingIds` now covers all 4 types (`ingest`/`rss_fetch`/`web_fetch`/`relink`). (`6901ff8`, `4cb56dc`)
+- **Web fetch timeout** (`lib/ingestion/web.ts`): `page.goto` wait strategy downgraded from `networkidle` to `domcontentloaded` (with `load` fallback), avoiding indefinite hangs on modern sites with persistent analytics/tracking requests. (`d008769`)
 
 ### Added
 
@@ -77,6 +94,9 @@ All notable changes to this project are documented in this file.
   - Unit tests: `lib/events.ts` (4 tests), `lib/search/inverted-index.ts` (extended), `lib/cognition/ingest.ts` (LLM JSON fallback + `validateLLMOutput` boundary cases).
   - API route tests: `/api/events`, `/api/rss/subscriptions/check`, `/api/rss/import-opml`.
   - E2E tests: `sidebar.spec.ts` (badge), `notes.spec.ts` (search), plus extensive coverage for `chat.spec.ts`, `ingest.spec.ts`, `rss.spec.ts`, `tasks.spec.ts`, `upload.spec.ts`.
+- **Backlinks test coverage**: 14 new tests across `lib/__tests__/parsers.test.ts`, `lib/__tests__/inverted-index.test.ts`, `lib/__tests__/storage.test.ts`, and `app/api/notes/__tests__/route.test.ts` covering parsing, indexing, auto-build, rebuild, fuzzy match, and UI interaction. (`f4752ef`, `515a976`, `8032b4a`)
+- **Search cache tests**: `lib/search/__tests__/cache.test.ts` covers TTL expiration, concurrent deduplication, and `__resetSearchCache()` test isolation. (`601fd9e`)
+- **Chat tool call UI indicator** (`components/ChatPanel.tsx`): During loading, if a `tool_call` SSE event is received, a "🌐 已抓取网页: [URL]" badge appears above the "思考中..." spinner. (`e7da66e`)
 
 ### Changed
 
@@ -86,7 +106,7 @@ All notable changes to this project are documented in this file.
 - **parseInboxEntry extraction**: Moved `parseInboxEntry` from `lib/storage.ts` to `lib/parsers.ts`. `writeInbox` now returns `boolean` indicating whether a write actually occurred (`false` when skipping duplicates). (`242e7ab`)
 - **RSS subscription check parallelization**: `checkAllFeeds()` now executes subscription checks in parallel, reducing batch refresh latency. (`da54cb0`)
 - **RSS OPML strict validation**: `parseOPML` now throws descriptive errors for invalid or empty OPML instead of failing silently. (`da54cb0`)
-- **Test counts**: 260 Vitest unit tests (+81), 50 Playwright E2E tests (+22).
+- **Test counts**: 307 Vitest unit tests (+128), 50 Playwright E2E tests (+22).
 
 ### Added
 
