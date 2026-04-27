@@ -275,6 +275,8 @@ export default function ChatPanel() {
   }, [loadMessages]);
 
   const handleNewConversation = useCallback(async () => {
+    if (isCreatingRef.current) return;
+    isCreatingRef.current = true;
     try {
       const res = await fetch('/api/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '新对话' }) });
       const data = await res.json();
@@ -286,6 +288,8 @@ export default function ChatPanel() {
       }
     } catch (err) {
       console.error('[ChatPanel] Failed to create conversation:', err);
+    } finally {
+      isCreatingRef.current = false;
     }
   }, []);
 
@@ -324,9 +328,8 @@ export default function ChatPanel() {
 
   const isCreatingRef = useRef(false);
   useEffect(() => {
-    if (conversations.length === 0 && !activeId && !loadingConv && !isCreatingRef.current) {
-      isCreatingRef.current = true;
-      handleNewConversation().finally(() => { isCreatingRef.current = false; });
+    if (conversations.length === 0 && !activeId && !loadingConv) {
+      handleNewConversation();
     }
   }, [conversations, activeId, loadingConv, handleNewConversation]);
 
