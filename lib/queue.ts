@@ -270,10 +270,12 @@ async function runRSSFetchTask(payload: RSSFetchPayload) {
 
 async function runRelinkTask() {
   const storage = new FileSystemStorage();
-  return await runRelinkJob(
+  const result = await runRelinkJob(
     () => storage.listNotes(),
-    (note) => storage.saveNote(note)
+    (note) => storage.saveNote(note, { skipBacklinkRebuild: true })
   );
+  await storage.rebuildBacklinks();
+  return result;
 }
 
 async function runIngestTask(payload: IngestPayload) {
@@ -306,7 +308,8 @@ async function runIngestTask(payload: IngestPayload) {
 
   const existingNotes = await storage.listNotes();
   const { note } = await processInboxEntry(entry, existingNotes);
-  await storage.saveNote(note);
+  await storage.saveNote(note, { skipBacklinkRebuild: true });
   await storage.archiveInbox(fileName);
   broadcastNoteChanged();
+  await storage.rebuildBacklinks();
 }
