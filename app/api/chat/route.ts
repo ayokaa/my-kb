@@ -3,9 +3,11 @@ import { FileSystemStorage } from '@/lib/storage';
 import { search, assembleContext } from '@/lib/search/engine';
 import { loadOrBuildIndex } from '@/lib/search/cache';
 import { fetchWebContent } from '@/lib/ingestion/web';
+import { isValidHttpUrl } from '@/lib/ingestion/rss';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
 
 const MAX_MESSAGE_LENGTH = 10000;
+const MAX_TOOL_CALLS = 3;
 
 /** 定义可用工具 */
 const tools = [
@@ -156,7 +158,11 @@ export async function POST(req: Request) {
   const toolResultItems: Array<{ id: string; name: string; url: string; content: string }> = [];
 
   if (toolCalls && toolCalls.length > 0) {
-    for (const toolCall of toolCalls) {
+    const limitedCalls = toolCalls.slice(0, MAX_TOOL_CALLS);
+    if (toolCalls.length > MAX_TOOL_CALLS) {
+      console.warn(`[Chat] LLM returned ${toolCalls.length} tool calls, limiting to ${MAX_TOOL_CALLS}`);
+    }
+    for (const toolCall of limitedCalls) {
       if (toolCall.function?.name === 'web_fetch') {
         let args: { url?: string; reason?: string };
         try {
@@ -167,7 +173,7 @@ export async function POST(req: Request) {
         const url = args.url || '';
         console.log(`[Chat] Tool call web_fetch: ${url} (${args.reason || ''})`);
 
-        if (url) {
+        if (url && isValidHttpUrl(url)) {
           try {
             const webContent = await fetchWebContent(url);
             toolResultItems.push({
@@ -194,7 +200,7 @@ export async function POST(req: Request) {
       {
         role: 'assistant',
         content: '',
-        tool_calls: toolCalls,
+        tool_calls: limitedCalls,
       },
       ...toolResultItems.map((r) => ({
         role: 'tool',

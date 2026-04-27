@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockCreate = vi.fn();
+const mockFetchWebContent = vi.fn();
 
 vi.mock('openai', () => ({
   default: vi.fn(function () {
@@ -23,11 +24,20 @@ vi.mock('@/lib/storage', () => ({
   }),
 }));
 
+vi.mock('@/lib/ingestion/web', () => ({
+  fetchWebContent: mockFetchWebContent,
+}));
+
+vi.mock('@/lib/search/cache', () => ({
+  loadOrBuildIndex: vi.fn().mockResolvedValue({ entries: [] }),
+}));
+
 
 
 describe('/api/chat', () => {
   beforeEach(() => {
     mockCreate.mockReset();
+    mockFetchWebContent.mockReset();
   });
 
   it('streams response with filtered think tags', async () => {
@@ -133,6 +143,82 @@ describe('/api/chat', () => {
     expect(text).toContain('Start');
     expect(text).toContain('End');
     expect(text).not.toContain('hidden');
+  });
+
+  it('rejects SSRF: web_fetch must not fetch internal URLs', async () => {
+    mockFetchWebContent.mockResolvedValue({
+      title: 'Internal', content: 'secret data', excerpt: '',
+    });
+
+    // LLM returns a tool call targeting internal URL
+    mockCreate.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: '',
+          tool_calls: [{
+            id: 'tc-1',
+            function: {
+              name: 'web_fetch',
+              arguments: JSON.stringify({ url: 'http://169.254.169.254/latest/meta-data/', reason: 'test' }),
+            },
+          }],
+        },
+      }],
+    });
+
+    // Second call: streaming the final answer
+    async function* mockStream() {
+      yield { choices: [{ delta: { content: 'Done' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'fetch internal' }],
+      }),
+    });
+
+    await POST(req);
+    // fetchWebContent must NOT be called for internal URLs
+    expect(mockFetchWebContent).not.toHaveBeenCalled();
+  });
+
+  it('limits concurrent tool calls to 3', async () => {
+    mockFetchWebContent.mockResolvedValue({
+      title: 'Page', content: 'content', excerpt: '',
+    });
+
+    // LLM returns 5 tool calls
+    const toolCalls = Array.from({ length: 5 }, (_, i) => ({
+      id: `tc-${i}`,
+      function: {
+        name: 'web_fetch',
+        arguments: JSON.stringify({ url: `https://example.com/page-${i}`, reason: 'test' }),
+      },
+    }));
+
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: '', tool_calls: toolCalls } }],
+    });
+
+    async function* mockStream() {
+      yield { choices: [{ delta: { content: 'Done' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'fetch many' }],
+      }),
+    });
+
+    await POST(req);
+    // fetchWebContent should be called at most 3 times, not 5
+    expect(mockFetchWebContent).toHaveBeenCalledTimes(3);
   });
 
 });
