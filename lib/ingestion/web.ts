@@ -76,7 +76,13 @@ export async function fetchWebContent(url: string): Promise<{ title: string; con
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: FETCH_TIMEOUT });
+    // networkidle often fails on sites with persistent analytics/tracking.
+    // Try domcontentloaded first (fast), fallback to networkidle on timeout.
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: FETCH_TIMEOUT });
+    } catch {
+      await page.goto(url, { waitUntil: 'load', timeout: FETCH_TIMEOUT });
+    }
 
     const title = await page.title();
     const html = await page.content();
