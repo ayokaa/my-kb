@@ -4,8 +4,45 @@ All notable changes to this project are documented in this file.
 
 ## 2026-04-27
 
+### Added
+
+- **Settings UI Panel**: New "设置" tab in the sidebar allows runtime configuration of:
+  - LLM model, API key, and base URL (hot-reloaded without server restart)
+  - RSS check interval (minutes)
+  - Relink cron expression
+  - Configuration is persisted to `knowledge/meta/settings.yml` with env-var fallback. (`09cdf11`)
+- **Centralized LLM client** (`lib/llm.ts`): Async factory replaces 3 scattered `new OpenAI()` instantiations. Credentials are read fresh on every call, enabling runtime reconfiguration. (`09cdf11`)
+- **Relink cron job** (`lib/relink/cron.ts`): Daily background task that re-evaluates note-to-note associations for the entire knowledge base. Existing notes get links to newer notes they missed at ingest time. Merge strategy: additive (new links appended, old links preserved). (`9530fe3`)
+- **Mechanical pre-filter for link generation** (`lib/cognition/ingest.ts`): When the knowledge base has >10 notes, the LLM no longer receives all titles. Instead, the existing search engine ranks notes against the incoming entry and only the top 5 candidates are passed to the LLM for judgment. This prevents LLM degradation as the note count grows. (`dc6d508`)
+
+### Changed
+
+- **Cron restartability**: Both RSS and relink cron modules now track `ScheduledTask` handles and expose `stop/restart` functions, enabling hot-reload from the Settings panel. (`09cdf11`)
+- **Queue type expansion**: `lib/queue.ts` gained a fourth task type `relink` with its own isolated worker. (`9530fe3`)
+- **Ingest link candidate selection**: `selectCandidateTitles()` is now generic over `{title, content}` so both `InboxEntry` and `Note` can reuse the same search-based pre-filter. (`9530fe3`)
+- **Ingest three-step pipeline** (`lib/cognition/ingest.ts`): Refactored single LLM call into Extract → QA → Link serial pipeline. Each step has a single responsibility. Step 2/3 degrade gracefully to empty arrays on retry exhaustion instead of failing the entire note. Exponential backoff retry (1s → 2s, max 2 retries). (`bee9c14`)
+- **Search system overhaul** (`lib/search/engine.ts`, `lib/search/inverted-index.ts`):
+  - Tokenization: removed single-char膨胀, replaced with whole-word + 2-char/3-char combos. Index dropped from ~160k to ~90k terms.
+  - Scoring: multi-field score accumulation + simple IDF decay instead of max-only.
+  - Context: `assembleContext()` replaced hard `maxNotes` limit with dynamic character budget (`maxChars: 15000`), packing full metadata + content previews until budget exhausted.
+  - Query building: chat API uses last 3 user messages concatenated instead of only the last one.
+  - Index version bumped to v2, triggering automatic rebuild on first load. (`185492f`)
+- **Search context character budget** (`lib/search/engine.ts`): Removed hardcoded `limit` from `search()`; `assembleContext()` now uses a `maxChars` budget (default 15000) to dynamically pack full note metadata and content previews. Chat API no longer passes a limit, letting the budget mechanism decide how many notes fit. (`79a7208`)
+- **Message queue** (`components/ChatPanel.tsx`): While the LLM is generating a response, new user messages enter a queue instead of spawning concurrent requests. Queued messages display as semi-transparent "排队中" bubbles and are auto-sent when the current turn completes. Send button shows queue count during loading. (`712a581`)
+- **IngestPanel extraction** (`components/IngestPanel.tsx`): The ingest UI (text/link/file/rss tabs) was extracted from `ChatPanel` into a standalone `IngestPanel` component accessed via a new Sidebar tab. `ChatPanel` now focuses solely on conversation management and chat. (`2a9c9b6`)
+- **E2E ingest navigation fix**: Updated E2E tests to navigate via `nav-ingest` instead of the removed `ingest-toggle` button, and switched to `data-testid` locators to avoid strict-mode violations on ambiguous text matches. (`78f2c4e`)
+
 ### Fixed
 
+- **Void link cleanup** (`lib/cognition/ingest.ts`, `lib/queue.ts`): LLM prompt now receives the list of existing note titles and is instructed to only link to real notes. `processInboxEntry()` filters generated links against existing titles using bidirectional substring matching. `buildLinkMap()` and `diffuseLinks()` skip links whose target cannot be found. A one-time migration removed 97 void links across 42 notes, leaving only valid associations. (`2426c5f`)
+- **Chat status filter**: Chat RAG search now includes all note statuses (`seed`, `growing`, `evergreen`, `stale`) instead of only `evergreen`/`growing`, ensuring newer notes are discoverable. (`ddd549f`)
+- **Conversation delete interaction**: Changed from single-click immediate delete to double-click confirm (3-second timeout to cancel). Added `DELETE /api/conversations/[id]` endpoint. (`ddd549f`)
+- **Auto-create conversation on empty list**: When all conversations are deleted, a new session is automatically created instead of leaving the user with a blank chat. (`36ad157`)
+- **RSS cron expression**: Fixed `*/59 * * * *` to `0 * * * *` for true hourly scheduling. Reads `RSS_CHECK_INTERVAL_MINUTES` env var. (`ddd549f`)
+- **ChatPanel layout fixes**:
+  - Added `overflow-hidden` + `h-full` to prevent the left conversation list from being pushed out of the viewport during chat scroll. (`334027a`)
+  - Added `min-h-0` to `ChatArea` root and message area to restore the missing scrollbar when content overflows. (`6e26608`)
+  - Added `min-w-0 truncate` to long conversation names and `shrink-0` to the delete button to prevent it from being squeezed out by flex layout. (`489a660`)
 - **`archiveInbox` idempotency**: `storage.archiveInbox()` now checks if the source file exists before attempting `rename()`. If the file is already missing (e.g. manually deleted or removed by `resetTestData()` during E2E), it returns silently instead of throwing `ENOENT`. (`f0f6cd5`)
 - **`runIngestTask` missing-file handling**: The queue worker now calls `stat()` on the inbox file before `readFile()`. If the file is missing, the task is marked `failed` with a clear error message (`Inbox file not found: {fileName}`) instead of crashing the worker with an unhandled `ENOENT`. (`f0f6cd5`)
 - **RSS cron missed-execution pile-up**: `lib/rss/cron.ts` now guards the callback with an `isRunning` lock. If a previous tick is still enqueueing feed checks, subsequent ticks are skipped with a log message instead of overlapping and producing `missed execution` warnings. (`21110d2`)
@@ -50,8 +87,6 @@ All notable changes to this project are documented in this file.
 - **RSS subscription check parallelization**: `checkAllFeeds()` now executes subscription checks in parallel, reducing batch refresh latency. (`da54cb0`)
 - **RSS OPML strict validation**: `parseOPML` now throws descriptive errors for invalid or empty OPML instead of failing silently. (`da54cb0`)
 - **Test counts**: 260 Vitest unit tests (+81), 50 Playwright E2E tests (+22).
-
-## 2026-04-26
 
 ### Added
 

@@ -41,17 +41,23 @@ When the user clicks **Approve** in the Inbox panel:
 
 ### 3. Queue → Notes
 
-The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, and `web_fetch` tasks never block each other. Supported task types:
+The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, `web_fetch`, and `relink` tasks never block each other. Supported task types:
 
 **`ingest`** — Convert an inbox entry to a structured note:
 1. Verifies the inbox file still exists (`stat` check); if missing, marks task `failed` with `Inbox file not found`.
 2. Reads the archived inbox file.
 3. Checks for duplicate source URLs in existing notes (skips if found).
-4. Calls `processInboxEntry()` → `callLLM()` (MiniMax API).
+4. Calls `processInboxEntry()` → `callLLM()` (reads model/credentials from `lib/llm.ts`).
 5. LLM returns structured JSON: title, tags, summary, keyFacts, timeline, links, QAs, content.
 6. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
 7. `archiveInbox()` moves the source file to `knowledge/archive/inbox/` (idempotent — silently skips if already missing).
 8. `saveQueueState()` records task completion.
+
+**`relink`** — Refresh note-to-note associations:
+1. Loads all notes via `storage.listNotes()`.
+2. For each note, calls `relinkNote()` → search for top-5 candidates → LLM judgment.
+3. Merges new links with existing links (additive, no deletion).
+4. Saves only when links changed. Returns `{ processed, updated, failed }` stats.
 
 **`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
 
@@ -108,24 +114,32 @@ lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
 ├── parsers.ts      — Note Markdown ↔ object serialization + inbox parsing
-├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch)
+├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch, relink)
+├── settings.ts     — Runtime configuration (YAML persistence, env fallback)
+├── llm.ts          — Centralized async LLM client factory (reads settings fresh every call)
 ├── events.ts       — SSE event bus (server-to-client push for note changes)
 ├── search/
 │   ├── inverted-index.ts  — Inverted index (tokenize, build, add, remove)
 │   ├── engine.ts          — Search scoring, link diffusion, context assembly
 │   └── eval.ts            — Quantified evaluation framework (golden dataset, quality gates)
 ├── cognition/
-│   └── ingest.ts   — **Only module allowed to call LLM for note generation**
+│   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links)
+│   └── relink.ts   — LLM gateway for refreshing note-to-note links
 ├── ingestion/
 │   ├── web.ts      — Playwright + Readability extraction
 │   ├── rss.ts      — RSS/Atom/JSON Feed parsing
 │   └── pdf.ts      — PDF text extraction
-└── rss/
-    ├── manager.ts  — Subscription CRUD + incremental ingest
-    └── cron.ts     — node-cron wrapper (enqueues tasks)
+├── rss/
+│   ├── manager.ts  — Subscription CRUD + incremental ingest
+│   └── cron.ts     — node-cron wrapper (enqueues rss_fetch tasks, restartable)
+└── relink/
+    └── cron.ts     — node-cron wrapper (enqueues relink tasks, restartable)
 ```
 
-**Rule:** `lib/ingestion/*` only fetches raw data. It never touches the LLM. `lib/cognition/ingest.ts` is the sole LLM gateway.
+**Rules:**
+- `lib/ingestion/*` only fetches raw data. It never touches the LLM.
+- `lib/cognition/ingest.ts` and `lib/cognition/relink.ts` are the only modules allowed to call the LLM for note generation / link refresh.
+- `lib/llm.ts` is the single source of truth for LLM client instantiation. All call sites (`ingest.ts`, `relink.ts`, `app/api/chat/route.ts`) go through it.
 
 ---
 
@@ -170,6 +184,55 @@ knowledge-test/               — E2E test data (isolated)
 ```
 
 The storage root is configurable via the `KNOWLEDGE_ROOT` environment variable. When unset, it defaults to `knowledge/`. E2E tests set `KNOWLEDGE_ROOT=knowledge-test` so all file operations during tests go to `knowledge-test/` instead of `knowledge/`.
+
+---
+
+## Settings System
+
+### Problem
+
+LLM credentials, model names, and cron intervals were statically baked into environment variables at boot time. Changing any value required editing `.env.local` and restarting the server.
+
+### Solution
+
+`lib/settings.ts` provides a runtime configuration layer:
+
+1. **Persistence**: Settings are stored as YAML at `knowledge/meta/settings.yml` via atomic write (tmp+rename).
+2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`MINIMAX_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
+3. **Hot reload**: `lib/llm.ts` instantiates a fresh `OpenAI` client on every call by reading current settings. No server restart is needed after changing API keys or models.
+4. **Cron restartability**: Both `lib/rss/cron.ts` and `lib/relink/cron.ts` expose `stop/restart` functions. The Settings API (`POST /api/settings`) calls them when interval/expression changes.
+5. **Security**: `GET /api/settings` returns a *safe* copy where the API key is masked (`sk-...xxxx`). Only `POST` accepts the full key.
+
+### UI
+
+`components/SettingsPanel.tsx` is a `'use client'` form that fetches current settings on mount and POSTs changes on save. It lives in the main tab switcher (`TabShell`) alongside Chat, Inbox, Notes, etc.
+
+---
+
+## Link Generation & Maintenance
+
+### Ingest-Time Link Generation (Two-Stage)
+
+When a new note is created, the system decides which existing notes it should link to:
+
+1. **Mechanical pre-filter**: If the knowledge base has >10 notes, the search engine (`buildIndex` + `search`) ranks existing notes against the incoming entry. Only the top 5 candidate titles are passed to the LLM.
+2. **LLM judgment**: The LLM receives the candidate subset and decides actual links (with weight and context).
+3. **Void-link filtering**: Generated links are validated against existing note titles using bidirectional substring matching. Invalid links are silently discarded.
+
+If the knowledge base has ≤10 notes, all titles are passed to the LLM (no pre-filter needed).
+
+### Background Relink Job
+
+Problem: Links are generated at ingest time. A note created early in the knowledge base's life never gets links to notes that were added later.
+
+Solution: A daily `relink` cron job (default `0 3 * * *`) traverses all notes and re-evaluates their links:
+
+1. For each note, search for top-5 related candidates (excluding itself).
+2. Ask the LLM which candidates this note should link to.
+3. Merge new links into the note's existing `links` array (additive, no deletion of old links).
+4. Save only if links actually changed.
+
+The job is enqueued as a `relink` task type and processed by the queue's per-type worker, so it never blocks ingest or RSS tasks.
 
 ---
 

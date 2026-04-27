@@ -16,7 +16,8 @@
 
 - **Ingest**: Web links, RSS feeds, PDF/TXT/MD files, plain text
 - **Inbox Review**: Pending content is confirmed by the user (or auto-approved) before processing
-- **LLM Processing**: Calls the MiniMax API to extract tags, summaries, key facts, timelines, links, and other structured information
+- **LLM Processing**: Calls the configured LLM API (MiniMax, OpenAI-compatible, or custom endpoint) to extract tags, summaries, key facts, timelines, links, and other structured information
+- **Settings**: Runtime-configurable LLM credentials, model, RSS interval, and relink cron schedule via the Settings UI panel — no server restart required
 - **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
 - **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt
 
@@ -37,7 +38,7 @@
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
 - **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (260 unit tests) + Playwright (50 E2E tests)
+- **Testing**: Vitest (294 unit tests) + Playwright (50 E2E tests)
 - **Real-time**: SSE event bus for server-to-client push (note changes, chat data events)
 
 ## Quick Start
@@ -62,6 +63,11 @@ Required:
 
 Optional:
 - `MINIMAX_BASE_URL` — defaults to `https://api.minimaxi.com/v1`
+- `LLM_MODEL` — defaults to `MiniMax-M2.7`
+- `RSS_CHECK_INTERVAL_MINUTES` — defaults to `60`
+- `RELINK_CRON_EXPRESSION` — defaults to `0 3 * * *` (daily at 03:00)
+
+> All of the above can also be changed at runtime through the **Settings** UI panel. Environment variables serve as defaults; settings saved via the UI override them.
 
 ### 3. Start Development Server
 
@@ -102,15 +108,17 @@ my-kb/
 │   ├── NotesPanel.tsx
 │   ├── NotesPanelClient.tsx
 │   ├── RSSPanel.tsx
-│   └── TasksPanel.tsx
+│   ├── TasksPanel.tsx
+│   └── SettingsPanel.tsx
 ├── lib/                    # Core business logic
 │   ├── types.ts            # Type definitions
 │   ├── storage.ts          # Filesystem storage
 │   ├── parsers.ts          # Markdown parse/serialize
 │   ├── queue.ts            # Task queue (memory + JSON persistence)
-│   ├── cognition/          # LLM calls
+│   ├── cognition/          # LLM calls (ingest + relink)
 │   ├── ingestion/          # Content scraping (Web/RSS/PDF)
-│   └── rss/                # RSS subscription management
+│   ├── rss/                # RSS subscription management
+│   └── relink/             # Background link-refresh cron
 ├── e2e/                    # Playwright E2E tests
 ├── knowledge/              # Data storage (.gitignore, local only)
 │   ├── notes/              # Structured notes
@@ -133,7 +141,7 @@ All data is stored as Markdown / YAML files in the `knowledge/` directory. No da
 
 - **Notes**: `knowledge/notes/{id}.md` — YAML Frontmatter + Markdown body
 - **Inbox**: `knowledge/inbox/{timestamp}-{slug}.md`
-- **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state
+- **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state, runtime settings
 
 Both `knowledge/` and `knowledge-test/` and `.env*.local` are excluded by `.gitignore` to ensure personal data never enters version control.
 
