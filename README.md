@@ -19,7 +19,7 @@
 - **LLM Processing**: Calls the configured LLM API (MiniMax, OpenAI-compatible, or custom endpoint) to extract tags, summaries, key facts, timelines, links, and other structured information
 - **Settings**: Runtime-configurable LLM credentials, model, RSS interval, and relink cron schedule via the Settings UI panel — no server restart required
 - **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
-- **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt
+- **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt; LLM can invoke `web_fetch` tool calls to scrape referenced web pages on-the-fly when knowledge is insufficient
 
 ## Tech Stack
 
@@ -36,9 +36,9 @@
 - **AI Streaming**: `ai` SDK + OpenAI-compatible MiniMax API
 - **Web Scraping**: Playwright (Chromium headless) + Readability
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
-- **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation
+- **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation; 5-second TTL memory cache for the search index
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (294 unit tests) + Playwright (50 E2E tests)
+- **Testing**: Vitest (307 unit tests) + Playwright (50 E2E tests)
 - **Real-time**: SSE event bus for server-to-client push (note changes, chat data events)
 
 ## Quick Start

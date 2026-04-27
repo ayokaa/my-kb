@@ -9,12 +9,12 @@
 **my-kb** 是一个基于 Next.js 的个人 AI 知识库应用。用户可以通过聊天、网页链接、RSS 订阅、文件上传等方式收集信息，系统利用大语言模型（LLM）将原始内容自动加工成结构化的知识笔记，并以 Markdown 文件形式持久化存储在本地文件系统中。
 
 核心功能：
-- **AI 对话（RAG）**：基于已有知识的流式聊天助手，通过倒排索引检索相关知识并注入上下文
+- **AI 对话（RAG + Tool Calling）**：基于已有知识的流式聊天助手，通过倒排索引检索相关知识并注入上下文；当知识不足时 LLM 可调用 `web_fetch` 工具实时抓取网页补充回答
 - **知识入库（Ingest）**：支持文本、链接、PDF/TXT/MD 文件、RSS 订阅的自动抓取与入库
 - **收件箱审核（Inbox）**：待处理内容经过人工确认后，由 LLM 生成结构化笔记
-- **笔记管理（Notes）**：按状态（种子/生长中/常青/陈旧/归档）管理笔记，支持标签搜索
+- **笔记管理（Notes）**：按状态（种子/生长中/常青/陈旧/归档）管理笔记，支持标签搜索；显示双向反向链接（反向链接）
 - **RSS 订阅**：定时自动检查订阅源，将新文章写入收件箱（通过任务队列异步执行）
-- **任务队列**：后台异步处理 inbox 到 note 的转换，以及 RSS fetch。支持失败任务手动重试
+- **任务队列**：后台异步处理 inbox 到 note 的转换、RSS fetch、web fetch 和 relink。支持失败任务手动重试
 
 ---
 
@@ -43,7 +43,8 @@
 my-kb/
 ├── app/                          # Next.js App Router
 │   ├── api/                      # API 路由（每个目录对应一个端点）
-│   │   ├── chat/                 # POST /api/chat — 流式 AI 对话
+│   │   ├── chat/                 # POST /api/chat — 流式 AI 对话（支持工具调用）
+│   │   ├── conversations/        # GET/POST /api/conversations — 多会话管理
 │   │   ├── inbox/                # GET /api/inbox, POST /api/inbox/archive, POST /api/inbox/process
 │   │   ├── ingest/               # POST /api/ingest — 文本/链接手动入库
 │   │   ├── notes/                # GET /api/notes — 列出所有笔记
@@ -53,33 +54,51 @@ my-kb/
 │   │   │   ├── subscriptions/check/   # POST 手动检查更新
 │   │   │   └── subscriptions/import-opml/  # POST 导入 OPML
 │   │   ├── search/               # POST /api/search — 网络搜索（后端存在，暂无前端调用）
-│   │   ├── tasks/                # GET /api/tasks — 任务队列查询
+│   │   ├── settings/             # GET/POST /api/settings — 运行时配置
+│   │   ├── tasks/                # GET/POST /api/tasks — 任务队列查询与重试
 │   │   └── upload/               # POST /api/upload — 文件上传
 │   ├── globals.css               # 全局样式、CSS 变量、自定义组件类
-│   ├── layout.tsx                # 根布局（启动 RSS cron）
+│   ├── layout.tsx                # 根布局（启动 RSS cron + relink cron）
 │   └── page.tsx                  # 主页面（标签页切换器）
 ├── components/                   # React 组件
 │   ├── Sidebar.tsx               # 左侧导航栏
-│   ├── ChatPanel.tsx             # 聊天 + 入库面板
+│   ├── ChatPanel.tsx             # 聊天面板（多会话 + Markdown 渲染）
 │   ├── InboxPanel.tsx            # 收件箱审核
-│   ├── NotesPanel.tsx            # 笔记浏览与搜索
+│   ├── IngestPanel.tsx           # 知识入库面板（文本/链接/文件/RSS）
+│   ├── NotesPanel.tsx            # 笔记浏览与搜索（Server Component）
+│   ├── NotesPanelClient.tsx      # 笔记详情与交互（Client Component）
 │   ├── RSSPanel.tsx              # RSS 订阅管理
-│   └── TasksPanel.tsx            # 任务队列状态面板
+│   ├── SettingsPanel.tsx         # 运行时设置面板
+│   ├── TasksPanel.tsx            # 任务队列状态面板
+│   └── TabShell.tsx              # 标签页容器（CSS hidden 保活状态）
 ├── lib/                          # 核心业务逻辑
 │   ├── types.ts                  # TypeScript 类型定义
 │   ├── storage.ts                # FileSystemStorage 实现
 │   ├── parsers.ts                # Note 的 Markdown 解析与序列化
 │   ├── queue.ts                  # 任务队列与 Worker（内存运行 + JSON 持久化）
+│   ├── settings.ts               # 运行时配置（YAML 持久化）
+│   ├── llm.ts                    # 集中式 LLM 客户端工厂
+│   ├── events.ts                 # SSE 事件总线（服务端推送）
 │   ├── cognition/
-│   │   └── ingest.ts             # LLM 调用：将 inbox 加工成 note
+│   │   ├── ingest.ts             # LLM 调用：将 inbox 加工成 note
+│   │   └── relink.ts             # LLM 调用：刷新笔记间关联
 │   ├── ingestion/
 │   │   ├── web.ts                # 网页内容抓取（Playwright + Readability）
 │   │   ├── rss.ts                # RSS/Atom/JSON Feed 解析
 │   │   └── pdf.ts                # PDF 文本提取
-│   └── rss/
-│       ├── manager.ts            # RSS 订阅的增删查改与自动入库
-│       └── cron.ts               # node-cron 定时任务封装
+│   ├── search/
+│   │   ├── inverted-index.ts     # 倒排索引（分词、构建、增量更新）
+│   │   ├── engine.ts             # 搜索评分、关联扩散、上下文组装
+│   │   ├── cache.ts              # 搜索索引内存缓存（5s TTL + 并发去重）
+│   │   └── eval.ts               # 检索质量量化评估框架
+│   ├── rss/
+│   │   ├── manager.ts            # RSS 订阅的增删查改与自动入库
+│   │   └── cron.ts               # node-cron 定时任务封装（可 stop/restart）
+│   └── relink/
+│       └── cron.ts               # 关联刷新定时任务（可 stop/restart）
 ├── docs/                         # 文档（API 参考、架构设计）
+│   ├── API.md                    # REST API 参考
+│   └── ARCHITECTURE.md           # 系统架构与数据流
 ├── e2e/                          # Playwright E2E 测试
 ├── knowledge/                    # 文件系统数据存储（被 .gitignore 忽略）
 │   ├── notes/                    # 结构化笔记（Markdown）
@@ -88,10 +107,11 @@ my-kb/
 │   │   └── inbox/                # 已忽略的 inbox 条目
 │   ├── conversations/            # 对话记录
 │   ├── meta/                     # 元数据
-│   │   ├── inverted-index.md     # 倒排索引
+│   │   ├── search-index.json     # 倒排索引（JSON）
 │   │   ├── aliases.yml           # 别名映射
 │   │   ├── rss-sources.yml       # RSS 订阅列表（含 lastPubDate 增量标记）
-│   │   └── queue.json            # 任务队列持久化状态
+│   │   ├── queue.json            # 任务队列持久化状态
+│   │   └── settings.yml          # 运行时设置
 │   ├── attachments/              # 上传的原始文件
 │   └── daily/                    # （预留目录）
 ├── knowledge-test/               # E2E 测试数据隔离目录（被 .gitignore 忽略）
@@ -159,7 +179,7 @@ npm run test:e2e
 - **`lib/types.ts`**：所有核心业务类型（`Note`, `InboxEntry`, `Conversation`, `Storage` 接口等）。
 - **`lib/storage.ts`**：`FileSystemStorage` 类，实现 `Storage` 接口，所有数据持久化均通过此类完成。
 - **`lib/parsers.ts`**：`parseNote` / `stringifyNote`，定义了 Note 的 Markdown 格式规范。
-- **`lib/queue.ts`**：任务队列与后台 Worker。支持 `ingest`（inbox → note）和 `rss_fetch`（RSS 抓取 → inbox）两种任务类型。队列状态在 `knowledge/meta/queue.json` 中持久化（原子写入：tmp+rename），进程重启后自动恢复 pending 任务并重跑 Worker。失败任务可通过 `retryTask(id)` 重置并重新执行。
+- **`lib/queue.ts`**：任务队列与后台 Worker。支持 `ingest`（inbox → note）、`rss_fetch`（RSS 抓取 → inbox）、`web_fetch`（网页抓取 → inbox）和 `relink`（关联刷新）四种任务类型，各类型由独立 worker 并行处理。队列状态在 `knowledge/meta/queue.json` 中持久化（原子写入：tmp+rename）。持久化策略：保留全部 `pending`/`running` 任务；`done`/`failed` 只保留最近 100 条。进程重启后，`running` 任务自动重置为 `pending` 并重跑 Worker。失败任务可通过 `retryTask(id)` 重置并重新执行。
 - **`lib/cognition/ingest.ts`**：唯一调用 LLM 进行内容加工的地方。
 - **`lib/ingestion/`**：各类原始内容的抓取/解析器，不依赖 LLM。
 - **`lib/rss/`**：RSS 订阅管理与定时轮询。
@@ -217,6 +237,9 @@ sources:
 ## 关联
 - [[另一篇笔记]] #strong — 关联原因
 
+## 反向链接
+- [[引用此笔记的标题]] #strong — 关联上下文
+
 ## 常见问题
 **Q**: 问题？
 **A**: 答案
@@ -242,9 +265,10 @@ Markdown 正文
 ### 检索系统（RAG）
 
 - `knowledge/meta/search-index.json`：倒排索引，持久化存储。
-- `lib/search/index.ts`：分词（中文按字+保留整词，英文按空格）、索引构建、增量更新（`addNoteToIndex`、`removeNoteFromIndex`）。
-- `lib/search/engine.ts`：Zone 加权评分（tag 3.0 > qa 2.5 > title 2.0 > summary 1.8 > content 0.8）、关联扩散（1-hop，30% 衰减）、上下文组装。
-- `app/api/chat/route.ts`：聊天时自动检索相关知识，将结果注入 system prompt。
+- `lib/search/inverted-index.ts`：分词（中文整词+2/3字组合，英文空格分词，停用词过滤）、索引构建、增量更新（`addNoteToIndex`、`removeNoteFromIndex`）。索引版本 `INDEX_VERSION = 2`。
+- `lib/search/engine.ts`：Zone 加权评分（tag 3.0 > qa 2.5 > title 2.0 > summary 1.8 > keyFact/link/backlink 1.5 > content 0.8）、关联扩散（1-hop，30% 衰减）、上下文组装（动态字符预算 15000）。
+- `lib/search/cache.ts`：搜索索引内存缓存，5 秒 TTL + 并发请求去重（`loadOrBuildIndex`），供 `chat/route.ts` 复用。
+- `app/api/chat/route.ts`：聊天时自动检索相关知识，将结果注入 system prompt；支持 `web_fetch` 工具调用，LLM 可在知识不足时实时抓取网页补充回答。
 
 ---
 
@@ -256,6 +280,7 @@ Markdown 正文
   - `lib/__tests__/storage.test.ts`
   - `lib/cognition/__tests__/ingest.test.ts`
   - `app/api/chat/__tests__/route.test.ts`
+  - `lib/search/__tests__/cache.test.ts`
   - `app/api/tasks/__tests__/route.test.ts`
   - `components/__tests__/TasksPanel.test.ts`
 - 环境：`jsdom`（用于 React/前端逻辑），`globals: true`
