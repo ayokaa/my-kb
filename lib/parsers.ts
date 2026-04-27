@@ -77,6 +77,7 @@ export function parseNote(raw: string, filePath?: string): Note {
     keyFacts: [],
     timeline: [],
     links: [],
+    backlinks: [],
     qas: [],
     content: '',
     filePath,
@@ -135,6 +136,13 @@ export function parseNote(raw: string, filePath?: string): Note {
         break;
       case '关联':
         note.links = content
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.startsWith('- '))
+          .map((l) => parseLink(l.slice(2).trim()));
+        break;
+      case '反向链接':
+        note.backlinks = content
           .split('\n')
           .map((l) => l.trim())
           .filter((l) => l.startsWith('- '))
@@ -232,6 +240,16 @@ export function stringifyNote(note: Note): string {
   if (note.links.length > 0) {
     lines.push('## 关联');
     for (const link of note.links) {
+      const weightTag = link.weight !== 'weak' ? ` #${link.weight}` : '';
+      const ctx = link.context ? ` — ${link.context}` : '';
+      lines.push(`- [[${link.target}]]${weightTag}${ctx}`);
+    }
+    lines.push('');
+  }
+
+  if (note.backlinks && note.backlinks.length > 0) {
+    lines.push('## 反向链接');
+    for (const link of note.backlinks) {
       const weightTag = link.weight !== 'weak' ? ` #${link.weight}` : '';
       const ctx = link.context ? ` — ${link.context}` : '';
       lines.push(`- [[${link.target}]]${weightTag}${ctx}`);

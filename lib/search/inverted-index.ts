@@ -157,6 +157,13 @@ export function buildNoteIndex(note: Note): InvertedIndexMap {
     }
   }
 
+  // backlinks (target)
+  for (const link of note.backlinks || []) {
+    for (const token of tokenize(link.target)) {
+      entries.push([token, { noteId: note.id, field: 'backlink' }]);
+    }
+  }
+
   // content
   for (const token of tokenize(note.content)) {
     entries.push([token, { noteId: note.id, field: 'content' }]);

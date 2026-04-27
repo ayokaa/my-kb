@@ -35,6 +35,7 @@ export interface Note extends NoteFrontmatter {
   keyFacts: string[];
   timeline: TimelineEntry[];
   links: NoteLink[];
+  backlinks: NoteLink[];
   qas: QAEntry[];
   content: string;
   filePath?: string;
