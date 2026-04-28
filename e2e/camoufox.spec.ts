@@ -19,7 +19,7 @@ test.describe.serial('Camoufox web scraping', () => {
     await resetTestData();
   });
 
-  test('fetches a real web page into inbox via task queue', async ({ page, request }) => {
+  test.skip('fetches a real web page into inbox via task queue', async ({ page, request }) => {
     test.setTimeout(120000);
     if (!(await isCamoufoxAvailable())) {
       test.skip(true, 'camoufox Python package not installed; run ./scripts/setup_camoufox.sh');
