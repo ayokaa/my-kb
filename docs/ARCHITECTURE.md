@@ -18,22 +18,24 @@ my-kb is a personal knowledge base that turns raw information (web pages, RSS fe
 
 ## Data Flow
 
-### 1. Ingest → Inbox
+### 1. Ingest
 
 Raw content enters the system through four paths:
 
 | Source | Entry Point | Handler |
 |--------|-------------|---------|
-| Web link | `POST /api/ingest` | `fetchWebContent` (Camoufox + trafilatura) |
+| Web link | `POST /api/ingest` | Enqueues `web_fetch` task → `fetchWebContent` (Camoufox + trafilatura) → LLM |
 | RSS feed | `lib/rss/cron.ts` | Enqueues `rss_fetch` task → `fetchRSS` + `ingestFeedItems` |
-| File upload | `POST /api/upload` | `extractPDF` or direct text read |
-| Plain text | `POST /api/ingest` | Direct write |
+| File upload | `POST /api/upload` | `extractPDF` or direct text read → enqueues `ingest` task |
+| Plain text | `POST /api/ingest` | Enqueues `ingest` task directly |
 
-All paths write a Markdown file with YAML frontmatter to `knowledge/inbox/{timestamp}-{slug}.md`.
+**Manual ingest** (text, link, file upload) no longer writes to the inbox. The API routes enqueue tasks immediately, and the worker calls `processInboxEntry()` → LLM → `saveNote()` directly.
 
-### 2. Inbox → Queue
+**RSS ingest** still writes to `knowledge/inbox/{timestamp}-{slug}.md` as a buffer, awaiting manual approval or auto-processing.
 
-When the user clicks **Approve** in the Inbox panel:
+### 2. Inbox → Queue (RSS & Legacy)
+
+For RSS entries and legacy inbox files, when the user clicks **Approve** in the Inbox panel:
 
 1. `POST /api/inbox/process` archives the file immediately (to prevent double-clicks).
 2. `enqueue('ingest', { fileName })` adds a task to the queue.
@@ -43,13 +45,20 @@ When the user clicks **Approve** in the Inbox panel:
 
 The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, `web_fetch`, and `relink` tasks never block each other. Supported task types:
 
-**`ingest`** — Convert an inbox entry to a structured note:
+**`ingest`** — Convert content to a structured note. Supports two modes:
+
+*Direct mode* (text, file upload, and manual link ingest):
+1. Receives `title`, `content`, `sourceType`, and `rawMetadata` directly from the task payload.
+2. Checks for duplicate source URLs in existing notes (skips if found).
+3. Calls `processInboxEntry()` → `callLLM()` (reads model/credentials from `lib/llm.ts`).
+4. LLM returns structured JSON: title, tags, summary, keyFacts, timeline, links, QAs, content.
+5. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
+6. `saveQueueState()` records task completion.
+
+*Legacy file mode* (RSS and old inbox entries):
 1. Verifies the inbox file still exists (`stat` check); if missing, marks task `failed` with `Inbox file not found`.
 2. Reads the archived inbox file.
-3. Checks for duplicate source URLs in existing notes (skips if found).
-4. Calls `processInboxEntry()` → `callLLM()` (reads model/credentials from `lib/llm.ts`).
-5. LLM returns structured JSON: title, tags, summary, keyFacts, timeline, links, QAs, content.
-6. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
+3–6. Same as direct mode (duplicate check → LLM → saveNote).
 7. `archiveInbox()` moves the source file to `knowledge/archive/inbox/` (idempotent — silently skips if already missing).
 8. `saveQueueState()` records task completion.
 
@@ -67,9 +76,12 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 3. Writes new items to `knowledge/inbox/` as Markdown files.
 4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
 
-**`web_fetch`** — Scrape a web page and write to the inbox:
+**`web_fetch`** — Scrape a web page and generate a note directly:
 1. Calls `fetchWebContent(url)` (Camoufox + trafilatura) to extract article content.
-2. Writes the extracted content to `knowledge/inbox/` as a Markdown file.
+2. Checks for duplicate source URLs in existing notes (skips if found).
+3. Calls `processInboxEntry()` → LLM to generate a structured note.
+4. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
+5. `saveQueueState()` records task completion.
 
 **Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
 

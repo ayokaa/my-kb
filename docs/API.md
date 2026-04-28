@@ -175,7 +175,7 @@ Manually archive an inbox entry (reject without processing).
 
 ### `POST /api/ingest`
 
-Manually ingest content into the inbox.
+Manually ingest content into the knowledge base. Text and link ingest no longer goes through the inbox; they are enqueued as tasks and processed asynchronously by the worker.
 
 **Request body:**
 ```json
@@ -187,10 +187,13 @@ Manually ingest content into the inbox.
 }
 ```
 
-For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + trafilatura to scrape the article and writes the result to the inbox.
+For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + trafilatura to scrape the article and then calls the LLM to generate a structured note directly.
 
 **Response:**
-- For `type: "text"`: `{ "ok": true }`
+- For `type: "text"`: `200 OK`
+  ```json
+  { "ok": true, "taskId": "task-...", "message": "已加入处理队列" }
+  ```
 - For `type: "link"`: `202 Accepted`
   ```json
   { "ok": true, "taskId": "task-...", "message": "已加入抓取队列" }
@@ -375,7 +378,7 @@ Update runtime settings. Changes are persisted to `knowledge/meta/settings.yml` 
 
 ### `POST /api/search`
 
-Search the web and ingest results into the inbox. Requires `SEARCH_API_KEY` env var.
+Search the web and ingest results. Requires `SEARCH_API_KEY` env var.
 
 **Request body:** `{ "query": "prompt caching", "maxResults": 3 }`
 
@@ -430,10 +433,8 @@ Retry a failed task.
 
 ### `POST /api/upload`
 
-Upload a file (PDF, TXT, MD). File is saved to `knowledge/attachments/` with a timestamp prefix, then written to the inbox.
+Upload a file (PDF, TXT, MD). File is saved to `knowledge/attachments/` with a timestamp prefix, then enqueued as an `ingest` task for LLM processing.
 
 **Request:** `multipart/form-data` with `file` field.
 
-**Response:** `{ "ok": true, "fileName": "20250425-abc.pdf", "skipped": false }`
-
-If a file with the same hash already exists in `knowledge/attachments/`, returns `skipped: true` to avoid duplicate storage.
+**Response:** `{ "ok": true, "fileName": "20250425-abc.pdf", "title": "...", "taskId": "task-...", "message": "已加入处理队列" }`
