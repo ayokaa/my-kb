@@ -10,7 +10,7 @@ vi.mock('../settings', () => ({
   loadSettings: mockLoadSettings.mockResolvedValue(mockSettings),
 }));
 
-vi.mock('openai', () => ({
+vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(function (opts: any) {
     return { _opts: opts };
   }),
