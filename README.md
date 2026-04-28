@@ -34,7 +34,7 @@
 - **Language**: TypeScript 5 (strict mode)
 - **Styling**: Tailwind CSS + custom CSS variables (dark theme)
 - **AI Streaming**: `ai` SDK + OpenAI-compatible MiniMax API
-- **Web Scraping**: Playwright (Chromium headless) + Readability
+- **Web Scraping**: Camoufox (Python, Firefox anti-fingerprinting) + Readability
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
 - **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation; 5-second TTL memory cache for the search index
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
@@ -49,6 +49,9 @@
 git clone https://github.com/ayokaa/my-kb.git
 cd my-kb
 npm install
+
+# Install camoufox (web scraping engine, required on first use)
+./scripts/setup_camoufox.sh
 ```
 
 ### 2. Configure Environment Variables
@@ -154,7 +157,7 @@ E2E tests run against a separate `knowledge-test/` directory (set via `KNOWLEDGE
 | Decision | Rationale |
 |----------|-----------|
 | **Filesystem storage** | Notes are documents; Markdown is the native format. Git provides versioning for free. |
-| **Playwright scraping** | Modern sites are client-side rendered. Pure `fetch` only retrieves an empty HTML shell. Playwright executes JS before extracting content. |
+| **Camoufox scraping** | Modern sites are client-side rendered. Pure `fetch` only retrieves an empty HTML shell. Camoufox launches a privacy-hardened Firefox, executes JS, and returns the full HTML for Readability extraction. |
 | **Memory queue + JSON persistence** | Workload is small (single user, a few dozen tasks per day). Avoids Redis operational overhead. |
 | **RSS incremental updates** | Uses `lastPubDate` as a watermark to avoid re-fetching duplicates. First check is limited to 5 items. |
 | **Inbox review step** | LLM calls cost money and can produce noise. Human approval prevents polluting the knowledge base. |

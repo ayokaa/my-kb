@@ -1,156 +1,111 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { chromium } from 'playwright';
-import type { Browser } from 'playwright';
 import { fetchWebContent, closeBrowser, resetBrowserForTesting } from '../web';
+import { runCamoufox } from '../camoufox-runner';
 
-vi.mock('playwright', () => ({
-  chromium: {
-    launch: vi.fn(),
-  },
+vi.mock('../camoufox-runner', () => ({
+  runCamoufox: vi.fn(),
 }));
 
-describe('fetchWebContent', () => {
-  const mockClose = vi.fn().mockResolvedValue(undefined);
-  const mockPageClose = vi.fn().mockResolvedValue(undefined);
+const mockedRunCamoufox = vi.mocked(runCamoufox);
 
-  beforeEach(async () => {
+describe('fetchWebContent', () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    mockPageClose.mockClear();
     resetBrowserForTesting();
   });
 
-  function mockPage(html: string, bodyText = '') {
-    return {
-      goto: vi.fn().mockResolvedValue(undefined),
-      title: vi.fn().mockResolvedValue('Test Article'),
-      content: vi.fn().mockResolvedValue(html),
-      evaluate: vi.fn().mockResolvedValue(bodyText),
-      close: mockPageClose,
-    };
+  function mockSuccessResponse(title: string, html: string, bodyText?: string) {
+    mockedRunCamoufox.mockImplementation((cmd, args, opts, callback) => {
+      if (typeof opts === 'function') {
+        callback = opts;
+      }
+      callback(null, JSON.stringify({ title, html, bodyText }), '');
+    });
   }
 
-  function mockBrowser(page: any): Browser {
-    return {
-      newPage: vi.fn().mockResolvedValue(page),
-      close: mockClose,
-      isConnected: vi.fn().mockReturnValue(true),
-    } as unknown as Browser;
-  }
-
-  it('extracts article via Playwright + Readability', async () => {
-    vi.mocked(chromium.launch).mockResolvedValue(
-      mockBrowser(mockPage(`
-        <html><head><title>Test Article</title></head>
+  it('extracts article via Camoufox + Readability', async () => {
+    mockSuccessResponse(
+      'Article Title',
+      `<html><head><title>Article Title</title></head>
         <body>
           <article>
             <h1>Article Title</h1>
             <p>This is the main content extracted by Readability.</p>
           </article>
-        </body></html>
-      `))
+        </body></html>`
     );
 
     const result = await fetchWebContent('https://example.com/article');
-    expect(result.title).toBeTruthy();
+    expect(result.title).toBe('Article Title');
     expect(result.content).toContain('main content extracted');
-    expect(mockPageClose).toHaveBeenCalled();
-    expect(mockClose).not.toHaveBeenCalled();
+    expect(mockedRunCamoufox).toHaveBeenCalledWith(
+      'python3',
+      expect.arrayContaining([expect.stringContaining('fetch_web.py'), 'https://example.com/article']),
+      expect.any(Object),
+      expect.any(Function)
+    );
   });
 
   it('falls back to body text when Readability fails', async () => {
-    vi.mocked(chromium.launch).mockResolvedValue(
-      mockBrowser(mockPage(`
-        <html><head><title>Bad Page</title></head>
-        <body><div>Some text here</div></body></html>
-      `, 'Some text here'))
+    mockSuccessResponse(
+      'Bad Page',
+      `<html><head><title>Bad Page</title></head>
+        <body><form><input value="Some text here"></form></body></html>`,
+      'Some text here'
     );
 
     const result = await fetchWebContent('https://example.com/bad');
     expect(result.title).toBe('Bad Page');
     expect(result.content).toContain('Some text here');
-    expect(mockPageClose).toHaveBeenCalled();
-    expect(mockClose).not.toHaveBeenCalled();
   });
 
-  it('closes page even on error', async () => {
-    const errorPage = {
-      goto: vi.fn().mockRejectedValue(new Error('navigation failed')),
-      close: mockPageClose,
-    };
-    vi.mocked(chromium.launch).mockResolvedValue(mockBrowser(errorPage));
-
-    await expect(fetchWebContent('https://example.com/boom')).rejects.toThrow('navigation failed');
-    expect(mockPageClose).toHaveBeenCalled();
-  });
-
-  it('reuses the same browser instance across multiple calls', async () => {
-    vi.mocked(chromium.launch).mockResolvedValue(
-      mockBrowser(mockPage('<html><body>test</body></html>'))
-    );
-
-    await fetchWebContent('https://example.com/a');
-    await fetchWebContent('https://example.com/b');
-
-    // Browser should only be launched once
-    expect(chromium.launch).toHaveBeenCalledTimes(1);
-    // Pages should be closed after each use, but browser stays open
-    expect(mockPageClose).toHaveBeenCalledTimes(2);
-    expect(mockClose).not.toHaveBeenCalled();
-  });
-
-  it('recovers from a crashed browser by re-launching', async () => {
-    const deadBrowser = {
-      newPage: vi.fn().mockRejectedValue(new Error('browser crashed')),
-      close: vi.fn().mockResolvedValue(undefined),
-      isConnected: vi.fn().mockReturnValue(false),
-    };
-    const healthyBrowser = {
-      ...mockBrowser(mockPage('<html><body>recovered</body></html>')),
-      isConnected: vi.fn().mockReturnValue(true),
-    };
-
-    let callCount = 0;
-    vi.mocked(chromium.launch).mockImplementation(() => {
-      callCount++;
-      return Promise.resolve(callCount === 1 ? (deadBrowser as any) : (healthyBrowser as any));
+  it('propagates error when Python script fails', async () => {
+    mockedRunCamoufox.mockImplementation((cmd, args, opts, callback) => {
+      if (typeof opts === 'function') {
+        callback = opts;
+      }
+      callback(new Error('camoufox navigation failed'), '', '');
     });
 
-    const result = await fetchWebContent('https://example.com/crash');
-
-    // Should have launched twice: first fails health check, then retry succeeds
-    expect(chromium.launch).toHaveBeenCalledTimes(2);
-    expect(mockPageClose).toHaveBeenCalled();
-    expect(result.title).toBe('Test Article');
-    expect(result.content).toContain('recovered');
+    await expect(fetchWebContent('https://example.com/boom')).rejects.toThrow('camoufox navigation failed');
   });
 
-  it('prevents concurrent launch race', async () => {
-    resetBrowserForTesting();
-    let launchCount = 0;
-    vi.mocked(chromium.launch).mockImplementation(async () => {
-      launchCount++;
-      await new Promise((r) => setTimeout(r, 50));
-      return mockBrowser(mockPage('<html><body>race</body></html>'));
-    });
+  it('supports concurrent calls', async () => {
+    mockSuccessResponse('Concurrent', '<html><body>race</body></html>');
 
     const [a, b] = await Promise.all([
       fetchWebContent('https://example.com/a'),
       fetchWebContent('https://example.com/b'),
     ]);
 
-    expect(launchCount).toBe(1);
-    expect(a.title).toBe('Test Article');
-    expect(b.title).toBe('Test Article');
+    expect(mockedRunCamoufox).toHaveBeenCalledTimes(2);
+    expect(a.title).toBe('Concurrent');
+    expect(b.title).toBe('Concurrent');
   });
 
-  it('closes browser on closeBrowser()', async () => {
-    vi.mocked(chromium.launch).mockResolvedValue(
-      mockBrowser(mockPage('<html><body>test</body></html>'))
+  it('uses page title when Readability title is empty', async () => {
+    mockSuccessResponse(
+      'Page Title',
+      `<html><head><title>Page Title</title></head>
+        <body><article><p>Content without h1.</p></article></body></html>`
     );
 
-    await fetchWebContent('https://example.com/close');
-    await closeBrowser();
+    const result = await fetchWebContent('https://example.com/no-h1');
+    // Readability may return empty title for article without h1; fallback to page title
+    expect(result.title).toBe('Page Title');
+    expect(result.content).toContain('Content without h1');
+  });
 
-    expect(mockClose).toHaveBeenCalled();
+  it('returns empty content when both Readability and bodyText are empty', async () => {
+    mockSuccessResponse('', '<html><head></head><body></body></html>', '');
+
+    const result = await fetchWebContent('https://example.com/empty');
+    expect(result.title).toBe('https://example.com/empty');
+    expect(result.content).toBe('');
+    expect(result.excerpt).toBe('');
+  });
+
+  it('does not throw on closeBrowser()', async () => {
+    await expect(closeBrowser()).resolves.toBeUndefined();
   });
 });

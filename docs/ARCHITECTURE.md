@@ -24,7 +24,7 @@ Raw content enters the system through four paths:
 
 | Source | Entry Point | Handler |
 |--------|-------------|---------|
-| Web link | `POST /api/ingest` | `fetchWebContent` (Playwright + Readability) |
+| Web link | `POST /api/ingest` | `fetchWebContent` (Camoufox + Readability) |
 | RSS feed | `lib/rss/cron.ts` | Enqueues `rss_fetch` task → `fetchRSS` + `ingestFeedItems` |
 | File upload | `POST /api/upload` | `extractPDF` or direct text read |
 | Plain text | `POST /api/ingest` | Direct write |
@@ -68,7 +68,7 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
 
 **`web_fetch`** — Scrape a web page and write to the inbox:
-1. Calls `fetchWebContent(url)` (Playwright + Readability) to extract article content.
+1. Calls `fetchWebContent(url)` (Camoufox + Readability) to extract article content.
 2. Writes the extracted content to `knowledge/inbox/` as a Markdown file.
 
 **Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
@@ -87,7 +87,7 @@ The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RA
 6. **Tool calling (optional)**: A non-streaming LLM call (`stream: false`) with `tools` + `tool_choice: 'auto'` determines whether the LLM wants to invoke `web_fetch`.
    - URLs are validated before fetching: only HTTP/HTTPS schemes are allowed; private/internal addresses (localhost, RFC 1918 ranges) are rejected to prevent SSRF.
    - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
-   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` and injects the extracted article into the message history as a `tool` role message.
+   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` (via Camoufox Python script) and injects the extracted article into the message history as a `tool` role message.
 7. Injects the context (+ tool results if any) into the system prompt sent to MiniMax.
 8. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
 9. Streams the LLM response back to the client.
@@ -131,7 +131,7 @@ lib/
 │   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links)
 │   └── relink.ts   — LLM gateway for refreshing note-to-note links
 ├── ingestion/
-│   ├── web.ts      — Playwright + Readability extraction
+│   ├── web.ts      — Camoufox + Readability extraction
 │   ├── rss.ts      — RSS/Atom/JSON Feed parsing
 │   └── pdf.ts      — PDF text extraction
 ├── rss/
@@ -334,14 +334,14 @@ Two layers of defense prevent overlapping execution:
 
 ## Web Extraction
 
-### Why Playwright?
+### Why Camoufox?
 
-Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Playwright launches a headless Chromium browser, executes JavaScript, and extracts the fully rendered DOM.
+Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Camoufox is a privacy-focused Firefox fork built for automation: it executes JavaScript like a real browser while resisting fingerprinting and bot detection. The Node.js side spawns a Python script (`scripts/fetch_web.py`) that uses `camoufox.sync_api.Camoufox` to render the page and return the full HTML.
 
 ### Pipeline
 
 ```
-URL ──Playwright──→ rendered HTML ──JSDOM──→ Document
+URL ──Camoufox (Python)──→ rendered HTML ──JSDOM──→ Document
                                        │
                                        ├─Readability──→ article.title/textContent
                                        │
@@ -390,7 +390,7 @@ The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledg
 |----------|-----------|
 | **Filesystem over database** | Notes are documents; Markdown is the native format. Git provides versioning for free. |
 | **Memory queue + JSON persistence** | Workload is tiny. Avoids Redis ops overhead. |
-| **Playwright over fetch** | Required for modern client-rendered sites. |
+| **Camoufox over fetch** | Required for modern client-rendered sites; anti-fingerprinting reduces bot detection. |
 | **Inbox review step** | LLM calls cost money and can produce garbage. Human approval prevents polluting the knowledge base. |
 | **YAML frontmatter** | Human-readable metadata that any Markdown editor can display. |
 | **Inverted index (JSON)** | Keyword-based search index stored as `search-index.json`. Updated incrementally on note save/delete. |

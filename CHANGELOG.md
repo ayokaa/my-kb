@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## 2026-04-28
 
+### Changed
+
+- **网页抓取引擎替换** (`lib/ingestion/web.ts`)：将 Playwright Chromium 替换为原始 Python `camoufox`（Firefox 反指纹浏览器）。
+  - 新增 `scripts/fetch_web.py`：Python 脚本使用 `camoufox.sync_api.Camoufox` 渲染页面并返回 HTML + title。
+  - 新增 `requirements.txt` + `scripts/setup_camoufox.sh`：安装 Python 依赖并下载浏览器二进制。
+  - `lib/ingestion/web.ts` 改为通过 `child_process` 调用 `python3 scripts/fetch_web.py <url>`，Node.js 端继续用 JSDOM + Readability 提取正文，接口保持不变。
+  - 新增 `lib/ingestion/camoufox-runner.ts`：封装 `execFile` 调用，便于单元测试 mock。
+  - `@playwright/test` 仍保留用于 E2E 测试。
+
 ### Added
 
 - **运行时日志系统**：新增结构化日志模块，支持前后端统一的日志收集、持久化与实时查看。
