@@ -1,6 +1,7 @@
 import type { Note, NoteLink } from '../types';
 import { selectCandidateTitles } from './ingest';
 import { getLLMClient, getLLMModel } from '../llm';
+import { logger } from '../logger';
 
 function buildRelinkPrompt(existingTitles: string[] = []): string {
   const titleHint = existingTitles.length > 0
@@ -51,7 +52,7 @@ export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink
     } catch (err) {
       if (retries > 0) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        console.warn(`[Relink] LLM call failed, retrying... (${msg})`);
+        logger.warn('Relink', `LLM call failed, retrying... (${msg})`);
         await new Promise((r) => setTimeout(r, 2000));
         return callLLM(retries - 1);
       }
@@ -88,7 +89,7 @@ export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink
     : [];
 
   if (newLinks.length > 0) {
-    console.log(`[Relink] ${note.title}: ${newLinks.length} new link(s) suggested`);
+    logger.info('Relink', `${note.title}: ${newLinks.length} new link(s) suggested`);
   }
 
   // Merge with existing links: union by target, prefer existing if duplicate
@@ -136,11 +137,11 @@ export async function runRelinkJob(
       }
     } catch (err) {
       failed++;
-      console.error(`[Relink] Failed to relink "${note.title}":`, err);
+      logger.error('Relink', `Failed to relink "${note.title}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  console.log(`[Relink] Job complete: ${allNotes.length} processed, ${updated} updated, ${failed} failed`);
+    logger.info('Relink', `Job complete: ${allNotes.length} processed, ${updated} updated, ${failed} failed`);
   return { processed: allNotes.length, updated, failed };
 }
 

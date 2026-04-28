@@ -286,6 +286,7 @@ describe('selectCandidateTitles', () => {
       keyFacts: [],
       timeline: [],
       links: [],
+      backlinks: [],
       qas: [],
       content: summary || title,
     };

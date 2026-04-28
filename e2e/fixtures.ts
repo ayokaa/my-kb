@@ -44,7 +44,7 @@ export async function createTestNote(note: Partial<Note> & { id: string; title: 
     filePath: join(root, 'notes', `${note.id}.md`),
   };
   const content = stringifyNote(fullNote);
-  await writeFile(fullNote.filePath, content);
+  await writeFile(fullNote.filePath!, content);
   return fullNote;
 }
 

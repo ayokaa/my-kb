@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## 2026-04-28
 
+### Added
+
+- **运行时日志系统**：新增结构化日志模块，支持前后端统一的日志收集、持久化与实时查看。
+  - `lib/logger.ts`：核心 Logger 类，提供 `debug/info/warn/error` 四级日志 API；内存环形缓冲区（1000 条）+ 按天轮转的文件持久化（JSON Lines，保留 30 天）；支持 `patchConsole()` 无侵入拦截现有 `console.*` 调用。
+  - `app/api/logs/route.ts`：GET 查询日志（支持 level/module/search/limit/offset/from 过滤）；DELETE 清空内存缓冲。
+  - `app/api/logs/stream/route.ts`：SSE 实时推送新日志，带历史回溯和心跳保活。
+  - `components/LogsPanel.tsx`：前端日志查看面板，支持级别过滤、模块过滤、关键词搜索、实时/暂停切换、自动滚动、元数据展开。
+  - `Sidebar` / `TabShell`：新增 "日志" 标签页入口。
+  - 核心模块（`queue`, `rss/cron`, `rss/manager`, `cognition/ingest`, `cognition/relink`, `relink/cron`）的 `console.*` 调用已迁移至 `logger.*`。
+  - `app/layout.tsx` 启动时自动调用 `patchConsole()` 初始化日志拦截。
+
 ### Fixed
 
 - **Search cache deadlock** (`lib/search/cache.ts`): `doLoadOrBuild` exceptions left `loadPromise` permanently set to a rejected Promise, causing all subsequent requests to hang. Fixed with `try/finally` to always reset `loadPromise` to `null`. (`50f6dfe`)

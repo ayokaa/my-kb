@@ -8,6 +8,7 @@ import IngestPanel from './IngestPanel';
 import RSSPanel from './RSSPanel';
 import TasksPanel from './TasksPanel';
 import SettingsPanel from './SettingsPanel';
+import LogsPanel from './LogsPanel';
 
 interface TabShellProps {
   notesPanel?: React.ReactNode;
@@ -73,6 +74,9 @@ export default function TabShell({ notesPanel }: TabShellProps) {
         </div>
         <div data-testid="panel-settings" className={tab === 'settings' ? 'h-full overflow-y-auto' : 'hidden'}>
           <SettingsPanel />
+        </div>
+        <div data-testid="panel-logs" className={tab === 'logs' ? 'h-full' : 'hidden'}>
+          <LogsPanel isActive={tab === 'logs'} />
         </div>
       </main>
     </>

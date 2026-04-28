@@ -5,6 +5,7 @@ import { join, dirname, basename } from 'path';
 import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
 import { parseNote, stringifyNote, parseInboxEntry } from './parsers';
+import { logger } from './logger';
 
 let invertedIndexModule: typeof import('./search/inverted-index') | null = null;
 
@@ -21,6 +22,7 @@ type ExecFileAsyncType = typeof defaultExecFileAsync;
 export class FileSystemStorage implements Storage {
   private readonly root: string;
   private readonly execFileAsync: ExecFileAsyncType;
+  private inboxWriteLock: Promise<void> = Promise.resolve();
 
   constructor(root?: string, execFileAsync?: ExecFileAsyncType) {
     this.root = root || join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge');
@@ -353,43 +355,92 @@ export class FileSystemStorage implements Storage {
 
   // ===== Inbox =====
 
-  async writeInbox(entry: InboxEntry): Promise<boolean> {
-    const timestamp = Date.now();
-    const slug = entry.title
-      .slice(0, 30)
-      .replace(/\s+/g, '-')
-      .replace(/[^a-zA-Z0-9\-]/g, '');
-    const fileName = `${timestamp}-${slug || 'untitled'}.md`;
-    const path = this.inboxPath(fileName);
+  /** Lightweight scan of inbox + archive/inbox to collect rss_link and source_url values. */
+  private async _scanInboxSources(): Promise<{ rssLinks: Set<string>; sourceUrls: Set<string> }> {
+    const rssLinks = new Set<string>();
+    const sourceUrls = new Set<string>();
 
-    // Deduplication guard: skip if inbox already has the same rss_link
-    const rssLink = entry.rawMetadata?.rss_link as string | undefined;
-    if (rssLink) {
+    const scanDir = async (dir: string) => {
+      let files: string[];
       try {
-        const existing = await this.listInbox();
-        const duplicate = existing.find(e => e.rawMetadata?.rss_link === rssLink);
-        if (duplicate) {
-          console.log(`[Storage] Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
-          entry.filePath = duplicate.filePath;
-          return false;
-        }
+        files = await readdir(dir);
       } catch {
-        // Ignore list errors, proceed with write
+        return;
       }
-    }
-
-    const fm = {
-      source_type: entry.sourceType,
-      source_path: entry.sourcePath,
-      title: entry.title,
-      extracted_at: entry.extractedAt || new Date().toISOString(),
-      ...entry.rawMetadata,
+      for (const file of files.filter((f) => f.endsWith('.md'))) {
+        try {
+          const raw = await readFile(join(dir, file), 'utf-8');
+          if (!raw.startsWith('---')) continue;
+          const endMarker = raw.indexOf('\n---', 3);
+          if (endMarker === -1) continue;
+          const fmRaw = raw.slice(3, endMarker).trim();
+          const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
+          if (typeof fm.rss_link === 'string' && fm.rss_link) rssLinks.add(fm.rss_link);
+          if (typeof fm.source_url === 'string' && fm.source_url) sourceUrls.add(fm.source_url);
+        } catch {
+          // ignore corrupted files
+        }
+      }
     };
 
-    const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
-    await this.atomicWrite(path, content);
-    entry.filePath = path;
-    return true;
+    await scanDir(join(this.root, 'inbox'));
+    await scanDir(join(this.root, 'archive', 'inbox'));
+    return { rssLinks, sourceUrls };
+  }
+
+  async writeInbox(entry: InboxEntry): Promise<boolean> {
+    // Acquire lock to prevent race-condition duplicates
+    const prevLock = this.inboxWriteLock;
+    let releaseLock: (() => void) | undefined;
+    this.inboxWriteLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    await prevLock;
+
+    try {
+      const timestamp = Date.now();
+      const slug = entry.title
+        .slice(0, 30)
+        .replace(/\s+/g, '-')
+        .replace(/[^a-zA-Z0-9\-]/g, '');
+      const fileName = `${timestamp}-${slug || 'untitled'}.md`;
+      const path = this.inboxPath(fileName);
+
+      // Deduplication guard: skip if inbox or archive already has the same rss_link or source_url
+      const rssLink = entry.rawMetadata?.rss_link as string | undefined;
+      const sourceUrl = entry.rawMetadata?.source_url as string | undefined;
+
+      if (rssLink || sourceUrl) {
+        try {
+          const { rssLinks, sourceUrls } = await this._scanInboxSources();
+          if (rssLink && rssLinks.has(rssLink)) {
+            logger.info('Storage', `Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
+            return false;
+          }
+          if (sourceUrl && sourceUrls.has(sourceUrl)) {
+            logger.info('Storage', `Skip duplicate inbox entry (source_url already exists): ${entry.title}`);
+            return false;
+          }
+        } catch {
+          // Ignore scan errors, proceed with write
+        }
+      }
+
+      const fm = {
+        source_type: entry.sourceType,
+        source_path: entry.sourcePath,
+        title: entry.title,
+        extracted_at: entry.extractedAt || new Date().toISOString(),
+        ...entry.rawMetadata,
+      };
+
+      const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
+      await this.atomicWrite(path, content);
+      entry.filePath = path;
+      return true;
+    } finally {
+      releaseLock?.();
+    }
   }
 
   async listInbox(): Promise<InboxEntry[]> {

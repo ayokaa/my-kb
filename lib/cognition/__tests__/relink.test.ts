@@ -38,6 +38,7 @@ function makeNote(id: string, title: string, extra: Partial<Note> = {}): Note {
     keyFacts: [],
     timeline: [],
     links: [],
+    backlinks: [],
     qas: [],
     content: title,
     ...extra,

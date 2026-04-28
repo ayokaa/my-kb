@@ -88,12 +88,13 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
       for (const item of data) {
         if (Array.isArray(item)) {
           for (const d of item) {
-            if (d && d.type === 'sources' && Array.isArray(d.notes)) {
-              setSources(d.notes);
-              onSources(d.notes);
+            const obj = d as Record<string, any>;
+            if (obj && obj.type === 'sources' && Array.isArray(obj.notes)) {
+              setSources(obj.notes);
+              onSources(obj.notes);
             }
-            if (d && d.type === 'tool_call' && d.name && d.url) {
-              setToolCalls((prev) => [...prev, { name: d.name, url: d.url }]);
+            if (obj && obj.type === 'tool_call' && obj.name && obj.url) {
+              setToolCalls((prev) => [...prev, { name: obj.name, url: obj.url }]);
             }
           }
         }

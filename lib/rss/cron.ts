@@ -1,8 +1,9 @@
-import cron from 'node-cron';
+import { schedule, type ScheduledTask } from 'node-cron';
 import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
+import { logger } from '@/lib/logger';
 
-let task: cron.ScheduledTask | null = null;
+let task: ScheduledTask | null = null;
 let isRunning = false;
 
 function buildCronExpr(intervalMinutes: number): string {
@@ -18,27 +19,27 @@ export function startRSSCron(intervalMinutes = 60) {
 
   const cronExpr = buildCronExpr(intervalMinutes);
 
-  task = cron.schedule(cronExpr, async () => {
+  task = schedule(cronExpr, async () => {
     if (isRunning) {
-      console.log('[RSS Cron] Previous check still running, skipping this tick');
+      logger.info('RSS', 'Previous check still running, skipping this tick');
       return;
     }
     isRunning = true;
-    console.log(`[RSS Cron] Queuing feed checks at ${new Date().toISOString()}`);
+    logger.info('RSS', `Queuing feed checks at ${new Date().toISOString()}`);
     try {
       const sources = await listSubscriptions();
       for (const source of sources) {
         enqueue('rss_fetch', { url: source.url, name: source.name, isSubscriptionCheck: true });
       }
-      console.log(`[RSS Cron] Queued ${sources.length} feed checks`);
+      logger.info('RSS', `Queued ${sources.length} feed checks`);
     } catch (err) {
-      console.error('[RSS Cron] Error:', err);
+      logger.error('RSS', `Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       isRunning = false;
     }
   });
 
-  console.log(`[RSS Cron] Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
+  logger.info('RSS', `Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
 }
 
 export function stopRSSCron() {
@@ -46,7 +47,7 @@ export function stopRSSCron() {
     task.stop();
     task.destroy();
     task = null;
-    console.log('[RSS Cron] Stopped');
+    logger.info('RSS', 'Stopped');
   }
 }
 

@@ -2,6 +2,7 @@ import { describe, test, expect } from 'vitest';
 import { buildIndex } from '../inverted-index';
 import { scoreNote, buildLinkMap, diffuseLinks, search, assembleContext } from '../engine';
 import { DEFAULT_ZONE_WEIGHTS } from '../types';
+import type { SearchField } from '../types';
 import { RAG_NOTE, VECTOR_DB_NOTE, COOKING_NOTE, ALL_TEST_NOTES } from './fixtures';
 
 describe('buildLinkMap', () => {
@@ -64,7 +65,7 @@ describe('diffuseLinks', () => {
         {
           note: RAG_NOTE,
           score: 10,
-          hitFields: ['tag'] as const,
+          hitFields: ['tag'] as SearchField[],
           isLinkDiffusion: false,
         },
       ],
@@ -84,7 +85,7 @@ describe('diffuseLinks', () => {
         {
           note: RAG_NOTE,
           score: 10,
-          hitFields: ['tag'] as const,
+          hitFields: ['tag'] as SearchField[],
           isLinkDiffusion: false,
         },
       ],
@@ -102,7 +103,7 @@ describe('diffuseLinks', () => {
         {
           note: RAG_NOTE,
           score: 10,
-          hitFields: ['tag'] as const,
+          hitFields: ['tag'] as SearchField[],
           isLinkDiffusion: false,
         },
       ],

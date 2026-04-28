@@ -3,6 +3,7 @@ import { fetchWebContent } from '../ingestion/web';
 import { buildIndex } from '../search/inverted-index';
 import { search } from '../search/engine';
 import { getLLMClient, getLLMModel } from '../llm';
+import { logger } from '../logger';
 
 function slugify(title: string): string {
   return title
@@ -94,7 +95,7 @@ async function callLLM(systemPrompt: string, userPrompt: string, retries = 2): P
       if (attempt < retries) {
         const delay = 1000 * Math.pow(2, attempt);
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        console.warn(`[Ingest] LLM call failed (attempt ${attempt + 1}/${retries + 1}): ${msg}, retrying in ${delay}ms...`);
+        logger.warn('Ingest', `LLM call failed (attempt ${attempt + 1}/${retries + 1}): ${msg}, retrying in ${delay}ms...`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -241,7 +242,7 @@ async function enrichContent(entry: InboxEntry): Promise<string> {
       const webContent = await fetchWebContent(originalUrl);
       content = webContent.content || entry.content;
     } catch (err) {
-      console.warn(`[Ingest] Failed to fetch original content from ${originalUrl}:`, (err as Error).message);
+      logger.warn('Ingest', `Failed to fetch original content from ${originalUrl}: ${(err as Error).message}`);
     }
   }
   return content;
@@ -337,7 +338,7 @@ async function generateLinks(step1: ExtractResult, existingNotes: Note[]): Promi
     : [];
 
   if (Array.isArray(parsed.links) && parsed.links.length > validLinks.length) {
-    console.log(`[Ingest] Filtered ${parsed.links.length - validLinks.length} void links, kept ${validLinks.length}`);
+    logger.info('Ingest', `Filtered ${parsed.links.length - validLinks.length} void links, kept ${validLinks.length}`);
   }
 
   return validLinks;
@@ -361,7 +362,7 @@ export async function processInboxEntry(entry: InboxEntry, existingNotes: Note[]
   try {
     qas = await generateQA(step1);
   } catch (err) {
-    console.warn('[Ingest] QA generation failed after retries:', (err as Error).message);
+    logger.warn('Ingest', `QA generation failed after retries: ${(err as Error).message}`);
   }
 
   // 步骤 3：生成关联（重试耗尽后降级为空数组）
@@ -369,7 +370,7 @@ export async function processInboxEntry(entry: InboxEntry, existingNotes: Note[]
   try {
     links = await generateLinks(step1, existingNotes);
   } catch (err) {
-    console.warn('[Ingest] Link generation failed after retries:', (err as Error).message);
+    logger.warn('Ingest', `Link generation failed after retries: ${(err as Error).message}`);
   }
 
   // 构建 Note
@@ -394,6 +395,7 @@ export async function processInboxEntry(entry: InboxEntry, existingNotes: Note[]
     keyFacts: step1.keyFacts,
     timeline: step1.timeline,
     links,
+    backlinks: [],
     qas,
     content: step1.content,
   };

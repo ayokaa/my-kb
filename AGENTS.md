@@ -56,6 +56,7 @@ my-kb/
 │   │   ├── search/               # POST /api/search — 网络搜索（后端存在，暂无前端调用）
 │   │   ├── settings/             # GET/POST /api/settings — 运行时配置
 │   │   ├── tasks/                # GET/POST /api/tasks — 任务队列查询与重试
+│   │   ├── logs/                 # GET /api/logs — 日志查询；stream/ — SSE 实时推送
 │   │   └── upload/               # POST /api/upload — 文件上传
 │   ├── globals.css               # 全局样式、CSS 变量、自定义组件类
 │   ├── layout.tsx                # 根布局（启动 RSS cron + relink cron）
@@ -70,6 +71,7 @@ my-kb/
 │   ├── RSSPanel.tsx              # RSS 订阅管理
 │   ├── SettingsPanel.tsx         # 运行时设置面板
 │   ├── TasksPanel.tsx            # 任务队列状态面板
+│   ├── LogsPanel.tsx             # 日志查看面板（实时推送 + 过滤）
 │   └── TabShell.tsx              # 标签页容器（CSS hidden 保活状态）
 ├── lib/                          # 核心业务逻辑
 │   ├── types.ts                  # TypeScript 类型定义
@@ -79,6 +81,7 @@ my-kb/
 │   ├── settings.ts               # 运行时配置（YAML 持久化）
 │   ├── llm.ts                    # 集中式 LLM 客户端工厂
 │   ├── events.ts                 # SSE 事件总线（服务端推送）
+│   ├── logger.ts                 # 结构化日志（内存缓冲 + 文件持久化 + SSE 广播）
 │   ├── cognition/
 │   │   ├── ingest.ts             # LLM 调用：将 inbox 加工成 note
 │   │   └── relink.ts             # LLM 调用：刷新笔记间关联
@@ -111,7 +114,8 @@ my-kb/
 │   │   ├── aliases.yml           # 别名映射
 │   │   ├── rss-sources.yml       # RSS 订阅列表（含 lastPubDate 增量标记）
 │   │   ├── queue.json            # 任务队列持久化状态
-│   │   └── settings.yml          # 运行时设置
+│   │   ├── settings.yml          # 运行时设置
+│   │   └── logs/                 # 日志文件（按天轮转，JSON Lines）
 │   ├── attachments/              # 上传的原始文件
 │   └── daily/                    # （预留目录）
 ├── knowledge-test/               # E2E 测试数据隔离目录（被 .gitignore 忽略）
@@ -353,6 +357,8 @@ npm run test:e2e
 | 新增组件 | `components/{Name}.tsx`，并在 `app/page.tsx` 中引用 |
 | 调整任务队列逻辑 | `lib/queue.ts` |
 | 修改任务面板 UI | `components/TasksPanel.tsx` |
+| 新增/修改日志输出 | `lib/logger.ts` |
+| 调整日志查看面板 | `components/LogsPanel.tsx` |
 
 ---
 

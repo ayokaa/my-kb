@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { chromium } from 'playwright';
+import type { Browser } from 'playwright';
 import { fetchWebContent, closeBrowser, resetBrowserForTesting } from '../web';
 
 vi.mock('playwright', () => ({
@@ -28,12 +29,12 @@ describe('fetchWebContent', () => {
     };
   }
 
-  function mockBrowser(page: any) {
+  function mockBrowser(page: any): Browser {
     return {
       newPage: vi.fn().mockResolvedValue(page),
       close: mockClose,
       isConnected: vi.fn().mockReturnValue(true),
-    };
+    } as unknown as Browser;
   }
 
   it('extracts article via Playwright + Readability', async () => {

@@ -10,7 +10,7 @@ describe('检索效果评估', () => {
 
   // 合并所有测试用例
   const allCases: TestCase[] = [
-    ...HIT_TEST_CASES.map(c => ({ ...c, unexpected: c.unexpected || [] })),
+    ...HIT_TEST_CASES.map(c => ({ ...c, unexpected: [] })),
     ...MISS_TEST_CASES,
   ];
 
@@ -76,7 +76,7 @@ describe('Error Report', () => {
   test('生成错误报告不报错', () => {
     const index = buildIndex(ALL_TEST_NOTES);
     const allCases: TestCase[] = [
-      ...HIT_TEST_CASES.map(c => ({ ...c, unexpected: c.unexpected || [] })),
+      ...HIT_TEST_CASES.map(c => ({ ...c, unexpected: [] })),
       ...MISS_TEST_CASES,
     ];
     const evalResults = allCases.map(tc => {

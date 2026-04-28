@@ -1,8 +1,9 @@
 'use client';
 
-import { MessageSquare, Inbox, BookOpen, Sparkles, Rss, ListChecks, PlusCircle, Settings } from 'lucide-react';
+import { MessageSquare, Inbox, BookOpen, Sparkles, Rss, ListChecks, PlusCircle, Settings, Sun, Moon, FileText } from 'lucide-react';
+import { useTheme } from './ThemeProvider';
 
-export type Tab = 'chat' | 'inbox' | 'tasks' | 'notes' | 'rss' | 'ingest' | 'settings';
+export type Tab = 'chat' | 'inbox' | 'tasks' | 'notes' | 'rss' | 'ingest' | 'settings' | 'logs';
 
 interface SidebarProps {
   active: Tab;
@@ -18,10 +19,12 @@ const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'tasks', label: '任务', icon: ListChecks },
   { id: 'rss', label: '订阅', icon: Rss },
   { id: 'notes', label: '笔记', icon: BookOpen },
+  { id: 'logs', label: '日志', icon: FileText },
   { id: 'settings', label: '设置', icon: Settings },
 ];
 
 export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0 }: SidebarProps) {
+  const { theme, toggle } = useTheme();
   return (
     <aside className="glass flex h-screen w-64 flex-col">
       {/* Logo */}
@@ -78,7 +81,18 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
       </nav>
 
       {/* Footer */}
-      <div className="p-4">
+      <div className="p-4 space-y-3">
+        <button
+          onClick={toggle}
+          className="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm transition-all duration-200 hover:border-[var(--border-hover)] hover:bg-[var(--bg-hover)]"
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-4 w-4 text-[var(--accent)]" />
+          ) : (
+            <Moon className="h-4 w-4 text-[var(--accent)]" />
+          )}
+          <span className="text-[var(--text-secondary)]">{theme === 'dark' ? '日间模式' : '夜间模式'}</span>
+        </button>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
           <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">Status</p>
           <div className="mt-1 flex items-center gap-2">

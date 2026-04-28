@@ -72,6 +72,7 @@ export const SEED_NOTE: Note = {
   keyFacts: ['种子状态'],
   timeline: [],
   links: [],
+  backlinks: [],
   qas: [],
   content: '这是种子状态的内容。',
 };

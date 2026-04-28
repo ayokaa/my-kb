@@ -8,6 +8,14 @@
   :root {
     --font-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+  }
+
+  /* Dark theme (default) */
+  [data-theme="dark"] {
     --bg-primary: #0c0e14;
     --bg-surface: #13151f;
     --bg-elevated: #1a1d2b;
@@ -23,10 +31,25 @@
     --accent-glow: rgba(212, 168, 83, 0.25);
     --success: #5dbb7a;
     --error: #d65a5a;
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
-    --radius-xl: 24px;
+  }
+
+  /* Light theme */
+  [data-theme="light"] {
+    --bg-primary: #f5f0e8;
+    --bg-surface: #ede7db;
+    --bg-elevated: #fffdf8;
+    --bg-hover: #e2dace;
+    --border: #d4cbb8;
+    --border-hover: #b8a98a;
+    --text-primary: #1a1714;
+    --text-secondary: #6b6358;
+    --text-tertiary: #9e9484;
+    --accent: #b8862d;
+    --accent-hover: #9a6f1e;
+    --accent-dim: rgba(184, 134, 45, 0.10);
+    --accent-glow: rgba(184, 134, 45, 0.18);
+    --success: #3a9e5c;
+    --error: #c44040;
   }
 
   body {
@@ -35,6 +58,7 @@
     font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   ::selection {
@@ -63,7 +87,7 @@
 
 @layer components {
   .glass {
-    background: rgba(19, 21, 31, 0.75);
+    background: color-mix(in srgb, var(--bg-surface) 75%, transparent);
     backdrop-filter: blur(20px) saturate(1.4);
     -webkit-backdrop-filter: blur(20px) saturate(1.4);
     border-right: 1px solid var(--border);
@@ -89,7 +113,7 @@
 
   .btn-primary {
     background: var(--accent);
-    color: #0c0e14;
+    color: var(--bg-primary);
     font-weight: 500;
     border-radius: var(--radius-md);
     transition: all 0.2s ease;

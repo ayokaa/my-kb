@@ -11,6 +11,7 @@ import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
 import { broadcastNoteChanged } from './events';
 import { runRelinkJob } from './cognition/relink';
+import { logger } from './logger';
 
 export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink';
 
@@ -92,7 +93,7 @@ async function saveQueueState() {
         await writeFile(tmp, JSON.stringify(state, null, 2));
         await rename(tmp, queuePath);
       } catch (err) {
-        console.error('[Queue] Failed to save state:', (err as Error).message);
+        logger.error('Queue', `Failed to save state: ${(err as Error).message}`);
       }
     })
     .catch(() => {
@@ -117,13 +118,14 @@ async function loadQueueState() {
     }
     // Also recover any running tasks that were in progress during shutdown
     for (const t of state.tasks || []) {
-      if (t.status === 'running' && !pendingByType[t.type].includes(t.id)) {
+      const taskType = t.type as TaskType;
+      if (t.status === 'running' && !pendingByType[taskType].includes(t.id)) {
         t.status = 'pending';
-        pendingByType[t.type].push(t.id);
+        pendingByType[taskType].push(t.id);
       }
     }
     const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length + pendingByType.relink.length;
-    console.log(`[Queue] Restored ${totalPending} pending tasks`);
+    logger.info('Queue', `Restored ${totalPending} pending tasks`);
   } catch {
     // No state file, start fresh
   }
@@ -144,7 +146,7 @@ export function enqueue(type: TaskType, payload: TaskPayload): string {
   };
   tasks.set(id, task);
   pendingByType[type].push(id);
-  console.log(`[Queue] Enqueued ${type} task ${id}`);
+  logger.info('Queue', `Enqueued ${type} task ${id}`);
   saveQueueState();
   startWorker(type);
   return id;
@@ -190,7 +192,7 @@ export function retryTask(id: string): Task | null {
 async function startWorker(type: TaskType) {
   if (workerRunningByType[type]) return;
   workerRunningByType[type] = true;
-  console.log(`[Queue] Worker started for ${type}`);
+  logger.info('Queue', `Worker started for ${type}`);
 
   const pendingIds = pendingByType[type];
   while (pendingIds.length > 0) {
@@ -204,37 +206,37 @@ async function startWorker(type: TaskType) {
 
     try {
       if (task.type === 'ingest') {
-        const result = await runIngestTask(task.payload);
+        const result = await runIngestTask(task.payload as IngestPayload);
         task.status = 'done';
         task.result = result || { ok: true };
-        console.log(`[Queue] Task ${id} completed`, result?.skipped ? '(skipped)' : '');
+        logger.info('Queue', `Task ${id} completed ${(result as any)?.skipped ? '(skipped)' : ''}`);
       } else if (task.type === 'rss_fetch') {
-        const result = await runRSSFetchTask(task.payload);
+        const result = await runRSSFetchTask(task.payload as RSSFetchPayload);
         task.status = 'done';
         task.result = result;
-        console.log(`[Queue] Task ${id} RSS fetch completed`, result.newItems !== undefined ? `(${result.newItems} new items)` : '');
+        logger.info('Queue', `Task ${id} RSS fetch completed ${(result as any).newItems !== undefined ? `(${(result as any).newItems} new items)` : ''}`);
       } else if (task.type === 'web_fetch') {
-        const result = await runWebFetchTask(task.payload);
+        const result = await runWebFetchTask(task.payload as WebFetchPayload);
         task.status = 'done';
         task.result = result;
-        console.log(`[Queue] Task ${id} web fetch completed`, result.title || '');
+        logger.info('Queue', `Task ${id} web fetch completed ${(result as any).title || ''}`);
       } else if (task.type === 'relink') {
         const result = await runRelinkTask();
         task.status = 'done';
         task.result = result;
-        console.log(`[Queue] Task ${id} relink completed`, result);
+        logger.info('Queue', `Task ${id} relink completed ${JSON.stringify(result)}`);
       }
     } catch (err) {
       task.status = 'failed';
       task.error = err instanceof Error ? err.message : 'Unknown error';
-      console.error(`[Queue] Task ${id} failed:`, err);
+      logger.error('Queue', `Task ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     task.completedAt = new Date().toISOString();
     saveQueueState();
   }
 
   workerRunningByType[type] = false;
-  console.log(`[Queue] Worker idle for ${type}`);
+  logger.info('Queue', `Worker idle for ${type}`);
 }
 
 /** Explicitly initialize queue: restore persisted state and auto-start worker if needed.
@@ -246,7 +248,7 @@ export function initQueue() {
   loadQueueState().then(() => {
     for (const type of ['ingest', 'rss_fetch', 'web_fetch', 'relink'] as TaskType[]) {
       if (pendingByType[type].length > 0) {
-        console.log(`[Queue] Auto-starting worker for ${type} with ${pendingByType[type].length} restored tasks`);
+        logger.info('Queue', `Auto-starting worker for ${type} with ${pendingByType[type].length} restored tasks`);
         startWorker(type);
       }
     }
@@ -315,7 +317,7 @@ async function runIngestTask(payload: IngestPayload) {
     const noteSources = await storage.listNoteSources();
     const hasDuplicate = noteSources.some((ns) => ns.sources.includes(originalUrl));
     if (hasDuplicate) {
-      console.log(`[Queue] Duplicate source detected: ${originalUrl}, archiving ${fileName}`);
+      logger.info('Queue', `Duplicate source detected: ${originalUrl}, archiving ${fileName}`);
       await storage.archiveInbox(fileName);
       return { skipped: true, reason: 'duplicate source' };
     }

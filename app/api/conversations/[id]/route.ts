@@ -1,5 +1,5 @@
 import { FileSystemStorage } from '@/lib/storage';
-import type { ConversationTurn } from '@/lib/types';
+import type { Conversation, ConversationTurn } from '@/lib/types';
 
 function turnsToMessages(turns: ConversationTurn[]) {
   return turns.map((t, i) => ({
@@ -65,7 +65,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         id,
         date: new Date().toISOString(),
         topics: ['新对话'],
-        status: 'open',
+        status: 'open' as const,
         turns: [],
         agentActions: [],
       };

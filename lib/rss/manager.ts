@@ -1,8 +1,9 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import yaml from 'js-yaml';
-import { fetchRSS, parseOPML, sortRSSItems, type RSSItem } from '../ingestion/rss';
+import { fetchRSS, parseOPML, sortRSSItems, type RSSItem, type OPMLFeed } from '../ingestion/rss';
 import { FileSystemStorage } from '../storage';
+import { logger } from '../logger';
 
 export interface RSSSubscription {
   url: string;
@@ -64,7 +65,7 @@ async function processFeedItems(
   maxItems?: number
 ): Promise<{ count: number; latestPubDate: string }> {
   if (processingFeeds.has(url)) {
-    console.log(`[RSS] Skip concurrent ingest for ${url}`);
+    logger.info('RSS', `Skip concurrent ingest for ${url}`);
     return { count: 0, latestPubDate: normalizePubDate(lastPubDate) };
   }
   processingFeeds.add(url);
@@ -112,7 +113,7 @@ async function processFeedItems(
 
       // Deduplication: skip if inbox already has this rss_link
       if (item.link && existingLinks.has(item.link)) {
-        console.log(`[RSS] Skip duplicate inbox entry: ${item.title}`);
+        logger.info('RSS', `Skip duplicate inbox entry: ${item.title}`);
         continue;
       }
 

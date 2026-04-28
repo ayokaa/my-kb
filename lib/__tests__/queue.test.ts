@@ -134,7 +134,7 @@ describe('enqueue / getTask / listPending', () => {
     const task = getTask(id);
     expect(task).toBeDefined();
     expect(task!.type).toBe('ingest');
-    expect(task!.payload.fileName).toBe('test.md');
+    expect((task!.payload as any).fileName).toBe('test.md');
   });
 
   it('listPending returns pending tasks', () => {
@@ -188,19 +188,19 @@ describe('enqueue / getTask / listPending', () => {
 
   it('skips duplicate source during ingest', async () => {
     const { readFile, stat } = await import('fs/promises');
-    const prevReadFile = readFile.getMockImplementation();
-    const prevStat = stat.getMockImplementation();
-    readFile.mockImplementation(async (path: string) => {
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async (path: string) => {
       if (typeof path === 'string' && path.includes('dup.md')) {
         return makeInboxMd('RSS Article', { rss_link: 'https://example.com/feed' });
       }
       throw new Error('no file');
     });
-    stat.mockResolvedValue({} as any);
+    (stat as any).mockResolvedValue({} as any);
 
     const { FileSystemStorage } = await import('@/lib/storage');
-    const prevImpl = FileSystemStorage.getMockImplementation();
-    FileSystemStorage.mockImplementation(function () {
+    const prevImpl = (FileSystemStorage as any).getMockImplementation();
+    (FileSystemStorage as any).mockImplementation(function () {
       return {
         listNoteSources: vi.fn().mockResolvedValue([{ id: 'existing', sources: ['https://example.com/feed'] }]),
         archiveInbox: vi.fn().mockResolvedValue(undefined),
@@ -215,9 +215,9 @@ describe('enqueue / getTask / listPending', () => {
       const task = getTask(id);
       throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
     } finally {
-      readFile.mockImplementation(prevReadFile as any);
-      stat.mockImplementation(prevStat as any);
-      FileSystemStorage.mockImplementation(prevImpl as any);
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+      (FileSystemStorage as any).mockImplementation(prevImpl as any);
     }
 
     const task = getTask(id);

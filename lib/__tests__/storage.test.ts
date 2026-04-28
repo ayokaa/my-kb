@@ -18,6 +18,7 @@ function createTestNote(id: string, overrides?: Partial<Note>): Note {
     sources: [],
     summary: `Summary of ${id}`,
     personalContext: '',
+    backlinks: [],
     keyFacts: [],
     timeline: [],
     links: [],
@@ -103,7 +104,7 @@ describe('FileSystemStorage', () => {
       const { deserializeIndex } = await import('@/lib/search/inverted-index');
       const raw = await (await import('fs/promises')).readFile(indexPath, 'utf-8');
       const parsed = deserializeIndex(raw);
-      expect(parsed.noteIds.sort()).toEqual(['note-a', 'note-b', 'note-c']);
+      expect(parsed!.noteIds.sort()).toEqual(['note-a', 'note-b', 'note-c']);
     });
 
     it('creates directories automatically', async () => {
@@ -322,6 +323,57 @@ describe('FileSystemStorage', () => {
       expect(entries[0].title).toBe('First');
     });
 
+    it('skips duplicate source_url entries and returns false', async () => {
+      const entry1: InboxEntry = {
+        sourceType: 'web',
+        title: 'First URL',
+        content: 'content1',
+        rawMetadata: { source_url: 'https://example.com/article' },
+      };
+      expect(await storage.writeInbox(entry1)).toBe(true);
+
+      const entry2: InboxEntry = {
+        sourceType: 'web',
+        title: 'Second URL',
+        content: 'content2',
+        rawMetadata: { source_url: 'https://example.com/article' },
+      };
+      expect(await storage.writeInbox(entry2)).toBe(false);
+
+      const entries = await storage.listInbox();
+      expect(entries).toHaveLength(1);
+    });
+
+    it('skips duplicate entries already in archive/inbox', async () => {
+      const entry: InboxEntry = {
+        sourceType: 'web',
+        title: 'Archived',
+        content: 'content',
+        rawMetadata: { rss_link: 'https://example.com/archived', source_url: 'https://example.com/s' },
+      };
+      expect(await storage.writeInbox(entry)).toBe(true);
+      const fileName = entry.filePath!.split('/').pop()!;
+      await storage.archiveInbox(fileName);
+
+      // rss_link duplicate should be rejected
+      const dupRss: InboxEntry = {
+        sourceType: 'web',
+        title: 'Dup RSS',
+        content: 'content',
+        rawMetadata: { rss_link: 'https://example.com/archived' },
+      };
+      expect(await storage.writeInbox(dupRss)).toBe(false);
+
+      // source_url duplicate should also be rejected
+      const dupUrl: InboxEntry = {
+        sourceType: 'web',
+        title: 'Dup URL',
+        content: 'content',
+        rawMetadata: { source_url: 'https://example.com/s' },
+      };
+      expect(await storage.writeInbox(dupUrl)).toBe(false);
+    });
+
     it('sorts inbox entries by extractedAt descending (newest first)', async () => {
       await storage.writeInbox({ sourceType: 'text', title: 'Old', content: 'old', rawMetadata: { extracted_at: '2025-01-01T00:00:00.000Z' } });
       await storage.writeInbox({ sourceType: 'text', title: 'Middle', content: 'mid', rawMetadata: { extracted_at: '2025-06-01T00:00:00.000Z' } });
@@ -428,6 +480,7 @@ describe('FileSystemStorage', () => {
   describe('Conversation CRUD', () => {
     it('saves and loads a conversation', async () => {
       const conv: Conversation = {
+        id: '2024-10-25',
         date: '2024-10-25',
         topics: ['rag'],
         status: 'open',
@@ -447,6 +500,7 @@ describe('FileSystemStorage', () => {
 
     it('lists conversations sorted by date', async () => {
       await storage.saveConversation({
+        id: '2024-10-26',
         date: '2024-10-26',
         topics: [],
         status: 'open',
@@ -454,6 +508,7 @@ describe('FileSystemStorage', () => {
         agentActions: [],
       });
       await storage.saveConversation({
+        id: '2024-10-25',
         date: '2024-10-25',
         topics: [],
         status: 'open',
@@ -471,6 +526,7 @@ describe('FileSystemStorage', () => {
 
     it('skips corrupted conversation files', async () => {
       await storage.saveConversation({
+        id: '2024-10-25',
         date: '2024-10-25',
         topics: [],
         status: 'open',
