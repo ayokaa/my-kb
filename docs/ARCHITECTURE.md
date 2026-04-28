@@ -24,7 +24,7 @@ Raw content enters the system through four paths:
 
 | Source | Entry Point | Handler |
 |--------|-------------|---------|
-| Web link | `POST /api/ingest` | `fetchWebContent` (Camoufox + Readability) |
+| Web link | `POST /api/ingest` | `fetchWebContent` (Camoufox + trafilatura) |
 | RSS feed | `lib/rss/cron.ts` | Enqueues `rss_fetch` task → `fetchRSS` + `ingestFeedItems` |
 | File upload | `POST /api/upload` | `extractPDF` or direct text read |
 | Plain text | `POST /api/ingest` | Direct write |
@@ -68,7 +68,7 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
 
 **`web_fetch`** — Scrape a web page and write to the inbox:
-1. Calls `fetchWebContent(url)` (Camoufox + Readability) to extract article content.
+1. Calls `fetchWebContent(url)` (Camoufox + trafilatura) to extract article content.
 2. Writes the extracted content to `knowledge/inbox/` as a Markdown file.
 
 **Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
@@ -131,7 +131,7 @@ lib/
 │   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links)
 │   └── relink.ts   — LLM gateway for refreshing note-to-note links
 ├── ingestion/
-│   ├── web.ts      — Camoufox + Readability extraction
+│   ├── web.ts      — Camoufox + trafilatura extraction
 │   ├── rss.ts      — RSS/Atom/JSON Feed parsing
 │   └── pdf.ts      — PDF text extraction
 ├── rss/
@@ -341,11 +341,7 @@ Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client
 ### Pipeline
 
 ```
-URL ──Camoufox (Python)──→ rendered HTML ──JSDOM──→ Document
-                                       │
-                                       ├─Readability──→ article.title/textContent
-                                       │
-                                       └─fallback──→ body.innerText
+URL ──Camoufox (Python)──→ rendered HTML ──trafilatura──→ {title, content}
 ```
 
 - Wait strategy: `domcontentloaded` (with `load` fallback), avoiding indefinite hangs from persistent analytics/tracking requests that prevent `networkidle` from ever firing.

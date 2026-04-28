@@ -29,7 +29,7 @@
 | AI 流 | `ai` v3 的 legacy `OpenAIStream` / `StreamingTextResponse`（`@ai-sdk/openai` 已安装但暂未使用） |
 | LLM | MiniMax API（默认模型 `MiniMax-M2.7`） |
 | 测试 | Vitest 4（单元测试，jsdom 环境）+ Playwright（E2E，Chromium） |
-| 抓取 | `camoufox`（Python，Firefox 反指纹浏览器）+ `@mozilla/readability` + `jsdom` |
+| 抓取 | `camoufox`（Python，Firefox 反指纹浏览器）+ `trafilatura` |
 | RSS | `feedsmith` |
 | PDF | `pdf-parse` |
 | 配置 | YAML 通过 `js-yaml` 读写 |
@@ -86,7 +86,7 @@ my-kb/
 │   │   ├── ingest.ts             # LLM 调用：将 inbox 加工成 note
 │   │   └── relink.ts             # LLM 调用：刷新笔记间关联
 │   ├── ingestion/
-│   │   ├── web.ts                # 网页内容抓取（Camoufox + Readability）
+│   │   ├── web.ts                # 网页内容抓取（Camoufox + trafilatura）
 │   │   ├── rss.ts                # RSS/Atom/JSON Feed 解析
 │   │   └── pdf.ts                # PDF 文本提取
 │   ├── search/
@@ -327,7 +327,7 @@ npm run test:e2e
 2. **文件上传**：上传文件保存在 `knowledge/attachments/`，以时间戳前缀重命名，避免文件名冲突与路径遍历。
 3. **Shell 注入**：`storage.ts` 中的 `commit()` 方法通过 `git add` 和 `git commit` 执行外部命令，已对消息中的双引号做了转义。注意：由于 `knowledge/` 在 `.gitignore` 中，`git add` 不会实际添加任何文件，此方法当前处于失效状态。如需启用 Git 版本管理，需将 `knowledge/` 移出 `.gitignore`。
 4. **API 密钥**：LLM 和搜索 API 密钥仅通过环境变量注入，不在客户端暴露。
-5. **网页抓取**：通过 Python `camoufox` 启动 Firefox 反指纹浏览器，执行页面 JavaScript 后获取 HTML，再由 Node.js 端通过 JSDOM + Readability 提取正文，超时 20 秒（`domcontentloaded` → `load` fallback）。不再使用静态 `fetch` 方式。
+5. **网页抓取**：通过 Python `camoufox` 启动 Firefox 反指纹浏览器，执行页面 JavaScript 后获取 HTML，再由 Python `trafilatura` 提取正文，Node.js 端只负责解析返回的 JSON。超时 60 秒（`domcontentloaded` → `load` fallback）。不再使用静态 `fetch` 方式。
 6. **RSS 抓取**：使用 `fetch` + 自定义 User-Agent (`AgentKB/1.0`)，源之间加入 500ms 延迟以示礼貌。
 
 ---

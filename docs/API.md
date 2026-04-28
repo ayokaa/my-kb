@@ -34,7 +34,7 @@ The stream emits three kinds of events:
 **Tool calling flow:**
 1. The server searches the knowledge base and assembles a context string.
 2. A non-streaming LLM call (`stream: false`) determines whether the LLM wants to invoke tools.
-3. If `web_fetch` is called, the server executes `fetchWebContent(url)` (Camoufox + Readability) and injects the extracted content into the conversation.
+3. If `web_fetch` is called, the server executes `fetchWebContent(url)` (Camoufox + trafilatura) and injects the extracted content into the conversation.
 4. A second streaming LLM call produces the final response.
 
 **Error:** `500` if MiniMax API fails.
@@ -187,7 +187,7 @@ Manually ingest content into the inbox.
 }
 ```
 
-For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + Readability to scrape the article and writes the result to the inbox.
+For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + trafilatura to scrape the article and writes the result to the inbox.
 
 **Response:**
 - For `type: "text"`: `{ "ok": true }`
