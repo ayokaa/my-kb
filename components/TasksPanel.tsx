@@ -72,8 +72,13 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 3000);
-    return () => clearInterval(interval);
+    const source = new EventSource('/api/events');
+    source.onmessage = () => {
+      load();
+    };
+    return () => {
+      source.close();
+    };
   }, []);
 
   useEffect(() => {

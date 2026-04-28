@@ -10,6 +10,10 @@ import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
 import { broadcastNoteChanged } from './events';
+
+function broadcastTaskChanged() {
+  broadcastNoteChanged();
+}
 import { runRelinkJob } from './cognition/relink';
 import { logger } from './logger';
 
@@ -152,6 +156,7 @@ export function enqueue(type: TaskType, payload: TaskPayload): string {
   pendingByType[type].push(id);
   logger.info('Queue', `Enqueued ${type} task ${id}`);
   saveQueueState();
+  broadcastTaskChanged();
   startWorker(type);
   return id;
 }
@@ -207,6 +212,7 @@ async function startWorker(type: TaskType) {
     task.status = 'running';
     task.startedAt = new Date().toISOString();
     saveQueueState();
+    broadcastTaskChanged();
 
     try {
       if (task.type === 'ingest') {

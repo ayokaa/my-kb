@@ -31,22 +31,21 @@ export default function TabShell({ notesPanel }: TabShellProps) {
   }, [tab]);
 
   useEffect(() => {
-    const poll = () => {
-      if (document.visibilityState === 'hidden') return;
+    const refreshTasks = () => {
       fetch('/api/tasks?filter=inbox_pending', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => setTaskCount(d.tasks?.length || 0))
-        .catch((err) => console.error('[TabShell] Failed to poll tasks:', err));
+        .catch((err) => console.error('[TabShell] Failed to refresh tasks:', err));
     };
-    poll();
-    const interval = setInterval(poll, 3000);
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') poll();
+    refreshTasks();
+
+    const source = new EventSource('/api/events');
+    source.onmessage = () => {
+      refreshInboxCount();
+      refreshTasks();
     };
-    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibility);
+      source.close();
     };
   }, []);
 
