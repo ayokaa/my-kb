@@ -96,13 +96,13 @@ The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RA
 3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts/links/backlinks > content).
 4. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
 5. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
-6. **Tool calling (optional)**: A non-streaming LLM call (`stream: false`) with `tools` + `tool_choice: 'auto'` determines whether the LLM wants to invoke `web_fetch`.
+6. **Tool calling (optional)**: A single streaming LLM call (`stream: true`) with Anthropic `tools` is issued. The response is consumed as `content_block_delta` events (`text_delta` for text, `input_json_delta` for tool arguments).
    - URLs are validated before fetching: only HTTP/HTTPS schemes are allowed; private/internal addresses (localhost, RFC 1918 ranges) are rejected to prevent SSRF.
    - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
-   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` (via Camoufox Python script) and injects the extracted article into the message history as a `tool` role message.
-7. Injects the context (+ tool results if any) into the system prompt sent to MiniMax.
+   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` (via Camoufox Python script) and appends the extracted article as a `tool_result` content block in the message history (Anthropic format).
+7. Injects the context (+ tool results if any) into the conversation.
 8. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
-9. Streams the LLM response back to the client.
+9. Streams the LLM response back to the client via `ai` SDK `formatStreamPart`.
 10. On stream start, enqueues `data:` SSE events for source metadata (`{ type: 'sources', notes: [...] }`) and any tool calls (`{ type: 'tool_call', name, url }`) so the UI can display knowledge references and fetch indicators.
 
 This provides grounded, knowledge-aware answers rather than generic conversational responses. When the knowledge base is insufficient, the LLM can fetch fresh web content on-the-fly.
@@ -217,7 +217,7 @@ LLM credentials, model names, and cron intervals were statically baked into envi
 
 1. **Persistence**: Settings are stored as YAML at `knowledge/meta/settings.yml` via atomic write (tmp+rename).
 2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`MINIMAX_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
-3. **Hot reload**: `lib/llm.ts` caches the `OpenAI` client instance and invalidates the cache when settings change (detected via settings content hash). This avoids the overhead of reconstructing the client on every call while still enabling hot reload without server restart.
+3. **Hot reload**: `lib/llm.ts` caches the `Anthropic` client instance and invalidates the cache when settings change (detected via settings content hash). This avoids the overhead of reconstructing the client on every call while still enabling hot reload without server restart.
 4. **Cron restartability**: Both `lib/rss/cron.ts` and `lib/relink/cron.ts` expose `stop/restart` functions. The Settings API (`POST /api/settings`) calls them when interval/expression changes.
 5. **Security**: `GET /api/settings` returns a *safe* copy where the API key is masked (`sk-...xxxx`). Only `POST` accepts the full key.
 

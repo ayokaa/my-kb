@@ -26,8 +26,8 @@
 | 语言 | TypeScript 5 (strict mode, target: es2015) |
 | 样式 | Tailwind CSS 3.4 + 自定义 CSS 变量（深色主题） |
 | 字体 | Cormorant Garamond (衬线标题) + JetBrains Mono (等宽正文) |
-| AI 流 | `ai` v3 的 legacy `OpenAIStream` / `StreamingTextResponse`（`@ai-sdk/openai` 已安装但暂未使用） |
-| LLM | MiniMax API（默认模型 `MiniMax-M2.7`） |
+| AI 流 | `ai` v3 的 `formatStreamPart` + `useChat`（前端），后端原生 ReadableStream |
+| LLM | Anthropic Messages API（默认模型 `claude-3-5-sonnet-20241022`，兼容其他 Anthropic 格式端点） |
 | 测试 | Vitest 4（单元测试，jsdom 环境）+ Playwright（E2E，Chromium） |
 | 抓取 | `camoufox`（Python，Firefox 反指纹浏览器）+ `trafilatura` |
 | RSS | `feedsmith` |
@@ -170,8 +170,8 @@ npm run test:e2e
 
 | 变量名 | 说明 | 是否必须 |
 |--------|------|----------|
-| `MINIMAX_API_KEY` | MiniMax API 密钥 | 是（聊天、笔记生成） |
-| `MINIMAX_BASE_URL` | MiniMax API 基地址，默认 `https://api.minimaxi.com/v1` | 否 |
+| `MINIMAX_API_KEY` | LLM API 密钥（Anthropic 或兼容端点） | 是（聊天、笔记生成） |
+| `MINIMAX_BASE_URL` | LLM API 基地址，默认 `https://api.anthropic.com/v1` | 否 |
 | `KNOWLEDGE_ROOT` | 数据存储根目录，默认 `knowledge` | 否 |
 
 
@@ -351,7 +351,7 @@ npm run test:e2e
 | 新增 API 端点 | `app/api/{feature}/route.ts` |
 | 修改笔记数据结构 | `lib/types.ts` → `lib/parsers.ts` → `lib/storage.ts` |
 | 调整 LLM 提示词 | `lib/cognition/ingest.ts` 中的 `SYSTEM_PROMPT` |
-| 更换 LLM 提供商 | `lib/cognition/ingest.ts` 和 `app/api/chat/route.ts` 中的 OpenAI 客户端配置 |
+| 更换 LLM 提供商 | `lib/llm.ts` 中的 Anthropic 客户端配置；如需切换为其他 API 格式，需同步修改 `app/api/chat/route.ts` 和 `lib/cognition/*.ts` 的调用格式 |
 | 新增入库来源类型 | `lib/ingestion/` 下新增解析器，并在 `app/api/ingest/route.ts` 或 `app/api/upload/route.ts` 中接入 |
 | 调整 RSS 轮询频率 | `app/layout.tsx` 中 `startRSSCron(60)` 的参数（分钟） |
 | 修改检索/搜索逻辑 | `lib/search/engine.ts` 或 `lib/search/index.ts` |

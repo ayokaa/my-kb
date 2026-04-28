@@ -8,7 +8,7 @@ All API routes use standard Web API signatures (`export async function GET(req: 
 
 ### `POST /api/chat`
 
-Stream a chat completion from MiniMax API with RAG retrieval and optional `web_fetch` tool calling.
+Stream a chat completion via Anthropic Messages API with RAG retrieval and optional `web_fetch` tool calling.
 
 **Security:** `web_fetch` URLs are validated to reject non-HTTP/HTTPS schemes and private/internal addresses (localhost, RFC 1918 ranges). A single request is limited to at most 3 tool calls.
 
@@ -31,13 +31,14 @@ The stream emits three kinds of events:
 
 3. **Tool call events** (`formatStreamPart('data', [{ type: 'tool_call', name: 'web_fetch', url: '...' }])`): Sent when the LLM invoked the `web_fetch` tool to scrape a web page. The frontend displays a "已抓取网页" indicator during loading.
 
-**Tool calling flow:**
+**Tool calling flow (Agent Loop):**
 1. The server searches the knowledge base and assembles a context string.
-2. A non-streaming LLM call (`stream: false`) determines whether the LLM wants to invoke tools.
-3. If `web_fetch` is called, the server executes `fetchWebContent(url)` (Camoufox + trafilatura) and injects the extracted content into the conversation.
-4. A second streaming LLM call produces the final response.
+2. A single streaming LLM call (`stream: true`) with tools is issued.
+3. If `web_fetch` tool calls are detected mid-stream, the server pauses text output, executes `fetchWebContent(url)` (Camoufox + trafilatura) for up to 3 calls, and appends the results as `tool_result` content blocks.
+4. The conversation continues with a second streaming LLM call that includes the tool results, producing the final response.
+5. Maximum 2 rounds to prevent infinite loops.
 
-**Error:** `500` if MiniMax API fails.
+**Error:** `500` if LLM API fails.
 
 ---
 
@@ -338,9 +339,9 @@ Load runtime settings. The API key is masked (`sk-...xxxx`) for security.
 ```json
 {
   "llm": {
-    "model": "MiniMax-M2.7",
+    "model": "claude-3-5-sonnet-20241022",
     "apiKey": "sk-...xxxx",
-    "baseUrl": "https://api.minimaxi.com/v1"
+    "baseUrl": "https://api.anthropic.com/v1"
   },
   "cron": {
     "rssIntervalMinutes": 60,
@@ -357,9 +358,9 @@ Update runtime settings. Changes are persisted to `knowledge/meta/settings.yml` 
 ```json
 {
   "llm": {
-    "model": "MiniMax-M2.7",
+    "model": "claude-3-5-sonnet-20241022",
     "apiKey": "sk-xxxxxxxx",
-    "baseUrl": "https://api.minimaxi.com/v1"
+    "baseUrl": "https://api.anthropic.com/v1"
   },
   "cron": {
     "rssIntervalMinutes": 60,

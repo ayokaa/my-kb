@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- **LLM API 格式迁移至 Anthropic Messages API**：
+  - `lib/llm.ts`：OpenAI 客户端工厂替换为 `@anthropic-ai/sdk` 的 `Anthropic` 客户端。保留设置缓存和热重载机制。
+  - `app/api/chat/route.ts`：流式对话从 OpenAI `chat.completions.create` 迁移到 Anthropic `messages.create`。System prompt 作为顶层参数；消息格式转换为 Anthropic `MessageParam`（`tool_use` / `tool_result` content blocks）。Agent Loop 保持最多 2 轮、最多 3 个并发工具调用。
+  - `lib/cognition/ingest.ts` 与 `lib/cognition/relink.ts`：非流式 LLM 调用同步迁移。响应从 `choices[0].message.content` 改为提取 `content` 数组中的 `TextBlock`。
+  - 相关单元测试全部适配新响应格式。
+
 - **网页抓取引擎替换** (`lib/ingestion/web.ts`)：将 Playwright Chromium 替换为原始 Python `camoufox`（Firefox 反指纹浏览器）。
   - 新增 `scripts/fetch_web.py`：Python 脚本使用 `camoufox.sync_api.Camoufox` 渲染页面并返回 HTML + title。
   - 新增 `requirements.txt` + `scripts/setup_camoufox.sh`：安装 Python 依赖并下载浏览器二进制。

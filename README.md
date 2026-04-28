@@ -16,7 +16,7 @@
 
 - **Ingest**: Web links, RSS feeds, PDF/TXT/MD files, plain text
 - **Inbox Review**: Pending content is confirmed by the user (or auto-approved) before processing
-- **LLM Processing**: Calls the configured LLM API (MiniMax, OpenAI-compatible, or custom endpoint) to extract tags, summaries, key facts, timelines, links, and other structured information
+- **LLM Processing**: Calls the configured LLM API (Anthropic Messages API or compatible endpoint) to extract tags, summaries, key facts, timelines, links, and other structured information
 - **Settings**: Runtime-configurable LLM credentials, model, RSS interval, and relink cron schedule via the Settings UI panel — no server restart required
 - **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
 - **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt; LLM can invoke `web_fetch` tool calls to scrape referenced web pages on-the-fly when knowledge is insufficient
@@ -33,7 +33,7 @@
 - **Framework**: Next.js 16 App Router + React 19
 - **Language**: TypeScript 5 (strict mode)
 - **Styling**: Tailwind CSS + custom CSS variables (dark theme)
-- **AI Streaming**: `ai` SDK + OpenAI-compatible MiniMax API
+- **AI Streaming**: `ai` SDK + Anthropic Messages API
 - **Web Scraping**: Camoufox (Python, Firefox anti-fingerprinting) + trafilatura
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
 - **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation; 5-second TTL memory cache for the search index
@@ -58,15 +58,15 @@ npm install
 
 ```bash
 cp .env.example .env.local
-# Edit .env.local and fill in your MiniMax API key
+# Edit .env.local and fill in your LLM API key
 ```
 
 Required:
-- `MINIMAX_API_KEY` — MiniMax API key (used for note generation and chat)
+- `MINIMAX_API_KEY` — LLM API key (used for note generation and chat)
 
 Optional:
-- `MINIMAX_BASE_URL` — defaults to `https://api.minimaxi.com/v1`
-- `LLM_MODEL` — defaults to `MiniMax-M2.7`
+- `MINIMAX_BASE_URL` — LLM API base URL, defaults to Anthropic `https://api.anthropic.com/v1`
+- `LLM_MODEL` — defaults to `claude-3-5-sonnet-20241022`
 - `RSS_CHECK_INTERVAL_MINUTES` — defaults to `60`
 - `RELINK_CRON_EXPRESSION` — defaults to `0 3 * * *` (daily at 03:00)
 
