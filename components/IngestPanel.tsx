@@ -4,13 +4,13 @@ import { useState } from 'react';
 import { FileText, Link, Upload, Loader2 } from 'lucide-react';
 
 const tabs = [
-  { id: 'text' as const, label: '文本', icon: FileText },
   { id: 'link' as const, label: '链接', icon: Link },
+  { id: 'text' as const, label: '文本', icon: FileText },
   { id: 'file' as const, label: '文件', icon: Upload },
 ];
 
 export default function IngestPanel() {
-  const [ingestTab, setIngestTab] = useState<'text' | 'link' | 'file'>('text');
+  const [ingestTab, setIngestTab] = useState<'text' | 'link' | 'file'>('link');
   const [ingestLoading, setIngestLoading] = useState(false);
   const [ingestResult, setIngestResult] = useState('');
   const [textInput, setTextInput] = useState('');

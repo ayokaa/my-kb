@@ -10,7 +10,7 @@ test.describe.serial('Ingest', () => {
     await page.goto('/');
 
     await page.getByTestId('nav-ingest').click();
-    await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
+    await page.getByTestId('ingest-tab-text').click();
 
     await page.getByPlaceholder('标题（可选）').fill('UI Ingest Test');
     await page.getByPlaceholder('输入文本内容...').fill('Content added through the UI ingest form.');
@@ -25,7 +25,6 @@ test.describe.serial('Ingest', () => {
     await page.goto('/');
 
     await page.getByTestId('nav-ingest').click();
-    await page.getByTestId('ingest-tab-link').click();
 
     const linkInput = page.getByPlaceholder('https://...');
     await expect(linkInput).toBeVisible();
@@ -43,22 +42,21 @@ test.describe.serial('Ingest', () => {
 
     await page.getByTestId('nav-ingest').click();
 
-    await expect(page.getByPlaceholder('输入文本内容...')).toBeVisible();
-
-    await page.getByTestId('ingest-tab-link').click();
     await expect(page.getByPlaceholder('https://...')).toBeVisible();
-
-    await page.getByTestId('ingest-tab-file').click();
 
     await page.getByTestId('ingest-tab-text').click();
     await expect(page.getByPlaceholder('输入文本内容...')).toBeVisible();
+
+    await page.getByTestId('ingest-tab-file').click();
+
+    await page.getByTestId('ingest-tab-link').click();
+    await expect(page.getByPlaceholder('https://...')).toBeVisible();
   });
 
   test('submitting link shows queued message', async ({ page }) => {
     await page.goto('/');
 
     await page.getByTestId('nav-ingest').click();
-    await page.getByTestId('ingest-tab-link').click();
 
     await page.getByPlaceholder('https://...').fill('https://example.com/article');
     await page.getByRole('button', { name: '抓取' }).click();
@@ -71,7 +69,6 @@ test.describe.serial('Ingest', () => {
     await page.goto('/');
 
     await page.getByTestId('nav-ingest').click();
-    await page.getByTestId('ingest-tab-link').click();
 
     const submitBtn = page.getByRole('button', { name: '抓取' });
     await expect(submitBtn).toBeDisabled();
@@ -84,6 +81,7 @@ test.describe.serial('Ingest', () => {
     await page.goto('/');
 
     await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-text').click();
 
     const submitBtn = page.getByRole('button', { name: '入库' });
     await expect(submitBtn).toBeDisabled();
