@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Fetch a web page using Camoufox and output JSON with title and HTML."""
+"""Fetch a web page using Camoufox and extract article content via trafilatura."""
 
 import json
 import sys
 import argparse
 
+from trafilatura import extract
+from camoufox.sync_api import Camoufox
+
 FETCH_TIMEOUT = 20000  # ms
 
 
 def fetch(url: str):
-    from camoufox.sync_api import Camoufox
-
-    with Camoufox(headless=True) as browser:
+    with Camoufox(headless=True, block_images=True, i_know_what_im_doing=True) as browser:
         page = browser.new_page()
         try:
             # Try domcontentloaded first (fast), fallback to load on timeout.
@@ -22,12 +23,19 @@ def fetch(url: str):
 
             title = page.title()
             html = page.content()
-            body_text = page.evaluate("() => document.body?.innerText?.trim() || ''")
+
+            # Extract article content with trafilatura
+            extracted = extract(
+                html,
+                url=url,
+                include_comments=False,
+                include_tables=False,
+                include_images=False,
+            )
 
             result = {
                 "title": title,
-                "html": html,
-                "bodyText": body_text,
+                "content": extracted or "",
             }
             print(json.dumps(result, ensure_ascii=False))
         finally:

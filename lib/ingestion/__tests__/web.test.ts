@@ -14,30 +14,22 @@ describe('fetchWebContent', () => {
     resetBrowserForTesting();
   });
 
-  function mockSuccessResponse(title: string, html: string, bodyText?: string) {
+  function mockResponse(title: string, content: string) {
     mockedRunCamoufox.mockImplementation((cmd, args, opts, callback) => {
       if (typeof opts === 'function') {
         callback = opts;
       }
-      callback(null, JSON.stringify({ title, html, bodyText }), '');
+      callback(null, JSON.stringify({ title, content }), '');
     });
   }
 
-  it('extracts article via Camoufox + Readability', async () => {
-    mockSuccessResponse(
-      'Article Title',
-      `<html><head><title>Article Title</title></head>
-        <body>
-          <article>
-            <h1>Article Title</h1>
-            <p>This is the main content extracted by Readability.</p>
-          </article>
-        </body></html>`
-    );
+  it('returns extracted title and content from Python script', async () => {
+    mockResponse('Test Article', 'This is the main content extracted by trafilatura.');
 
     const result = await fetchWebContent('https://example.com/article');
-    expect(result.title).toBe('Article Title');
+    expect(result.title).toBe('Test Article');
     expect(result.content).toContain('main content extracted');
+    expect(result.excerpt).toContain('main content extracted');
     expect(mockedRunCamoufox).toHaveBeenCalledWith(
       'python3',
       expect.arrayContaining([expect.stringContaining('fetch_web.py'), 'https://example.com/article']),
@@ -46,16 +38,11 @@ describe('fetchWebContent', () => {
     );
   });
 
-  it('falls back to body text when Readability fails', async () => {
-    mockSuccessResponse(
-      'Bad Page',
-      `<html><head><title>Bad Page</title></head>
-        <body><form><input value="Some text here"></form></body></html>`,
-      'Some text here'
-    );
+  it('uses URL as title when title is empty', async () => {
+    mockResponse('', 'Some text here');
 
     const result = await fetchWebContent('https://example.com/bad');
-    expect(result.title).toBe('Bad Page');
+    expect(result.title).toBe('https://example.com/bad');
     expect(result.content).toContain('Some text here');
   });
 
@@ -71,7 +58,7 @@ describe('fetchWebContent', () => {
   });
 
   it('supports concurrent calls', async () => {
-    mockSuccessResponse('Concurrent', '<html><body>race</body></html>');
+    mockResponse('Concurrent', 'race content');
 
     const [a, b] = await Promise.all([
       fetchWebContent('https://example.com/a'),
@@ -83,26 +70,12 @@ describe('fetchWebContent', () => {
     expect(b.title).toBe('Concurrent');
   });
 
-  it('uses page title when Readability title is empty', async () => {
-    mockSuccessResponse(
-      'Page Title',
-      `<html><head><title>Page Title</title></head>
-        <body><article><p>Content without h1.</p></article></body></html>`
-    );
+  it('truncates content to 10000 chars', async () => {
+    mockResponse('Long', 'x'.repeat(20000));
 
-    const result = await fetchWebContent('https://example.com/no-h1');
-    // Readability may return empty title for article without h1; fallback to page title
-    expect(result.title).toBe('Page Title');
-    expect(result.content).toContain('Content without h1');
-  });
-
-  it('returns empty content when both Readability and bodyText are empty', async () => {
-    mockSuccessResponse('', '<html><head></head><body></body></html>', '');
-
-    const result = await fetchWebContent('https://example.com/empty');
-    expect(result.title).toBe('https://example.com/empty');
-    expect(result.content).toBe('');
-    expect(result.excerpt).toBe('');
+    const result = await fetchWebContent('https://example.com/long');
+    expect(result.content.length).toBe(10000);
+    expect(result.excerpt!.length).toBe(200);
   });
 
   it('does not throw on closeBrowser()', async () => {
