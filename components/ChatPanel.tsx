@@ -259,15 +259,47 @@ export default function ChatPanel() {
   const [loadingConv, setLoadingConv] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
+  const isCreatingRef = useRef(false);
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
+
+  const handleNewConversation = useCallback(async () => {
+    if (isCreatingRef.current) return;
+    isCreatingRef.current = true;
+    try {
+      const res = await fetch('/api/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '新对话' }) });
+      const data = await res.json();
+      if (data.ok) {
+        setConversations((prev) => [data.conversation, ...prev]);
+        setActiveId(data.conversation.id);
+        setActiveMessages([]);
+        setCurrentSources([]);
+      }
+    } catch (err) {
+      console.error('[ChatPanel] Failed to create conversation:', err);
+    } finally {
+      isCreatingRef.current = false;
+    }
+  }, []);
+
+  const initializedRef = useRef(false);
+
   const loadConversations = useCallback(async () => {
     try {
       const res = await fetch('/api/conversations', { cache: 'no-store' });
       const data = await res.json();
-      setConversations(data.conversations || []);
+      const list = data.conversations || [];
+      setConversations(list);
+      if (list.length === 0 && !initializedRef.current) {
+        initializedRef.current = true;
+        await handleNewConversation();
+      } else if (list.length > 0 && !activeIdRef.current) {
+        setActiveId(list[0].id);
+      }
     } catch (err) {
       console.error('[ChatPanel] Failed to load conversations:', err);
     }
-  }, []);
+  }, [handleNewConversation]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -292,25 +324,6 @@ export default function ChatPanel() {
     setCurrentSources([]);
     await loadMessages(id);
   }, [loadMessages]);
-
-  const handleNewConversation = useCallback(async () => {
-    if (isCreatingRef.current) return;
-    isCreatingRef.current = true;
-    try {
-      const res = await fetch('/api/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '新对话' }) });
-      const data = await res.json();
-      if (data.ok) {
-        setConversations((prev) => [data.conversation, ...prev]);
-        setActiveId(data.conversation.id);
-        setActiveMessages([]);
-        setCurrentSources([]);
-      }
-    } catch (err) {
-      console.error('[ChatPanel] Failed to create conversation:', err);
-    } finally {
-      isCreatingRef.current = false;
-    }
-  }, []);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     if (confirmingDeleteId !== id) {
@@ -345,12 +358,7 @@ export default function ChatPanel() {
     }
   }, [loadConversations]);
 
-  const isCreatingRef = useRef(false);
-  useEffect(() => {
-    if (conversations.length === 0 && !activeId && !loadingConv) {
-      handleNewConversation();
-    }
-  }, [conversations, activeId, loadingConv, handleNewConversation]);
+
 
   return (
     <div className="flex h-full gap-4 overflow-hidden">
