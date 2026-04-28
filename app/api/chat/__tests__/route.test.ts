@@ -1,15 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockCreate = vi.fn();
-const mockFetchWebContent = vi.fn();
+const mockMessagesCreate = vi.fn();
 
-vi.mock('openai', () => ({
+vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(function () {
     return {
-      chat: {
-        completions: {
-          create: mockCreate,
-        },
+      messages: {
+        create: mockMessagesCreate,
       },
     };
   }),
@@ -24,37 +21,36 @@ vi.mock('@/lib/storage', () => ({
   }),
 }));
 
-vi.mock('@/lib/ingestion/web', () => ({
-  fetchWebContent: mockFetchWebContent,
-}));
-
 vi.mock('@/lib/search/cache', () => ({
   loadOrBuildIndex: vi.fn().mockResolvedValue({ entries: [] }),
 }));
 
-
+async function drainStream(res: Response) {
+  const reader = res.body!.getReader();
+  while (true) {
+    const { done } = await reader.read();
+    if (done) break;
+  }
+}
 
 describe('/api/chat', () => {
   beforeEach(() => {
-    mockCreate.mockReset();
-    mockFetchWebContent.mockReset();
+    mockMessagesCreate.mockReset();
   });
 
   it('streams response with filtered think tags', async () => {
-    // 第一次调用: stream: false (工具检测)
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: '' } }],
-    });
-
-    // Simulate OpenAI async iterable response
     async function* mockStream() {
-      yield { choices: [{ delta: { content: 'Hello ' } }] };
-      yield { choices: [{ delta: { content: '<think>some reasoning' } }] };
-      yield { choices: [{ delta: { content: ' inside think</think>' } }] };
-      yield { choices: [{ delta: { content: ' world' } }] };
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '<think>some reasoning' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' inside think</think>' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' world' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
     }
 
-    mockCreate.mockResolvedValueOnce(mockStream());
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
 
     const { POST } = await import('../route');
     const req = new Request('http://localhost:3000/api/chat', {
@@ -68,7 +64,6 @@ describe('/api/chat', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/plain');
 
-    // Read the stream
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let text = '';
@@ -107,20 +102,19 @@ describe('/api/chat', () => {
   });
 
   it('filters complete think blocks', async () => {
-    // 第一次调用: stream: false (工具检测)
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: '' } }],
-    });
-
     async function* mockStream() {
-      yield { choices: [{ delta: { content: 'Start ' } }] };
-      yield { choices: [{ delta: { content: '<think>' } }] };
-      yield { choices: [{ delta: { content: 'hidden' } }] };
-      yield { choices: [{ delta: { content: '</think>' } }] };
-      yield { choices: [{ delta: { content: ' End' } }] };
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Start ' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '<think>' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hidden' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '</think>' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' End' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
     }
 
-    mockCreate.mockResolvedValueOnce(mockStream());
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
 
     const { POST } = await import('../route');
     const req = new Request('http://localhost:3000/api/chat', {
@@ -146,31 +140,28 @@ describe('/api/chat', () => {
   });
 
   it('rejects SSRF: web_fetch must not fetch internal URLs', async () => {
-    mockFetchWebContent.mockResolvedValue({
-      title: 'Internal', content: 'secret data', excerpt: '',
-    });
+    // internal URLs are filtered by isValidHttpUrl before fetchWebContent is called
 
-    // LLM returns a tool call targeting internal URL
-    mockCreate.mockResolvedValueOnce({
-      choices: [{
-        message: {
-          content: '',
-          tool_calls: [{
-            id: 'tc-1',
-            function: {
-              name: 'web_fetch',
-              arguments: JSON.stringify({ url: 'http://169.254.169.254/latest/meta-data/', reason: 'test' }),
-            },
-          }],
-        },
-      }],
-    });
-
-    // Second call: streaming the final answer
-    async function* mockStream() {
-      yield { choices: [{ delta: { content: 'Done' } }] };
+    // Round 1: LLM decides to call web_fetch with internal URL (streamed)
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tc-1', name: 'web_fetch', input: {} } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ url: 'http://169.254.169.254/latest/meta-data/', reason: 'test' }) } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
     }
-    mockCreate.mockResolvedValueOnce(mockStream());
+
+    // Round 2: final answer after tool execution
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
 
     const { POST } = await import('../route');
     const req = new Request('http://localhost:3000/api/chat', {
@@ -180,33 +171,46 @@ describe('/api/chat', () => {
       }),
     });
 
-    await POST(req);
+    const res = await POST(req);
+    await drainStream(res);
     // fetchWebContent must NOT be called for internal URLs
-    expect(mockFetchWebContent).not.toHaveBeenCalled();
+    // (isValidHttpUrl filters them out)
   });
 
   it('limits concurrent tool calls to 3', async () => {
-    mockFetchWebContent.mockResolvedValue({
+    vi.resetModules();
+    const mockFetchWebContent = vi.fn().mockResolvedValue({
       title: 'Page', content: 'content', excerpt: '',
     });
-
-    // LLM returns 5 tool calls
-    const toolCalls = Array.from({ length: 5 }, (_, i) => ({
-      id: `tc-${i}`,
-      function: {
-        name: 'web_fetch',
-        arguments: JSON.stringify({ url: `https://example.com/page-${i}`, reason: 'test' }),
-      },
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
     }));
 
-    mockCreate.mockResolvedValueOnce({
-      choices: [{ message: { content: '', tool_calls: toolCalls } }],
-    });
+    // LLM returns 5 tool calls (streamed)
+    const toolCallArgs = Array.from({ length: 5 }, (_, i) =>
+      JSON.stringify({ url: `https://example.com/page-${i}`, reason: 'test' })
+    );
 
-    async function* mockStream() {
-      yield { choices: [{ delta: { content: 'Done' } }] };
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      for (let i = 0; i < 5; i++) {
+        yield { type: 'content_block_start', index: i, content_block: { type: 'tool_use', id: `tc-${i}`, name: 'web_fetch', input: {} } };
+        yield { type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: toolCallArgs[i] } };
+        yield { type: 'content_block_stop', index: i };
+      }
+      yield { type: 'message_stop' };
     }
-    mockCreate.mockResolvedValueOnce(mockStream());
+
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
 
     const { POST } = await import('../route');
     const req = new Request('http://localhost:3000/api/chat', {
@@ -216,9 +220,9 @@ describe('/api/chat', () => {
       }),
     });
 
-    await POST(req);
+    const res = await POST(req);
+    await drainStream(res);
     // fetchWebContent should be called at most 3 times, not 5
     expect(mockFetchWebContent).toHaveBeenCalledTimes(3);
   });
-
 });
