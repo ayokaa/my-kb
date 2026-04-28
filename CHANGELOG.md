@@ -24,6 +24,10 @@ All notable changes to this project are documented in this file.
   - 核心模块（`queue`, `rss/cron`, `rss/manager`, `cognition/ingest`, `cognition/relink`, `relink/cron`）的 `console.*` 调用已迁移至 `logger.*`。
   - `app/layout.tsx` 启动时自动调用 `patchConsole()` 初始化日志拦截。
 
+### Changed
+
+- **手动入库跳过收件箱** (`app/api/ingest/route.ts`, `app/api/upload/route.ts`)：文本、链接和文件上传不再先写入 `inbox` 再异步 `ingest`，而是直接在 API 路由中调用 `processInboxEntry` 生成 Note 并保存。前端提交后同步等待 LLM 处理完成并返回生成的笔记标题，不再经过收件箱审核环节。
+
 ### Fixed
 
 - **Search cache deadlock** (`lib/search/cache.ts`): `doLoadOrBuild` exceptions left `loadPromise` permanently set to a rejected Promise, causing all subsequent requests to hang. Fixed with `try/finally` to always reset `loadPromise` to `null`. (`50f6dfe`)

@@ -1,5 +1,7 @@
 import { test, expect } from './fixtures';
 import { resetTestData } from './fixtures';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
 
 test.describe.serial('Tasks', () => {
   test.beforeEach(async () => {
@@ -30,14 +32,12 @@ test.describe.serial('Tasks', () => {
   });
 
   test('displays tasks after ingest is queued', async ({ page, request }) => {
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Task Test Entry', content: 'Testing task panel.' },
-    });
-
-    const inboxRes = await request.get('/api/inbox');
-    const inboxData = await inboxRes.json();
-    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
-
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = '1777100000000-task-test-entry.md';
+    await writeFile(
+      join(root, 'inbox', fileName),
+      `---\nsource_type: text\ntitle: Task Test Entry\nextracted_at: '${new Date().toISOString()}'\n---\n\nTesting task panel.\n`
+    );
     await request.post('/api/inbox/process', { data: { fileName } });
 
     await page.goto('/');
@@ -47,16 +47,14 @@ test.describe.serial('Tasks', () => {
   });
 
   test('failed tasks show error message and retry button', async ({ page, request }) => {
-    // Ingest and process to create a task, then archive the inbox file
+    // Write an inbox entry, process to create a task, then archive the inbox file
     // so the worker fails when trying to process it
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Fail Task Test', content: 'This will fail.' },
-    });
-
-    const inboxRes = await request.get('/api/inbox');
-    const inboxData = await inboxRes.json();
-    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
-
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = '1777100000001-fail-task-test.md';
+    await writeFile(
+      join(root, 'inbox', fileName),
+      `---\nsource_type: text\ntitle: Fail Task Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nThis will fail.\n`
+    );
     await request.post('/api/inbox/process', { data: { fileName } });
 
     // Archive the inbox entry to make the task fail
@@ -70,13 +68,12 @@ test.describe.serial('Tasks', () => {
   });
 
   test('status filter buttons show correct counts', async ({ page, request }) => {
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Filter Test', content: 'Testing filters.' },
-    });
-
-    const inboxRes = await request.get('/api/inbox');
-    const inboxData = await inboxRes.json();
-    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = '1777100000002-filter-test.md';
+    await writeFile(
+      join(root, 'inbox', fileName),
+      `---\nsource_type: text\ntitle: Filter Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nTesting filters.\n`
+    );
     await request.post('/api/inbox/process', { data: { fileName } });
 
     await page.goto('/');

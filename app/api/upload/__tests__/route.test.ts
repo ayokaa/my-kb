@@ -1,12 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { POST } from '../route';
 
-vi.mock('@/lib/storage', () => ({
-  FileSystemStorage: vi.fn(function() {
-    return {
-      writeInbox: vi.fn().mockResolvedValue(undefined),
-    };
-  }),
+vi.mock('@/lib/queue', () => ({
+  enqueue: vi.fn().mockReturnValue('task-mock-id'),
 }));
 
 vi.mock('fs/promises', async (importOriginal) => {
@@ -29,7 +25,7 @@ describe('/api/upload', () => {
     expect(res.status).toBe(400);
   });
 
-  it('accepts text file upload', async () => {
+  it('accepts text file upload and enqueues ingest task', async () => {
     const file = new File(['Hello world'], 'test.txt', { type: 'text/plain' });
     const formData = new FormData();
     formData.append('file', file);
@@ -43,6 +39,7 @@ describe('/api/upload', () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(data.fileName).toBe('test.txt');
+    expect(data.taskId).toBe('task-mock-id');
   });
 
   it('rejects path traversal in file name', async () => {

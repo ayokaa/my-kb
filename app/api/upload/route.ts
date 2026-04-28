@@ -1,4 +1,4 @@
-import { FileSystemStorage } from '@/lib/storage';
+import { enqueue } from '@/lib/queue';
 import { extractPDF } from '@/lib/ingestion/pdf';
 import { writeFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
@@ -36,8 +36,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'File type not allowed' }, { status: 415 });
   }
 
-  const storage = new FileSystemStorage();
-
   try {
     const bytes = await file.arrayBuffer();
     const fileName = sanitizeFileName(file.name);
@@ -63,11 +61,19 @@ export async function POST(req: Request) {
       content = `[File uploaded: ${fileName}]\nType: ${fileType}\nPath: ${attachmentPath}`;
     }
 
-    // Write to inbox
-    const written = await storage.writeInbox({
-      sourceType: fileType.startsWith('image/') ? 'image' : fileType.startsWith('audio/') ? 'audio' : 'text',
+    // Enqueue direct ingest task
+    const sourceType = fileType.startsWith('image/')
+      ? 'image'
+      : fileType.startsWith('audio/')
+        ? 'audio'
+        : fileType === 'application/pdf'
+          ? 'pdf'
+          : 'text';
+
+    const taskId = enqueue('ingest', {
       title,
       content,
+      sourceType: sourceType as 'text' | 'web' | 'image' | 'audio' | 'pdf',
       rawMetadata: {
         original_filename: fileName,
         mime_type: fileType,
@@ -75,7 +81,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return Response.json({ ok: true, fileName, title, skipped: !written });
+    return Response.json({ ok: true, fileName, title, taskId, message: '已加入处理队列' });
   } catch (err) {
     console.error('[Upload] Failed to process upload:', err);
     return Response.json({ error: 'Internal error' }, { status: 500 });

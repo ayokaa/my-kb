@@ -16,13 +16,17 @@ test.describe.serial('Inbox', () => {
     await expect(page.getByText('收件箱为空')).toBeVisible();
   });
 
-  test('can view and archive an entry', async ({ page, request }) => {
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'E2E Test Article', content: 'This is a test content for E2E.' },
-    });
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Keep This One', content: 'This entry should remain.' },
-    });
+  test('can view and archive an entry', async ({ page }) => {
+    // Write inbox entries directly (manual ingest no longer goes through inbox)
+    const root = join(process.cwd(), 'knowledge-test');
+    await writeFile(
+      join(root, 'inbox', '1777100000000-e2e-test-article.md'),
+      `---\nsource_type: text\ntitle: E2E Test Article\nextracted_at: '${new Date().toISOString()}'\n---\n\nThis is a test content for E2E.\n`
+    );
+    await writeFile(
+      join(root, 'inbox', '1777100000001-keep-this-one.md'),
+      `---\nsource_type: text\ntitle: Keep This One\nextracted_at: '${new Date().toISOString()}'\n---\n\nThis entry should remain.\n`
+    );
 
     await page.goto('/');
     await page.getByTestId('nav-inbox').click();
@@ -38,13 +42,17 @@ test.describe.serial('Inbox', () => {
     await expect(page.getByText('已忽略')).toBeVisible();
   });
 
-  test('can approve an entry to queue', async ({ page, request }) => {
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Approve Test', content: 'Content to be approved.' },
-    });
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Remain After Approve', content: 'This stays.' },
-    });
+  test('can approve an entry to queue', async ({ page }) => {
+    // Write inbox entries directly
+    const root = join(process.cwd(), 'knowledge-test');
+    await writeFile(
+      join(root, 'inbox', '1777100000002-approve-test.md'),
+      `---\nsource_type: text\ntitle: Approve Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nContent to be approved.\n`
+    );
+    await writeFile(
+      join(root, 'inbox', '1777100000003-remain-after-approve.md'),
+      `---\nsource_type: text\ntitle: Remain After Approve\nextracted_at: '${new Date().toISOString()}'\n---\n\nThis stays.\n`
+    );
 
     await page.goto('/');
     await page.getByTestId('nav-inbox').click();
@@ -58,12 +66,15 @@ test.describe.serial('Inbox', () => {
     await expect(page.getByText('Approve Test')).not.toBeVisible();
   });
 
-  test('inbox count badge updates', async ({ page, request }) => {
+  test('inbox count badge updates', async ({ page }) => {
     await page.goto('/');
 
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Badge Test', content: 'Testing badge count.' },
-    });
+    // Write inbox entry directly
+    const root = join(process.cwd(), 'knowledge-test');
+    await writeFile(
+      join(root, 'inbox', '1777100000004-badge-test.md'),
+      `---\nsource_type: text\ntitle: Badge Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nTesting badge count.\n`
+    );
 
     await page.getByTestId('nav-inbox').click();
     await expect(page.getByText('Badge Test').first()).toBeVisible();

@@ -1,21 +1,25 @@
 import { test, expect } from './fixtures';
 import { resetTestData } from './fixtures';
+import { writeFile } from 'fs/promises';
+import { join } from 'path';
 
 test.describe.serial('Sidebar', () => {
   test.beforeEach(async () => {
     await resetTestData();
   });
 
-  test('shows inbox badge when entries exist', async ({ page, request }) => {
+  test('shows inbox badge when entries exist', async ({ page }) => {
     await page.goto('/');
 
     // Initially no badge
     await expect(page.getByTestId('nav-inbox').locator('..').getByText('1')).not.toBeVisible();
 
-    // Add an inbox entry
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Badge Test', content: 'Testing badge.' },
-    });
+    // Add an inbox entry directly
+    const root = join(process.cwd(), 'knowledge-test');
+    await writeFile(
+      join(root, 'inbox', '1777100000000-badge-test.md'),
+      `---\nsource_type: text\ntitle: Badge Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nTesting badge.\n`
+    );
 
     // Reload to get updated badge count
     await page.reload();
@@ -27,14 +31,13 @@ test.describe.serial('Sidebar', () => {
   test('shows task badge when tasks exist', async ({ page, request }) => {
     await page.goto('/');
 
-    // Add and process an entry to create a task
-    await request.post('/api/ingest', {
-      data: { type: 'text', title: 'Task Badge Test', content: 'Testing task badge.' },
-    });
-
-    const inboxRes = await request.get('/api/inbox');
-    const inboxData = await inboxRes.json();
-    const fileName = inboxData.entries[0]?.filePath?.split('/').pop();
+    // Write an inbox entry and process it to create a task
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = '1777100000001-task-badge-test.md';
+    await writeFile(
+      join(root, 'inbox', fileName),
+      `---\nsource_type: text\ntitle: Task Badge Test\nextracted_at: '${new Date().toISOString()}'\n---\n\nTesting task badge.\n`
+    );
     await request.post('/api/inbox/process', { data: { fileName } });
 
     await page.reload();

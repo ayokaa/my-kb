@@ -2,7 +2,7 @@
 import { join, dirname } from 'path';
 import { readFile, writeFile, rename, mkdir, stat } from 'fs/promises';
 import { randomUUID } from 'crypto';
-import type { InboxEntry } from './types';
+import type { InboxEntry, SourceType } from './types';
 import { processInboxEntry } from './cognition/ingest';
 import { FileSystemStorage } from './storage';
 import { fetchRSS } from './ingestion/rss';
@@ -16,7 +16,11 @@ import { logger } from './logger';
 export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink';
 
 export interface IngestPayload {
-  fileName: string;
+  fileName?: string;
+  title?: string;
+  content?: string;
+  sourceType?: SourceType;
+  rawMetadata?: Record<string, unknown>;
 }
 
 export interface RSSFetchPayload {
@@ -263,12 +267,19 @@ async function runWebFetchTask(payload: WebFetchPayload) {
   const { url } = payload;
   const web = await fetchWebContent(url);
   const storage = new FileSystemStorage();
-  await storage.writeInbox({
+
+  const entry: InboxEntry = {
     sourceType: 'web',
-    title: web.title,
-    content: web.content,
+    title: web.title || url,
+    content: web.content || '',
     rawMetadata: { source_url: url, excerpt: web.excerpt },
-  });
+    extractedAt: new Date().toISOString(),
+  };
+
+  const existingNotes = await storage.listNotes();
+  const { note } = await processInboxEntry(entry, existingNotes);
+  await storage.saveNote(note, { skipBacklinkRebuild: true });
+  await storage.rebuildBacklinks();
   broadcastNoteChanged();
   return { ok: true, title: web.title, url };
 }
@@ -296,7 +307,31 @@ async function runRelinkTask() {
 }
 
 async function runIngestTask(payload: IngestPayload) {
+  // Direct ingest without inbox file
+  if (payload.title !== undefined && payload.content !== undefined) {
+    const entry: InboxEntry = {
+      sourceType: payload.sourceType || 'text',
+      title: payload.title,
+      content: payload.content,
+      rawMetadata: payload.rawMetadata || {},
+      extractedAt: new Date().toISOString(),
+    };
+
+    const storage = new FileSystemStorage();
+    const existingNotes = await storage.listNotes();
+    const { note } = await processInboxEntry(entry, existingNotes);
+    await storage.saveNote(note, { skipBacklinkRebuild: true });
+    await storage.rebuildBacklinks();
+    broadcastNoteChanged();
+    return { ok: true, title: note.title };
+  }
+
+  // Legacy: ingest from inbox file
   const { fileName } = payload;
+  if (!fileName) {
+    throw new Error('Invalid ingest payload: need fileName or title+content');
+  }
+
   const filePath = join(process.cwd(), getKnowledgeRoot(), 'inbox', fileName);
 
   try {

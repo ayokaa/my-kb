@@ -1,5 +1,4 @@
 import { enqueue } from '@/lib/queue';
-import { FileSystemStorage } from '@/lib/storage';
 
 export async function POST(req: Request) {
   let body: { type?: unknown; content?: unknown; title?: unknown; url?: unknown };
@@ -9,17 +8,16 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
   const { type, content, title, url } = body;
-  const storage = new FileSystemStorage();
 
   try {
     if (type === 'text') {
-      await storage.writeInbox({
-        sourceType: 'text',
+      const taskId = enqueue('ingest', {
         title: typeof title === 'string' ? title : '用户输入',
         content: typeof content === 'string' ? content : '',
+        sourceType: 'text',
         rawMetadata: {},
       });
-      return Response.json({ ok: true });
+      return Response.json({ ok: true, taskId, message: '已加入处理队列' });
     }
 
     if (type === 'link') {

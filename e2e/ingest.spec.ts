@@ -17,11 +17,8 @@ test.describe.serial('Ingest', () => {
 
     await page.getByRole('button', { name: '入库' }).click();
 
-    // Wait for success feedback before switching tabs
-    await expect(page.locator('p').filter({ hasText: '已入库' }).first()).toBeVisible({ timeout: 5000 });
-
-    await page.getByTestId('nav-inbox').click();
-    await expect(page.getByTestId('panel-inbox').getByText('UI Ingest Test').first()).toBeVisible();
+    // Wait for success feedback (async enqueue returns quickly)
+    await expect(page.locator('p').filter({ hasText: /已入库|已加入/ }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('ingest link form is present and submittable', async ({ page }) => {
@@ -73,7 +70,7 @@ test.describe.serial('Ingest', () => {
     await page.getByPlaceholder('https://...').fill('https://example.com/article');
     await page.getByRole('button', { name: '抓取' }).click();
 
-    // Should show success feedback (either queued or immediate result)
+    // Should show success feedback (task enqueued)
     await expect(page.locator('p').filter({ hasText: /已入库|已加入/ }).first()).toBeVisible({ timeout: 5000 });
   });
 

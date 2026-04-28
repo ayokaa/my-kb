@@ -21,10 +21,6 @@ test.describe.serial('Upload', () => {
     await fileInput.setInputFiles(tmpFile);
 
     await expect(page.getByText('已入库')).toBeVisible({ timeout: 5000 });
-
-    // Verify in inbox
-    await page.getByTestId('nav-inbox').click();
-    await expect(page.getByTestId('panel-inbox').getByText('e2e-test-upload.md').first()).toBeVisible();
   });
 
   test('can upload a plain text file via UI', async ({ page }) => {
@@ -40,9 +36,6 @@ test.describe.serial('Upload', () => {
     await fileInput.setInputFiles(tmpFile);
 
     await expect(page.getByText('已入库')).toBeVisible({ timeout: 5000 });
-
-    await page.getByTestId('nav-inbox').click();
-    await expect(page.getByTestId('panel-inbox').getByText('e2e-test-upload.txt').first()).toBeVisible();
   });
 
   test('file input has correct accept attribute', async ({ page }) => {
