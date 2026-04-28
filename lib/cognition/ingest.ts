@@ -2,6 +2,7 @@ import type { InboxEntry, Note, NoteLink, QAEntry, ExtractResult } from '../type
 import { fetchWebContent } from '../ingestion/web';
 import { buildIndex } from '../search/inverted-index';
 import { search } from '../search/engine';
+import Anthropic from '@anthropic-ai/sdk';
 import { getLLMClient, getLLMModel } from '../llm';
 import { logger } from '../logger';
 
@@ -82,15 +83,15 @@ async function callLLM(systemPrompt: string, userPrompt: string, retries = 2): P
     try {
       const client = await getLLMClient();
       const model = await getLLMModel();
-      const response = await client.chat.completions.create({
+      const response = await client.messages.create({
         model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
         temperature: 0.3,
       });
-      return response.choices[0]?.message?.content?.trim() || '{}';
+      const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+      return textBlocks.map((b) => b.text).join('').trim() || '{}';
     } catch (err) {
       if (attempt < retries) {
         const delay = 1000 * Math.pow(2, attempt);

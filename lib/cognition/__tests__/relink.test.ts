@@ -2,23 +2,30 @@ import { describe, it, expect, vi } from 'vitest';
 import { relinkNote, runRelinkJob } from '../relink';
 import type { Note } from '../../types';
 
-vi.mock('openai', () => ({
+function anthropicResponse(text: string) {
+  return {
+    id: 'msg-test',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text }],
+    model: '',
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
+}
+
+vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(function () {
     return {
-      chat: {
-        completions: {
-          create: vi.fn().mockResolvedValue({
-            choices: [{
-              message: {
-                content: JSON.stringify({
-                  links: [
-                    { target: 'Note B', weight: 'weak', context: 'related' },
-                  ],
-                }),
-              },
-            }],
-          }),
-        },
+      messages: {
+        create: vi.fn().mockResolvedValue(
+          anthropicResponse(JSON.stringify({
+            links: [
+              { target: 'Note B', weight: 'weak', context: 'related' },
+            ],
+          }))
+        ),
       },
     };
   }),
@@ -69,24 +76,18 @@ describe('relinkNote', () => {
   });
 
   it('filters out void links (non-existent targets)', async () => {
-    vi.doMock('openai', () => ({
+    vi.doMock('@anthropic-ai/sdk', () => ({
       default: vi.fn(function () {
         return {
-          chat: {
-            completions: {
-              create: vi.fn().mockResolvedValue({
-                choices: [{
-                  message: {
-                    content: JSON.stringify({
-                      links: [
-                        { target: 'Note B', weight: 'weak' },
-                        { target: 'Ghost Note', weight: 'weak' },
-                      ],
-                    }),
-                  },
-                }],
-              }),
-            },
+          messages: {
+            create: vi.fn().mockResolvedValue(
+              anthropicResponse(JSON.stringify({
+                links: [
+                  { target: 'Note B', weight: 'weak' },
+                  { target: 'Ghost Note', weight: 'weak' },
+                ],
+              }))
+            ),
           },
         };
       }),
@@ -101,7 +102,7 @@ describe('relinkNote', () => {
     expect(result.map((l) => l.target)).toContain('Note B');
     expect(result.map((l) => l.target)).not.toContain('Ghost Note');
 
-    vi.doUnmock('openai');
+    vi.doUnmock('@anthropic-ai/sdk');
   });
 
   it('deduplicates links by target (prefer existing)', async () => {

@@ -4,35 +4,38 @@ vi.mock('@/lib/ingestion/web', () => ({
   fetchWebContent: vi.fn().mockResolvedValue({ title: 'Web', content: 'content', excerpt: '' }),
 }));
 
+function anthropicResponse(text: string) {
+  return {
+    id: 'msg-test',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text }],
+    model: '',
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
+}
+
 describe('processInboxEntry — LLM JSON fallback', () => {
   it('extracts JSON from markdown code block in step 1', async () => {
     let callIndex = 0;
-    vi.doMock('openai', () => ({
+    vi.doMock('@anthropic-ai/sdk', () => ({
       default: function () {
         return {
-          chat: {
-            completions: {
-              create: vi.fn().mockImplementation(() => {
-                callIndex++;
-                if (callIndex === 1) {
-                  return Promise.resolve({
-                    choices: [{
-                      message: {
-                        content: '```json\n{"title":"Code Block","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"body"}\n```',
-                      },
-                    }],
-                  });
-                }
-                if (callIndex === 2) {
-                  return Promise.resolve({
-                    choices: [{ message: { content: '{"qas":[]}' } }],
-                  });
-                }
-                return Promise.resolve({
-                  choices: [{ message: { content: '{"links":[]}' } }],
-                });
-              }),
-            },
+          messages: {
+            create: vi.fn().mockImplementation(() => {
+              callIndex++;
+              if (callIndex === 1) {
+                return Promise.resolve(anthropicResponse(
+                  '```json\n{"title":"Code Block","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"body"}\n```'
+                ));
+              }
+              if (callIndex === 2) {
+                return Promise.resolve(anthropicResponse('{"qas":[]}'));
+              }
+              return Promise.resolve(anthropicResponse('{"links":[]}'));
+            }),
           },
         };
       },
@@ -49,38 +52,28 @@ describe('processInboxEntry — LLM JSON fallback', () => {
     const { note } = await processInboxEntry(entry);
     expect(note.title).toBe('Code Block');
 
-    vi.doUnmock('openai');
+    vi.doUnmock('@anthropic-ai/sdk');
   });
 
   it('extracts JSON from surrounding text via regex fallback in step 1', async () => {
     vi.resetModules();
     let callIndex = 0;
-    vi.doMock('openai', () => ({
+    vi.doMock('@anthropic-ai/sdk', () => ({
       default: function () {
         return {
-          chat: {
-            completions: {
-              create: vi.fn().mockImplementation(() => {
-                callIndex++;
-                if (callIndex === 1) {
-                  return Promise.resolve({
-                    choices: [{
-                      message: {
-                        content: 'Here is the result:\n\n{"title":"Extracted","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"c"}\n\nHope that helps!',
-                      },
-                    }],
-                  });
-                }
-                if (callIndex === 2) {
-                  return Promise.resolve({
-                    choices: [{ message: { content: '{"qas":[]}' } }],
-                  });
-                }
-                return Promise.resolve({
-                  choices: [{ message: { content: '{"links":[]}' } }],
-                });
-              }),
-            },
+          messages: {
+            create: vi.fn().mockImplementation(() => {
+              callIndex++;
+              if (callIndex === 1) {
+                return Promise.resolve(anthropicResponse(
+                  'Here is the result:\n\n{"title":"Extracted","tags":[],"summary":"","personalContext":"","keyFacts":[],"timeline":[],"content":"c"}\n\nHope that helps!'
+                ));
+              }
+              if (callIndex === 2) {
+                return Promise.resolve(anthropicResponse('{"qas":[]}'));
+              }
+              return Promise.resolve(anthropicResponse('{"links":[]}'));
+            }),
           },
         };
       },
@@ -97,6 +90,6 @@ describe('processInboxEntry — LLM JSON fallback', () => {
     const { note } = await processInboxEntry(entry);
     expect(note.title).toBe('Extracted');
 
-    vi.doUnmock('openai');
+    vi.doUnmock('@anthropic-ai/sdk');
   });
 });

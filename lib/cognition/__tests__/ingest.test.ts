@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Note } from '../../types';
 
-// Shared mock for LLM chat.completions.create — hoisted so vi.mock can access it
+// Shared mock for LLM messages.create — hoisted so vi.mock can access it
 const { mockCreate } = vi.hoisted(() => ({
   mockCreate: vi.fn(),
 }));
 
-vi.mock('openai', () => ({
+vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(function () {
     return {
-      chat: {
-        completions: {
-          create: mockCreate,
-        },
+      messages: {
+        create: mockCreate,
       },
     };
   }),
@@ -27,6 +25,19 @@ vi.mock('@/lib/ingestion/web', () => ({
 }));
 
 import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidateTitles } from '../ingest';
+
+function anthropicResponse(text: string) {
+  return {
+    id: 'msg-test',
+    type: 'message',
+    role: 'assistant',
+    content: [{ type: 'text', text }],
+    model: '',
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    usage: { input_tokens: 0, output_tokens: 0 },
+  };
+}
 
 /** Set up mock to return three-step pipeline responses */
 function setupThreeStepMock(overrides: { extract?: any; qa?: any; links?: any } = {}) {
@@ -47,9 +58,9 @@ function setupThreeStepMock(overrides: { extract?: any; qa?: any; links?: any } 
   };
 
   const responses = [
-    { choices: [{ message: { content: JSON.stringify(extractResponse) } }] },
-    { choices: [{ message: { content: JSON.stringify(qaResponse) } }] },
-    { choices: [{ message: { content: JSON.stringify(linksResponse) } }] },
+    anthropicResponse(JSON.stringify(extractResponse)),
+    anthropicResponse(JSON.stringify(qaResponse)),
+    anthropicResponse(JSON.stringify(linksResponse)),
   ];
 
   let callIndex = 0;
@@ -68,14 +79,14 @@ function setupFailingStepMock(failAtStep: number, extractData: any, qaData?: any
   mockCreate.mockImplementation(() => {
     callIndex++;
     if (callIndex === 1) {
-      return Promise.resolve({ choices: [{ message: { content: JSON.stringify(extractData) } }] });
+      return Promise.resolve(anthropicResponse(JSON.stringify(extractData)));
     }
     if (callIndex === 2) {
       if (failAtStep === 2) return Promise.reject(new Error(failError));
-      return Promise.resolve({ choices: [{ message: { content: JSON.stringify(qaData ?? { qas: [] }) } }] });
+      return Promise.resolve(anthropicResponse(JSON.stringify(qaData ?? { qas: [] })));
     }
     if (failAtStep === 3) return Promise.reject(new Error(failError));
-    return Promise.resolve({ choices: [{ message: { content: JSON.stringify({ links: [] }) } }] });
+    return Promise.resolve(anthropicResponse(JSON.stringify({ links: [] })));
   });
 }
 
