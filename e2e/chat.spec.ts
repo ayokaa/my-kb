@@ -11,7 +11,6 @@ test.describe('Chat', () => {
     await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
     await expect(page.getByTestId('ingest-tab-link')).toBeVisible();
     await expect(page.getByTestId('ingest-tab-file')).toBeVisible();
-    await expect(page.getByTestId('ingest-tab-rss')).toBeVisible();
   });
 
   test('chat input is present and clickable', async ({ page }) => {

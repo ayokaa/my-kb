@@ -54,13 +54,6 @@ test.describe.serial('Ingest', () => {
     await expect(page.getByPlaceholder('输入文本内容...')).toBeVisible();
   });
 
-  test('RSS tab is present in ingest panel', async ({ page }) => {
-    await page.goto('/');
-
-    await page.getByTestId('nav-ingest').click();
-    await expect(page.getByTestId('ingest-tab-rss')).toBeVisible();
-  });
-
   test('submitting link shows queued message', async ({ page }) => {
     await page.goto('/');
 

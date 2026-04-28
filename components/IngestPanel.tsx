@@ -1,31 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Link, Rss, Upload, Loader2 } from 'lucide-react';
+import { FileText, Link, Upload, Loader2 } from 'lucide-react';
 
 const tabs = [
   { id: 'text' as const, label: '文本', icon: FileText },
   { id: 'link' as const, label: '链接', icon: Link },
   { id: 'file' as const, label: '文件', icon: Upload },
-  { id: 'rss' as const, label: 'RSS', icon: Rss },
 ];
 
 export default function IngestPanel() {
-  const [ingestTab, setIngestTab] = useState<'text' | 'link' | 'file' | 'rss'>('text');
+  const [ingestTab, setIngestTab] = useState<'text' | 'link' | 'file'>('text');
   const [ingestLoading, setIngestLoading] = useState(false);
   const [ingestResult, setIngestResult] = useState('');
   const [textInput, setTextInput] = useState('');
   const [textTitle, setTextTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
-  const [rssUrl, setRssUrl] = useState('');
-  const [rssName, setRssName] = useState('');
 
   async function submitIngest(type: string, body: object) {
     setIngestLoading(true);
     setIngestResult('');
     try {
       const res = await fetch(
-        type === 'file' ? '/api/upload' : type === 'rss' ? '/api/rss' : '/api/ingest',
+        type === 'file' ? '/api/upload' : '/api/ingest',
         {
           method: 'POST',
           headers: type === 'file' ? undefined : { 'Content-Type': 'application/json' },
@@ -55,7 +52,7 @@ export default function IngestPanel() {
           添加知识
         </h2>
         <p className="mt-1 text-sm text-[var(--text-tertiary)]">
-          通过文本、链接、文件或 RSS 将内容导入知识库
+          通过文本、链接或文件将内容导入知识库
         </p>
       </div>
 
@@ -153,34 +150,6 @@ export default function IngestPanel() {
               <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                 支持 PDF、Markdown、TXT
               </p>
-            </div>
-          )}
-
-          {ingestTab === 'rss' && (
-            <div className="space-y-4">
-              <input
-                placeholder="RSS 名称（可选）"
-                value={rssName}
-                onChange={(e) => setRssName(e.target.value)}
-                className="input-dark w-full px-4 py-3 text-sm"
-              />
-              <input
-                placeholder="https://example.com/feed.xml"
-                value={rssUrl}
-                onChange={(e) => setRssUrl(e.target.value)}
-                className="input-dark w-full px-4 py-3 text-sm"
-              />
-              <button
-                onClick={() => {
-                  submitIngest('rss', { url: rssUrl, name: rssName });
-                  setRssUrl('');
-                  setRssName('');
-                }}
-                disabled={ingestLoading || !rssUrl.trim()}
-                className="btn-primary px-6 py-2.5 text-sm disabled:opacity-40"
-              >
-                {ingestLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '订阅'}
-              </button>
             </div>
           )}
 
