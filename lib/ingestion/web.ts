@@ -1,7 +1,8 @@
 import { join } from 'path';
 import { runCamoufox } from './camoufox-runner';
+import { isValidHttpUrl } from './rss';
 
-const FETCH_TIMEOUT = 60000; // ms (includes process spawn + browser launch + navigation + extraction)
+const FETCH_TIMEOUT = 50000; // ms — 为 Python 端浏览器启动 + 双 goto fallback(最多 30s) + 提取留足余地
 
 function execFileAsync(
   cmd: string,
@@ -32,13 +33,26 @@ export function resetBrowserForTesting() {
 }
 
 export async function fetchWebContent(url: string): Promise<{ title: string; content: string; excerpt?: string }> {
+  if (!isValidHttpUrl(url)) {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+
   const { stdout } = await execFileAsync('python3', [SCRIPT_PATH, url], {
     timeout: FETCH_TIMEOUT,
     encoding: 'utf-8',
     maxBuffer: 10 * 1024 * 1024, // 10MB for large pages
   });
 
-  const parsed = JSON.parse(stdout.trim()) as { title: string; content: string };
+  let parsed: { title?: string; content?: string };
+  try {
+    parsed = JSON.parse(stdout.trim()) as { title?: string; content?: string };
+  } catch (parseErr) {
+    const raw = stdout.trim().slice(0, 500);
+    throw new Error(
+      `Failed to parse web fetch result for ${url}: ${(parseErr as Error).message}. Raw stdout: ${raw || '(empty)'}`
+    );
+  }
+
   const title = parsed.title || url;
   const content = parsed.content || '';
 

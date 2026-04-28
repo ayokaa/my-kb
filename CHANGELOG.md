@@ -28,6 +28,11 @@ All notable changes to this project are documented in this file.
 
 - **Search cache deadlock** (`lib/search/cache.ts`): `doLoadOrBuild` exceptions left `loadPromise` permanently set to a rejected Promise, causing all subsequent requests to hang. Fixed with `try/finally` to always reset `loadPromise` to `null`. (`50f6dfe`)
 - **Search backlink field type** (`lib/search/types.ts`): `SearchField` was missing `backlink`, causing backlink-indexed terms to receive zero weight during scoring. Added `backlink` to the union type and `DEFAULT_ZONE_WEIGHTS` (weight 1.2). (`de2a210`)
+- **Camoufox fetch robustness** (`lib/ingestion/web.ts`, `scripts/fetch_web.py`):
+  - `JSON.parse` 增加 try-catch，当 Python 进程被 kill 或 stdout 截断时抛出包含原始输出的友好错误，而不是生硬的 `SyntaxError`。
+  - Python 端在 `fetch()` 内重定向 `sys.stdout` 到 `io.StringIO`，抑制 Camoufox / trafilatura 的警告污染，确保最终 `stdout` 只有纯净 JSON。
+  - `fetchWebContent` 入口增加 `isValidHttpUrl` 校验，拒绝非 http/https 协议及私网 IP，防止 SSRF。
+  - 协调两端超时：Python 单次 goto 超时降至 15s（fallback 最多 30s），Node.js 超时降至 50s，确保 fallback 有机会执行。
 - **LLM client caching** (`lib/llm.ts`): `getLLMClient` was instantiating a fresh `OpenAI` client on every call, causing unnecessary overhead and TOCTOU races on the settings file. Added instance caching with settings-change detection. New `getLLM()` helper returns both `client` and `model` atomically. (`29bbe04`)
 - **Chat SSRF protection & tool-call concurrency** (`app/api/chat/route.ts`):
   - `web_fetch` URLs are validated to be HTTP/HTTPS only; private/internal addresses (e.g., `192.168.x.x`, `10.x.x.x`, `127.x.x.x`, `localhost`) are rejected before any outbound request.

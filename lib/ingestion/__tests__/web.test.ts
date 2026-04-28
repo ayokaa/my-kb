@@ -78,6 +78,28 @@ describe('fetchWebContent', () => {
     expect(result.excerpt!.length).toBe(200);
   });
 
+  it('rejects invalid URL schemes', async () => {
+    await expect(fetchWebContent('ftp://example.com/file')).rejects.toThrow('Invalid URL');
+    await expect(fetchWebContent('file:///etc/passwd')).rejects.toThrow('Invalid URL');
+    await expect(fetchWebContent('not-a-url')).rejects.toThrow('Invalid URL');
+  });
+
+  it('rejects private IP URLs', async () => {
+    await expect(fetchWebContent('http://127.0.0.1')).rejects.toThrow('Invalid URL');
+    await expect(fetchWebContent('http://192.168.1.1')).rejects.toThrow('Invalid URL');
+  });
+
+  it('throws friendly error when Python stdout is not valid JSON', async () => {
+    mockedRunCamoufox.mockImplementation((cmd, args, opts, callback) => {
+      if (typeof opts === 'function') {
+        callback = opts;
+      }
+      callback(null, 'some warning from camoufox\n', '');
+    });
+
+    await expect(fetchWebContent('https://example.com/bad-json')).rejects.toThrow('Failed to parse web fetch result');
+  });
+
   it('does not throw on closeBrowser()', async () => {
     await expect(closeBrowser()).resolves.toBeUndefined();
   });

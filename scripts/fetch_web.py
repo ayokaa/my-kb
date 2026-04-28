@@ -4,42 +4,51 @@
 import json
 import sys
 import argparse
+import io
 
 from trafilatura import extract
 from camoufox.sync_api import Camoufox
 
-FETCH_TIMEOUT = 20000  # ms
+FETCH_TIMEOUT = 15000  # ms — 单次 goto 超时；domcontentloaded + load fallback 最多 30s
 
 
 def fetch(url: str):
-    with Camoufox(headless=True, block_images=True, i_know_what_im_doing=True) as browser:
-        page = browser.new_page()
-        try:
-            # Try domcontentloaded first (fast), fallback to load on timeout.
+    original_stdout = sys.stdout
+    captured = io.StringIO()
+    sys.stdout = captured
+
+    try:
+        with Camoufox(headless=True, block_images=True, i_know_what_im_doing=True) as browser:
+            page = browser.new_page()
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=FETCH_TIMEOUT)
-            except Exception:
-                page.goto(url, wait_until="load", timeout=FETCH_TIMEOUT)
+                # Try domcontentloaded first (fast), fallback to load on timeout.
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=FETCH_TIMEOUT)
+                except Exception:
+                    page.goto(url, wait_until="load", timeout=FETCH_TIMEOUT)
 
-            title = page.title()
-            html = page.content()
+                title = page.title()
+                html = page.content()
 
-            # Extract article content with trafilatura
-            extracted = extract(
-                html,
-                url=url,
-                include_comments=False,
-                include_tables=False,
-                include_images=False,
-            )
+                # Extract article content with trafilatura
+                extracted = extract(
+                    html,
+                    url=url,
+                    include_comments=False,
+                    include_tables=False,
+                    include_images=False,
+                )
 
-            result = {
-                "title": title,
-                "content": extracted or "",
-            }
-            print(json.dumps(result, ensure_ascii=False))
-        finally:
-            page.close()
+                result = {
+                    "title": title,
+                    "content": extracted or "",
+                }
+            finally:
+                page.close()
+    finally:
+        sys.stdout = original_stdout
+
+    print(json.dumps(result, ensure_ascii=False))
 
 
 def main():
