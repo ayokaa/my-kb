@@ -341,7 +341,7 @@ Load runtime settings. The API key is masked (`sk-...xxxx`) for security.
   "llm": {
     "model": "claude-3-5-sonnet-20241022",
     "apiKey": "sk-...xxxx",
-    "baseUrl": "https://api.anthropic.com/v1"
+    "baseUrl": "https://api.minimaxi.com/anthropic"
   },
   "cron": {
     "rssIntervalMinutes": 60,
@@ -360,7 +360,7 @@ Update runtime settings. Changes are persisted to `knowledge/meta/settings.yml` 
   "llm": {
     "model": "claude-3-5-sonnet-20241022",
     "apiKey": "sk-xxxxxxxx",
-    "baseUrl": "https://api.anthropic.com/v1"
+    "baseUrl": "https://api.minimaxi.com/anthropic"
   },
   "cron": {
     "rssIntervalMinutes": 60,

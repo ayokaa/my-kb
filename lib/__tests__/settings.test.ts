@@ -25,7 +25,7 @@ describe('loadSettings', () => {
   it('returns defaults when no settings file exists', async () => {
     const settings = await loadSettings();
     expect(settings.llm.model).toBe('MiniMax-M2.7');
-    expect(settings.llm.baseUrl).toBe('https://api.minimaxi.com/v1');
+    expect(settings.llm.baseUrl).toBe('https://api.minimaxi.com/anthropic');
     expect(settings.cron.rssIntervalMinutes).toBe(60);
     expect(settings.cron.relinkCronExpression).toBe('0 3 * * *');
   });

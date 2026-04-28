@@ -116,7 +116,7 @@ describe('/api/settings', () => {
 
     // Save initial settings
     const initial = {
-      llm: { model: 'MiniMax-M2.7', apiKey: '', baseUrl: 'https://api.minimaxi.com/v1' },
+      llm: { model: 'MiniMax-M2.7', apiKey: '', baseUrl: 'https://api.minimaxi.com/anthropic' },
       cron: { rssIntervalMinutes: 60, relinkCronExpression: '0 3 * * *' },
     };
     await POST(new Request('http://localhost/api/settings', {
@@ -129,7 +129,7 @@ describe('/api/settings', () => {
 
     // Update with new values
     const updated = {
-      llm: { model: 'MiniMax-M2.7', apiKey: '', baseUrl: 'https://api.minimaxi.com/v1' },
+      llm: { model: 'MiniMax-M2.7', apiKey: '', baseUrl: 'https://api.minimaxi.com/anthropic' },
       cron: { rssIntervalMinutes: 120, relinkCronExpression: '0 6 * * *' },
     };
     const res = await POST(new Request('http://localhost/api/settings', {

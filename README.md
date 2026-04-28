@@ -65,7 +65,7 @@ Required:
 - `MINIMAX_API_KEY` — LLM API key (used for note generation and chat)
 
 Optional:
-- `MINIMAX_BASE_URL` — LLM API base URL, defaults to Anthropic `https://api.anthropic.com/v1`
+- `MINIMAX_BASE_URL` — LLM API base URL, defaults to `https://api.minimaxi.com/anthropic`
 - `LLM_MODEL` — defaults to `claude-3-5-sonnet-20241022`
 - `RSS_CHECK_INTERVAL_MINUTES` — defaults to `60`
 - `RELINK_CRON_EXPRESSION` — defaults to `0 3 * * *` (daily at 03:00)

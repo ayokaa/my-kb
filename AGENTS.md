@@ -171,7 +171,7 @@ npm run test:e2e
 | 变量名 | 说明 | 是否必须 |
 |--------|------|----------|
 | `MINIMAX_API_KEY` | LLM API 密钥（Anthropic 或兼容端点） | 是（聊天、笔记生成） |
-| `MINIMAX_BASE_URL` | LLM API 基地址，默认 `https://api.anthropic.com/v1` | 否 |
+| `MINIMAX_BASE_URL` | LLM API 基地址，默认 `https://api.minimaxi.com/anthropic` | 否 |
 | `KNOWLEDGE_ROOT` | 数据存储根目录，默认 `knowledge` | 否 |
 
 

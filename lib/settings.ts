@@ -22,7 +22,7 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   llm: {
     model: 'MiniMax-M2.7',
     apiKey: '',
-    baseUrl: 'https://api.minimaxi.com/v1',
+    baseUrl: 'https://api.minimaxi.com/anthropic',
   },
   cron: {
     rssIntervalMinutes: 60,
