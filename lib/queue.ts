@@ -328,12 +328,17 @@ async function runWebFetchTask(payload: WebFetchPayload) {
     sourceType: 'web',
     title: web.title || url,
     content: web.content || '',
-    rawMetadata: { source_url: url, excerpt: web.excerpt },
+    // 不传 source_url 到 rawMetadata —— 避免 enrichContent 重复抓取同一 URL
+    rawMetadata: { excerpt: web.excerpt },
     extractedAt: new Date().toISOString(),
   };
 
   const existingNotes = await storage.listNotes();
   const { note } = await processInboxEntry(entry, existingNotes);
+  // 手动补上 source URL（processInboxEntry 不处理不带 source_url 的 entry）
+  if (!note.sources.includes(url)) {
+    note.sources.push(url);
+  }
   await storage.saveNote(note, { skipBacklinkRebuild: true });
   await storage.rebuildBacklinks();
   emitNoteEvent('created', note.id, note.title);

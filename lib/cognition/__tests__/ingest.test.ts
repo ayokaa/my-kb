@@ -225,7 +225,7 @@ describe('processInboxEntry', () => {
     const entry = {
       sourceType: 'web' as const,
       title: 'Fallback Test',
-      content: 'Original content from entry',
+      content: 'Original content from entry that is long enough to pass the minimum content length check for LLM processing',
       rawMetadata: { source_url: 'https://example.com' },
     };
 

@@ -56,6 +56,10 @@ export async function fetchWebContent(url: string): Promise<{ title: string; con
   const title = parsed.title || url;
   const content = parsed.content || '';
 
+  if (!content.trim()) {
+    throw new Error(`Web fetch succeeded but returned empty content for ${url} (page may have timed out or requires JS rendering)`);
+  }
+
   return {
     title: title || url,
     content: content.slice(0, 10000),
