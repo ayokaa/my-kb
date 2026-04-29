@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSSE } from '@/hooks/useSSE';
 import { useToast } from '@/hooks/ToastContext';
 import ReactMarkdown from 'react-markdown';
@@ -85,36 +85,46 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteResult, setDeleteResult] = useState('');
-
   const { show } = useToast();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (searchQuery?: string) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/notes');
+      const params = searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : '';
+      const res = await fetch(`/api/notes${params}`);
       const data = await res.json();
       const list: Note[] = data.notes || [];
-      setNotes((prev) => {
-        // If currently selected note no longer exists, pick the next available one
-        if (data.notes) {
-          setSelected((current) => {
-            if (!current) return list[0] || null;
-            const stillExists = list.find((n) => n.id === current.id);
-            if (!stillExists) {
-              setConfirmingDeleteId(null);
-              setDeleteResult('');
-              return list[0] || null;
-            }
-            return current;
-          });
-        }
-        return list;
-      });
+      setNotes(list);
+      if (data.notes) {
+        setSelected((current) => {
+          if (!current) return list[0] || null;
+          const stillExists = list.find((n) => n.id === current.id);
+          if (!stillExists) {
+            setConfirmingDeleteId(null);
+            setDeleteResult('');
+            return list[0] || null;
+          }
+          return current;
+        });
+      }
     } catch {
       show('加载笔记失败', 'error');
     }
     setLoading(false);
   }, [show]);
+
+  // 搜索去抖：用户停止输入 300ms 后触发后端全文搜索
+  // 清空搜索框时立即恢复全量列表
+  useEffect(() => {
+    if (!search.trim()) {
+      load(); // 无搜索词 = 全量
+      return;
+    }
+    const timer = setTimeout(() => {
+      load(search.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, load]);
 
   function navigateToNote(title: string) {
     // 先精确匹配
@@ -132,10 +142,9 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     }
   }
 
-  // SSE: 笔记变更时自动刷新列表
-  useSSE({
-    onNote: useCallback(() => { load(); }, [load]),
-  });
+  // SSE: 笔记变更时自动刷新列表（不带搜索词）
+  const doLoad = useCallback(() => { load(); }, [load]);
+  useSSE({ onNote: doLoad });
 
   const handleDelete = useCallback(async (note: Note) => {
     // 第一次点击：进入确认态，3 秒后自动恢复
@@ -171,17 +180,8 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     if (statusFilter !== 'all') {
       result = result.filter((n) => n.status === statusFilter);
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(
-        (n) =>
-          n.title.toLowerCase().includes(q) ||
-          n.tags.some((t) => t.toLowerCase().includes(q)) ||
-          n.summary.toLowerCase().includes(q)
-      );
-    }
     return result;
-  }, [notes, search, statusFilter]);
+  }, [notes, statusFilter]);
 
   const formatDate = (iso: string) => {
     try {
@@ -219,7 +219,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
             </button>
           ))}
         </div>
-        <button onClick={load} disabled={loading} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]">
+        <button onClick={() => load()} disabled={loading} className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
