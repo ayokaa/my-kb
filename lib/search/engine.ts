@@ -1,3 +1,6 @@
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { join, basename } from 'path';
 import type { Note } from '../types';
 import type {
   InvertedIndexMap,
@@ -8,6 +11,8 @@ import type {
 } from './types';
 import { DEFAULT_ZONE_WEIGHTS } from './types';
 import { tokenize } from './inverted-index';
+
+const execAsync = promisify(execFile);
 
 /** 构建 link 反向映射：目标标题 → 源笔记ID列表
  * 只包含能找到对应笔记的 link（过滤虚空链接）
@@ -297,4 +302,52 @@ export function assembleContext(
   }
 
   return chunks.join('\n---\n');
+}
+
+/**
+ * 使用 ripgrep 对 notes/ 目录做全文兜底搜索。
+ *
+ * 当结构化的倒排索引返回结果太少时（只有 title/tags/summary 等字段，不含 content），
+ * 用 rg 扫描正文内容作为补充。
+ *
+ * @returns 匹配的笔记 ID 列表（排除了 excludeIds 中的已有结果）
+ */
+export async function contentFallback(
+  query: string,
+  knowledgeRoot: string,
+  excludeIds: Set<string>
+): Promise<string[]> {
+  const queryTerms = tokenize(query);
+  if (queryTerms.length === 0) return [];
+
+  // 转义正则特殊字符，拼接为 OR 模式
+  const pattern = queryTerms
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+
+  const notesDir = join(knowledgeRoot, 'notes');
+
+  try {
+    const { stdout } = await execAsync('rg', [
+      '-l', // 只输出文件名
+      '-i', // 忽略大小写
+      pattern,
+      notesDir,
+    ], { timeout: 3000 });
+
+    return stdout
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((f) => basename(f, '.md'))
+      .filter((id) => !excludeIds.has(id));
+  } catch (err: any) {
+    // rg exit code 1 = 没有匹配（正常情况）
+    if (err.code === 1) return [];
+    // 其他错误（rg 未安装、超时等）
+    if (err.code !== 'ENOENT') {
+      console.warn('[search] rg fallback failed:', err.message);
+    }
+    return [];
+  }
 }

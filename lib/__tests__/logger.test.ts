@@ -235,5 +235,31 @@ describe('Logger', () => {
       });
       expect(asyncLines).toHaveLength(2);
     });
+
+    it('uses a debounced mutex instead of an unbounded promise chain', async () => {
+      const burstLogger = new Logger(tmpDir);
+
+      // Before any writes, flags should be reset
+      expect((burstLogger as any).flushInProgress).toBe(false);
+      expect((burstLogger as any).flushRequested).toBe(false);
+
+      // First write spawns the flush microtask
+      burstLogger.info('Mutex', 'first');
+      expect((burstLogger as any).flushInProgress).toBe(true);
+      expect((burstLogger as any).flushRequested).toBe(false);
+
+      // Subsequent writes in the same tick only set flushRequested=true
+      burstLogger.info('Mutex', 'second');
+      expect((burstLogger as any).flushRequested).toBe(true);
+
+      // Wait for async flush to settle
+      await new Promise((r) => setTimeout(r, 200));
+
+      // After flush completes, both flags should be reset
+      expect((burstLogger as any).flushInProgress).toBe(false);
+      expect((burstLogger as any).flushRequested).toBe(false);
+
+      await burstLogger.close();
+    });
   });
 });

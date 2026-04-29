@@ -93,17 +93,18 @@ The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RA
 
 1. Loads the search index via `loadOrBuildIndex()` (5-second TTL memory cache; concurrent requests share the same promise). If loading fails, the cached promise is cleared via `try/finally` so subsequent requests retry instead of hanging on a permanently rejected promise.
 2. Tokenizes the last 3 user messages concatenated (Chinese whole-word + 2/3-char combos + English word-level).
-3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts/links/backlinks > content).
-4. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
-5. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
-6. **Tool calling (optional)**: A single streaming LLM call (`stream: true`) with Anthropic `tools` is issued. The response is consumed as `content_block_delta` events (`text_delta` for text, `input_json_delta` for tool arguments).
+3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts > links > backlinks). **Content is not indexed** — it accounts for 80%+ of index volume but has the lowest retrieval weight (0.8) and `assembleContext` only uses the first 2000 chars.
+4. If structured search returns fewer than 3 results, a **ripgrep fallback** (`rg -l -i pattern notes/`) scans all note bodies for the query terms. Any matches are loaded via `storage.loadNote()` and appended at a low fixed score (0.3).
+5. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
+6. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
+7. **Tool calling (optional)**: A single streaming LLM call (`stream: true`) with Anthropic `tools` is issued. The response is consumed as `content_block_delta` events (`text_delta` for text, `input_json_delta` for tool arguments).
    - URLs are validated before fetching: only HTTP/HTTPS schemes are allowed; private/internal addresses (localhost, RFC 1918 ranges) are rejected to prevent SSRF.
    - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
    - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` (via Camoufox Python script) and appends the extracted article as a `tool_result` content block in the message history (Anthropic format).
-7. Injects the context (+ tool results if any) into the conversation.
-8. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
-9. Streams the LLM response back to the client via `ai` SDK `formatStreamPart`.
-10. On stream start, enqueues `data:` SSE events for source metadata (`{ type: 'sources', notes: [...] }`) and any tool calls (`{ type: 'tool_call', name, url }`) so the UI can display knowledge references and fetch indicators.
+8. Injects the context (+ tool results if any) into the conversation.
+9. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
+10. Streams the LLM response back to the client via `ai` SDK `formatStreamPart`.
+11. On stream start, enqueues `data:` SSE events for source metadata (`{ type: 'sources', notes: [...] }`) and any tool calls (`{ type: 'tool_call', name, url }`) so the UI can display knowledge references and fetch indicators.
 
 This provides grounded, knowledge-aware answers rather than generic conversational responses. When the knowledge base is insufficient, the LLM can fetch fresh web content on-the-fly.
 

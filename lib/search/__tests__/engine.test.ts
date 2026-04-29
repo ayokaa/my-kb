@@ -29,16 +29,17 @@ describe('scoreNote', () => {
     expect(scoreRag).toBeGreaterThan(scoreLlm);
   });
 
-  test('content 命中得分低于 title/tag', () => {
+  test('content 不在索引中：纯正文词得 0 分', () => {
+    // 'retrieval' 只出现在 RAG_NOTE.content，不在其他 7 个已索引字段
     const { score, hitFields } = scoreNote('rag-overview', ['retrieval'], index);
-    expect(score).toBeGreaterThan(0);
-    expect(score).toBeLessThan(DEFAULT_ZONE_WEIGHTS.title);
-    expect(hitFields).toContain('content');
+    expect(score).toBe(0);
+    expect(hitFields).toHaveLength(0);
   });
 
   test('多 term 分数累加', () => {
     const scoreRag = scoreNote('rag-overview', ['rag'], index).score;
-    const scoreRagWhat = scoreNote('rag-overview', ['rag', '什么是'], index).score;
+    // jieba 将 '什么是' 拆为 '什么' + '是'，'什么' 命中 qa 字段
+    const scoreRagWhat = scoreNote('rag-overview', ['rag', '什么'], index).score;
     // 增加第二个查询词后总分应更高
     expect(scoreRagWhat).toBeGreaterThan(scoreRag);
   });
@@ -181,10 +182,10 @@ describe('search', () => {
   test('backlink field has non-zero weight in scoring', () => {
     // Verify that 'backlink' is a valid SearchField with a positive weight
     expect(DEFAULT_ZONE_WEIGHTS.backlink).toBeGreaterThan(0);
-    // Verify backlink postings actually contribute to score
+    // RAG_NOTE.backlinks = [{target: 'LLM 大模型'}]
+    // jieba 分词: 'LLM 大模型' → ['LLM', '模型']; '模型' 在 backlink 字段
     const idx = buildIndex([RAG_NOTE]);
-    const { score } = scoreNote('rag-overview', ['大模型'], idx);
-    // '大模型' appears in backlinks of RAG_NOTE — should contribute positive score
+    const { score } = scoreNote('rag-overview', ['模型'], idx);
     expect(score).toBeGreaterThan(0);
   });
 });

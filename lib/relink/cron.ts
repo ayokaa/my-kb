@@ -1,4 +1,4 @@
-import { schedule, type ScheduledTask } from 'node-cron';
+import { schedule, getTasks, type ScheduledTask } from 'node-cron';
 import { enqueue } from '@/lib/queue';
 import { logger } from '@/lib/logger';
 
@@ -6,6 +6,13 @@ let task: ScheduledTask | null = null;
 let isRunning = false;
 
 export function startRelinkCron(cronExpr = '0 3 * * *') {
+  // Destroy orphaned tasks from previous module loads (HMR leak prevention)
+  getTasks().forEach((t) => {
+    if (t.name === 'relink-cron') {
+      t.destroy();
+    }
+  });
+
   if (task) {
     task.stop();
     task.destroy();
@@ -26,7 +33,7 @@ export function startRelinkCron(cronExpr = '0 3 * * *') {
     } finally {
       isRunning = false;
     }
-  });
+  }, { name: 'relink-cron' });
 
     logger.info('Relink', `Started, scheduled daily at ${cronExpr}`);
 }

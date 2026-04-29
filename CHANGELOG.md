@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-04-29
+
+### Fixed
+
+- **Logger 同步 I/O 阻塞事件循环**：将 `appendFileSync` 替换为基于 `queueMicrotask` 的异步批量写入。burst 日志（如 RSS cron 整点触发时的 26 次 enqueue）会被合并为单次 `appendFile` 调用，消除 per-line 的事件循环阻塞。
+- **Queue 无界 Promise 链**：`saveQueueState` 从 `saveLock = saveLock.then(...)` 改为 `saveInProgress + saveRequested` 的防抖互斥模式。26 次 rapid enqueue 最多触发 2 次磁盘写入。
+- **SSE heartbeat interval 泄漏**：`app/api/logs/stream/route.ts` 的 `cancel()` 现在正确调用 `cleanup()`，同时清除 interval 和 log callback。
+- **SSE events stale controller 泄漏**：当 controller set 超过 50 个时，主动发送 heartbeat 探测并清理已断开的 controller。
+- **SSE events 无心跳断开** (`app/api/events/route.ts`)：新增 30s heartbeat、AbortSignal 处理和 cancel 清理，与 `/api/logs/stream` 保持一致，防止代理因空闲超时断开 SSE 连接。
+- **`node-cron` HMR 任务泄漏**：`rss/cron.ts` 和 `relink/cron.ts` 在启动新任务前，通过 `node-cron` 的 `getTasks()` registry 清理同名的旧任务实例，防止 Next.js dev 服务器热更新后僵尸任务累积。
+
+### Changed
+
+- **Search cache TTL**：从 5 秒提升至 5 分钟，减少 14MB 倒排索引的重建频率。
+- **搜索索引去 content + ripgrep 兜底**：`buildNoteIndex` 不再对 `note.content` 做分词索引——正文贡献 80%+ 的索引体积但检索权重最低（0.8）。结构化搜索结果 < 3 条时，自动用 `rg -l -i` 扫描 notes/ 做全文关键词兜底。索引体积缩小 ~10x，构建速度提升 ~5x。
+
 ## 2026-04-28
 
 ### Changed

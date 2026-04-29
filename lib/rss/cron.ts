@@ -1,4 +1,4 @@
-import { schedule, type ScheduledTask } from 'node-cron';
+import { schedule, getTasks, type ScheduledTask } from 'node-cron';
 import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
 import { logger } from '@/lib/logger';
@@ -12,6 +12,13 @@ function buildCronExpr(intervalMinutes: number): string {
 }
 
 export function startRSSCron(intervalMinutes = 60) {
+  // Destroy orphaned tasks from previous module loads (HMR leak prevention)
+  getTasks().forEach((t) => {
+    if (t.name === 'rss-cron') {
+      t.destroy();
+    }
+  });
+
   if (task) {
     task.stop();
     task.destroy();
@@ -37,7 +44,7 @@ export function startRSSCron(intervalMinutes = 60) {
     } finally {
       isRunning = false;
     }
-  });
+  }, { name: 'rss-cron' });
 
   logger.info('RSS', `Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
 }

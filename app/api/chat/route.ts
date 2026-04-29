@@ -1,7 +1,7 @@
 import { formatStreamPart } from 'ai';
 import Anthropic from '@anthropic-ai/sdk';
 import { FileSystemStorage } from '@/lib/storage';
-import { search, assembleContext } from '@/lib/search/engine';
+import { search, assembleContext, contentFallback } from '@/lib/search/engine';
 import { loadOrBuildIndex } from '@/lib/search/cache';
 import { fetchWebContent } from '@/lib/ingestion/web';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
@@ -316,12 +316,33 @@ export async function POST(req: Request) {
   let contextText = '';
   let searchResults: Array<{ id: string; title: string; score: number }> = [];
   if (notes.length > 0 && query.length > 0) {
-    const results = search(query, notes, index, {
+    let results = search(query, notes, index, {
       statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
       enableDiffusion: true,
       diffusionDepth: 1,
       diffusionDecay: 0.3,
     });
+
+    // rg content fallback: 结构化搜索结果太少时，用 rg 扫正文兜底
+    if (results.length < 3) {
+      const hitIds = new Set(results.map((r) => r.note.id));
+      const fallbackIds = await contentFallback(query, storage.getRoot(), hitIds);
+      for (const id of fallbackIds) {
+        try {
+          const note = await storage.loadNote(id);
+          results.push({
+            note,
+            score: 0.3,
+            hitFields: ['content'],
+            isLinkDiffusion: false,
+          });
+        } catch {
+          // note may have been deleted between rg and load
+        }
+      }
+      // 按 score 重新排序
+      results.sort((a, b) => b.score - a.score);
+    }
 
     if (results.length > 0) {
       contextText = assembleContext(results);

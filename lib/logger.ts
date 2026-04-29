@@ -48,8 +48,8 @@ export class Logger {
   private callbacks: NewLogCallback[] = [];
   private consolePatched = false;
   private pendingLines: string[] = [];
-  private flushScheduled = false;
-  private flushPromise: Promise<void> = Promise.resolve();
+  private flushInProgress = false;
+  private flushRequested = false;
 
   constructor(logDir?: string) {
     this.logDir = logDir || join(process.cwd(), getKnowledgeRoot(), 'meta', 'logs');
@@ -115,25 +115,31 @@ export class Logger {
    * Uses queueMicrotask to batch synchronous bursts (e.g. 26 RSS enqueue
    * calls in a tight loop) into a single appendFile call, avoiding the
    * event-loop blocking caused by the old appendFileSync approach.
+   *
+   * Uses a debounced mutex (flushInProgress + flushRequested) instead of an
+   * unbounded Promise chain so that slow appendFile calls cannot accumulate
+   * indefinitely.
    */
   private scheduleFlush(): void {
-    if (this.flushScheduled) return;
-    this.flushScheduled = true;
-    this.flushPromise = this.flushPromise.then(() => {
-      return new Promise<void>((resolve) => {
-        queueMicrotask(async () => {
-          this.flushScheduled = false;
-          const lines = this.pendingLines.splice(0);
-          if (lines.length > 0 && this.currentFile) {
-            try {
-              await appendFile(this.currentFile, lines.join(''));
-            } catch {
-              // ignore file write errors
-            }
+    if (this.flushInProgress) {
+      this.flushRequested = true;
+      return;
+    }
+
+    this.flushInProgress = true;
+    queueMicrotask(async () => {
+      do {
+        this.flushRequested = false;
+        const lines = this.pendingLines.splice(0);
+        if (lines.length > 0 && this.currentFile) {
+          try {
+            await appendFile(this.currentFile, lines.join(''));
+          } catch {
+            // ignore file write errors
           }
-          resolve();
-        });
-      });
+        }
+      } while (this.flushRequested);
+      this.flushInProgress = false;
     });
   }
 
@@ -255,7 +261,7 @@ export class Logger {
   async close(): Promise<void> {
     // Flush any pending lines before closing
     if (this.pendingLines.length > 0) {
-      this.flushScheduled = false;
+      this.flushRequested = false;
       const lines = this.pendingLines.splice(0);
       if (this.currentFile) {
         try {
@@ -266,7 +272,9 @@ export class Logger {
       }
     }
     // Wait for any in-flight flush to complete
-    await this.flushPromise;
+    while (this.flushInProgress) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
   }
 }
 

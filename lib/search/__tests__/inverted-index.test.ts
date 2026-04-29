@@ -24,17 +24,13 @@ describe('tokenize', () => {
     expect(tokens).toContain('world');
   });
 
-  test('中文按字和子词切分', () => {
+  test('中文词典分词（jieba）', () => {
     const tokens = tokenize('向量数据库');
-    // 单字已去除，只保留双字组合及以上
+    // jieba 词典分词，只产出有意义的词
     expect(tokens).toContain('向量');
-    expect(tokens).toContain('量数');
-    expect(tokens).toContain('数据');
-    expect(tokens).toContain('据库');
-    expect(tokens).toContain('向量数');
-    expect(tokens).toContain('量数据');
     expect(tokens).toContain('数据库');
-    expect(tokens).toContain('向量数据库');
+    expect(tokens).not.toContain('量数'); // 不再是噪声 n-gram
+    expect(tokens).not.toContain('据库');
   });
 
   test('中英文混合在边界处分割', () => {
@@ -87,17 +83,23 @@ describe('buildNoteIndex', () => {
     expect(index['检索']).toBeDefined();
     expect(index['检索'].some((p) => p.field === 'title')).toBe(true);
 
-    expect(index['什么是']).toBeDefined();
-    expect(index['什么是'].some((p) => p.field === 'qa')).toBe(true);
+    // jieba 分词将 '什么是' 拆为 '什么' + '是'，'是' 被停用词过滤
+    // index 的 key 都是英文小写
+    expect(index['什么']).toBeDefined();
+    expect(index['rag']).toBeDefined();
+    expect(index['rag'].some((p) => p.field === 'qa')).toBe(true);
 
     expect(index['幻觉']).toBeDefined();
     expect(index['幻觉'].some((p) => p.field === 'keyFact')).toBe(true);
 
-    expect(index['向量数据库']).toBeDefined();
-    expect(index['向量数据库'].some((p) => p.field === 'link')).toBe(true);
+    // jieba 将 '向量数据库' 拆为 '向量' + '数据库'
+    expect(index['向量']).toBeDefined();
+    expect(index['向量'].some((p) => p.field === 'link')).toBe(true);
+    expect(index['数据库']).toBeDefined();
 
-    expect(index['大模型']).toBeDefined();
-    expect(index['大模型'].some((p) => p.field === 'backlink')).toBe(true);
+    // jieba 将 'LLM 大模型' 拆为 ['LLM', '模型']
+    expect(index['模型']).toBeDefined();
+    expect(index['模型'].some((p) => p.field === 'backlink')).toBe(true);
   });
 
   test('所有 posting 包含正确的 noteId', () => {

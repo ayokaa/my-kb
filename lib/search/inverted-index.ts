@@ -1,8 +1,12 @@
 import type { Note } from '../types';
 import type { InvertedIndexMap, Posting, SearchIndexFile } from './types';
+import { Jieba } from '@node-rs/jieba';
+import { dict } from '@node-rs/jieba/dict';
+
+const jieba = Jieba.withDict(dict);
 
 /** 索引版本号，结构变化时递增 */
-export const INDEX_VERSION = 2;
+export const INDEX_VERSION = 3;
 
 /**
  * 将文本分词为检索词列表。
@@ -33,35 +37,17 @@ const STOP_WORDS = new Set([
 ]);
 
 /**
- * 将纯中文字符串生成检索词。
- * - 保留完整片段（整句）
- * - 相邻双字组合（滑动窗口）
- * - 去掉单字（噪声太大、区分度差）
- * - 限制最大长度 6（避免无意义超长串）
+ * 使用 jieba 词典分词替换纯 n-gram 膨胀。
+ * jieba 输出经过停用词过滤、单字过滤、长度截断后才返回。
  */
 function expandChineseTokens(segment: string): string[] {
   const tokens: string[] = [];
-  const maxLen = Math.min(segment.length, 6);
 
-  // 保留完整片段（如果长度在合理范围内）
-  if (segment.length >= 2 && segment.length <= 6 && !STOP_WORDS.has(segment)) {
-    tokens.push(segment);
-  }
-
-  // 相邻双字组合（滑动窗口，步长 1）
-  for (let i = 0; i <= segment.length - 2; i++) {
-    const bigram = segment.slice(i, i + 2);
-    if (!STOP_WORDS.has(bigram)) {
-      tokens.push(bigram);
-    }
-  }
-
-  // 三字组合（增加语义粒度）
-  for (let i = 0; i <= segment.length - 3; i++) {
-    const trigram = segment.slice(i, i + 3);
-    if (!STOP_WORDS.has(trigram)) {
-      tokens.push(trigram);
-    }
+  for (const token of jieba.cut(segment)) {
+    if (STOP_WORDS.has(token)) continue;
+    // 过滤单字（区分度太低）
+    if (token.length < 2) continue;
+    tokens.push(token);
   }
 
   return tokens;
@@ -69,12 +55,12 @@ function expandChineseTokens(segment: string): string[] {
 
 /**
  * 将文本分词为检索词列表。
- * - 中文：整词 + 双字组合 + 单字
+ * - 中文：jieba 词典分词，过滤停用词和单字
  * - 英文：按空格切分，转小写
  * - 数字：保留
  * - 标点、特殊字符去除
  * - 停用词过滤
- * - 中英文混合：在边界处分割
+ * - 中英文混合：在边界处分割后分别处理
  */
 export function tokenize(text: string): string[] {
   if (!text || typeof text !== 'string') return [];
@@ -164,10 +150,8 @@ export function buildNoteIndex(note: Note): InvertedIndexMap {
     }
   }
 
-  // content
-  for (const token of tokenize(note.content)) {
-    entries.push([token, { noteId: note.id, field: 'content' }]);
-  }
+  // content 不再索引进倒排索引（体积大、权重低）,
+  // 检索时通过直接读笔记文件 + rg fallback 获取正文内容。
 
   // 聚合到 index
   for (const [token, posting] of entries) {
