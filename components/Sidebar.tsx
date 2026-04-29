@@ -23,7 +23,7 @@ const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'settings', label: '设置', icon: Settings },
 ];
 
-export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0, connected = true }: SidebarProps & { connected?: boolean }) {
+export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0, connected }: SidebarProps & { connected?: boolean | null }) {
   const { theme, toggle } = useTheme();
   return (
     <aside className="glass flex h-screen w-64 flex-col">
@@ -96,14 +96,22 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
         <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
           <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">Status</p>
           <div className="mt-1 flex items-center gap-2">
-            <div className={`h-2 w-2 rounded-full transition-colors duration-500 ${
-              connected
-                ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]'
-                : 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)] animate-pulse'
-            }`} />
-            <span className="text-xs text-[var(--text-secondary)]">
-              {connected ? '已连接' : '重连中'}
-            </span>
+            {connected == null ? (
+              <>
+                <div className="h-2 w-2 rounded-full bg-[var(--text-tertiary)]" />
+                <span className="text-xs text-[var(--text-tertiary)]">连接中</span>
+              </>
+            ) : connected ? (
+              <>
+                <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]" />
+                <span className="text-xs text-[var(--text-secondary)]">已连接</span>
+              </>
+            ) : (
+              <>
+                <div className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)] animate-pulse" />
+                <span className="text-xs text-[var(--text-secondary)]">重连中</span>
+              </>
+            )}
           </div>
         </div>
       </div>

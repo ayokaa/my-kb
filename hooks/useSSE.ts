@@ -11,7 +11,7 @@ interface UseSSEOptions {
 }
 
 interface UseSSEReturn {
-  connected: boolean;
+  connected: boolean | null;  // null = 初始连接中
   reconnect: () => void;
 }
 
@@ -20,7 +20,7 @@ const MAX_DELAY = 30000;
 const BACKOFF_FACTOR = 2;
 
 export function useSSE(options: UseSSEOptions): UseSSEReturn {
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState<boolean | null>(null);
   const retryDelay = useRef(INITIAL_DELAY);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceRef = useRef<EventSource | null>(null);

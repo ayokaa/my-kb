@@ -18,7 +18,7 @@ export interface TaskEvent {
 
 export interface InboxEvent {
   action: 'new' | 'processed';
-  count: number;
+  count?: number;  // 可选——前端收到事件后自行 fetch 实际计数
 }
 
 // ── SSE 控制器管理 ────────────────────────────────────────────
@@ -79,7 +79,7 @@ export function emitTaskEvent(action: TaskEvent['action'], id: string, type: Tas
 }
 
 /** 广播收件箱变更事件 */
-export function emitInboxEvent(action: InboxEvent['action'], count: number) {
+export function emitInboxEvent(action: InboxEvent['action'], count?: number) {
   if (controllers.size === 0) return;
   if (controllers.size > MAX_CONTROLLERS) cleanupStaleControllers();
 

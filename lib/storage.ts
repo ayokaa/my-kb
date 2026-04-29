@@ -441,7 +441,7 @@ export class FileSystemStorage implements Storage {
       await this.atomicWrite(path, content);
       entry.filePath = path;
       // 通知客户端收件箱有新内容
-      emitInboxEvent('new', 0);
+      emitInboxEvent('new');
       return true;
     } finally {
       releaseLock?.();
