@@ -313,8 +313,16 @@ export function initQueue() {
 
 async function runWebFetchTask(payload: WebFetchPayload) {
   const { url } = payload;
-  const web = await fetchWebContent(url);
   const storage = new FileSystemStorage();
+
+  // 检查已有笔记的 sources 是否包含此 URL
+  const noteSources = await storage.listNoteSources();
+  if (noteSources.some((ns) => ns.sources.includes(url))) {
+    logger.info('Queue', `Duplicate source URL detected: ${url}, skipping web_fetch`);
+    return { skipped: true, reason: 'duplicate source', url };
+  }
+
+  const web = await fetchWebContent(url);
 
   const entry: InboxEntry = {
     sourceType: 'web',
@@ -357,6 +365,18 @@ async function runRelinkTask() {
 async function runIngestTask(payload: IngestPayload) {
   // Direct ingest without inbox file
   if (payload.title !== undefined && payload.content !== undefined) {
+    const storage = new FileSystemStorage();
+
+    // 检查已有笔记的 sources 是否包含此 URL
+    const sourceUrl = payload.rawMetadata?.source_url as string | undefined;
+    if (sourceUrl) {
+      const noteSources = await storage.listNoteSources();
+      if (noteSources.some((ns) => ns.sources.includes(sourceUrl))) {
+        logger.info('Queue', `Duplicate source URL detected: ${sourceUrl}, skipping ingest`);
+        return { skipped: true, reason: 'duplicate source' };
+      }
+    }
+
     const entry: InboxEntry = {
       sourceType: payload.sourceType || 'text',
       title: payload.title,
@@ -365,7 +385,6 @@ async function runIngestTask(payload: IngestPayload) {
       extractedAt: new Date().toISOString(),
     };
 
-    const storage = new FileSystemStorage();
     const existingNotes = await storage.listNotes();
     const { note } = await processInboxEntry(entry, existingNotes);
     await storage.saveNote(note, { skipBacklinkRebuild: true });

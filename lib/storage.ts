@@ -185,6 +185,8 @@ export class FileSystemStorage implements Storage {
         console.warn(`[Storage] Skip corrupted note "${id}":`, (err as Error).message);
       }
     }
+    // 按创建时间倒序（最新的在前）
+    notes.sort((a, b) => b.created.localeCompare(a.created));
     return notes;
   }
 
