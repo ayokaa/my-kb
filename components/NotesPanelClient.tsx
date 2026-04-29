@@ -142,8 +142,8 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     }
   }
 
-  // SSE: 笔记变更时自动刷新列表（不带搜索词）
-  const doLoad = useCallback(() => { load(); }, [load]);
+  // SSE: 笔记变更时自动刷新列表（带当前搜索词）
+  const doLoad = useCallback(() => { load(search.trim() || undefined); }, [load, search]);
   useSSE({ onNote: doLoad });
 
   const handleDelete = useCallback(async (note: Note) => {

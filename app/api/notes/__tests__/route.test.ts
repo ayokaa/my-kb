@@ -64,4 +64,18 @@ describe('/api/notes', () => {
     const data = await res.json();
     expect(data.notes).toHaveLength(1);
   });
+
+  it('matches by title in search', async () => {
+    const res = await GET(mockReq('Test Note'));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.notes).toHaveLength(1);
+  });
+
+  it('returns empty when search matches nothing', async () => {
+    const res = await GET(mockReq('zzz-non-existent-query'));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.notes).toHaveLength(0);
+  });
 });
