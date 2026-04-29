@@ -83,7 +83,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteResult, setDeleteResult] = useState('');
 
   const { show } = useToast();
@@ -101,7 +101,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
             if (!current) return list[0] || null;
             const stillExists = list.find((n) => n.id === current.id);
             if (!stillExists) {
-              setShowDeleteConfirm(false);
+              setConfirmingDeleteId(null);
               setDeleteResult('');
               return list[0] || null;
             }
@@ -137,9 +137,20 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     onNote: useCallback(() => { load(); }, [load]),
   });
 
-  async function handleDelete(note: Note) {
+  const handleDelete = useCallback(async (note: Note) => {
+    // 第一次点击：进入确认态，3 秒后自动恢复
+    if (confirmingDeleteId !== note.id) {
+      setConfirmingDeleteId(note.id);
+      setDeleteResult('');
+      setTimeout(() => {
+        setConfirmingDeleteId((current) => (current === note.id ? null : current));
+      }, 3000);
+      return;
+    }
+
+    // 第二次点击：执行删除
+    setConfirmingDeleteId(null);
     setDeletingId(note.id);
-    setDeleteResult('');
     try {
       const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
       const data = await res.json();
@@ -153,7 +164,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       show('删除失败', 'error');
     }
     setDeletingId(null);
-  }
+  }, [confirmingDeleteId, load, show]);
 
   const filtered = useMemo(() => {
     let result = notes;
@@ -240,7 +251,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
             {filtered.map((note) => (
               <button
                 key={note.id}
-                onClick={() => { setSelected(note); setShowDeleteConfirm(false); setDeleteResult(''); }}
+                onClick={() => { setSelected(note); setConfirmingDeleteId(null); setDeleteResult(''); }}
                 
                 className={`w-full rounded-xl border p-4 text-left transition-all duration-200 ${
                   selected?.id === note.id
@@ -330,40 +341,25 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    {!showDeleteConfirm && (
-                      <button
-                        onClick={() => { setShowDeleteConfirm(true); setDeleteResult(''); }}
-                        disabled={deletingId === selected.id}
-                        className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs text-[var(--text-tertiary)] hover:text-[var(--error)] disabled:opacity-40"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        删除
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {showDeleteConfirm && (
-                  <div className="mt-3 flex items-center gap-3 rounded-md bg-red-900/10 px-3 py-2">
-                    <span className="flex-1 text-xs text-[var(--text-secondary)]">
-                      确定删除《{selected.title}》？
-                    </span>
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={deletingId === selected.id}
-                      className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
-                    >
-                      取消
-                    </button>
                     <button
                       onClick={() => handleDelete(selected)}
                       disabled={deletingId === selected.id}
-                      className="btn-danger flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40"
+                      aria-label={confirmingDeleteId === selected.id ? '确认删除' : '删除笔记'}
+                      className={`flex items-center gap-1.5 rounded px-3 py-2 text-xs transition-colors disabled:opacity-40 ${
+                        confirmingDeleteId === selected.id
+                          ? 'bg-red-900/30 text-[var(--error)]'
+                          : 'text-[var(--text-tertiary)] hover:text-[var(--error)]'
+                      }`}
                     >
-                      {deletingId === selected.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                      确认删除
+                      {deletingId === selected.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      {confirmingDeleteId === selected.id ? '确认删除' : '删除'}
                     </button>
                   </div>
-                )}
+                </div>
                 {deleteResult && (
                   <p className="mt-3 break-words rounded-md bg-red-900/20 px-3 py-2 text-xs text-[var(--error)]">
                     {deleteResult}
