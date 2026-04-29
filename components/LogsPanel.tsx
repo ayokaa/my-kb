@@ -401,7 +401,7 @@ export default function LogsPanel({ isActive }: LogsPanelProps) {
               scrollToBottom();
               userScrolledRef.current = false;
             }}
-            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[var(--accent)] px-3 py-1.5 text-[10px] font-medium text-white shadow-lg transition-opacity hover:opacity-90"
+            className="sticky bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[var(--accent)] px-3 py-1.5 text-[10px] font-medium text-white shadow-lg transition-opacity hover:opacity-90"
           >
             <ChevronDown className="h-3 w-3" />
             回到底部
