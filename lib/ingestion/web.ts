@@ -2,7 +2,7 @@ import { join } from 'path';
 import { runCamoufox } from './camoufox-runner';
 import { isValidHttpUrl } from './rss';
 
-const FETCH_TIMEOUT = 50000; // ms — 为 Python 端浏览器启动 + 双 goto fallback(最多 30s) + 提取留足余地
+const FETCH_TIMEOUT = 90000; // ms — Python 端 60s goto + 浏览器启动 + 提取
 
 function execFileAsync(
   cmd: string,

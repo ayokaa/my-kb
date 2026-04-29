@@ -9,7 +9,7 @@ import io
 from trafilatura import extract
 from camoufox.sync_api import Camoufox
 
-FETCH_TIMEOUT = 15000  # ms — 单次 goto 超时；domcontentloaded + load fallback 最多 30s
+FETCH_TIMEOUT = 60000  # ms — 单次 goto 超时
 
 
 def fetch(url: str):
