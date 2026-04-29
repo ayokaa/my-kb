@@ -37,21 +37,7 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
 - noteFamiliarity 只在对话确实涉及某篇笔记时才填
 - conversationDigest.summary 用中文`;
 
-export async function POST(req: Request) {
-  let body: { conversationId?: unknown; messages?: unknown };
-  try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-
-  const { conversationId, messages } = body;
-  if (!Array.isArray(messages) || messages.length < 2) {
-    return Response.json({ ok: false, reason: 'not enough messages' });
-  }
-
-  const convId = typeof conversationId === 'string' ? conversationId : 'unknown';
-
+async function processMemoryUpdate(convId: string, messages: Array<{ role: string; content: string }>) {
   try {
     const existingMemory = await loadMemory();
 
@@ -68,7 +54,7 @@ export async function POST(req: Request) {
       .map((d) => d.summary)
       .join('; ');
 
-    const conversationText = (messages as Array<{ role: string; content: string }>)
+    const conversationText = messages
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n\n');
 
@@ -105,7 +91,7 @@ export async function POST(req: Request) {
       extracted = JSON.parse(jsonText);
     } catch (parseErr) {
       logger.warn('Memory', `Failed to parse LLM output: ${(parseErr as Error).message}`);
-      return Response.json({ ok: false, reason: 'parse error' });
+      return;
     }
 
     // 合并并保存
@@ -119,9 +105,30 @@ export async function POST(req: Request) {
     }
 
     logger.info('Memory', `Updated for conversation ${convId}`);
-    return Response.json({ ok: true });
   } catch (err) {
     logger.error('Memory', `Update failed: ${(err as Error).message}`);
-    return Response.json({ ok: false, reason: 'internal error' });
   }
+}
+
+export async function POST(req: Request) {
+  let body: { conversationId?: unknown; messages?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const { conversationId, messages } = body;
+  if (!Array.isArray(messages) || messages.length < 2) {
+    return Response.json({ ok: false, reason: 'not enough messages' });
+  }
+
+  const convId = typeof conversationId === 'string' ? conversationId : 'unknown';
+
+  // 立即返回，后台异步执行 LLM 分析，避免阻塞 HTTP 连接
+  queueMicrotask(() => {
+    processMemoryUpdate(convId, messages as Array<{ role: string; content: string }>).catch(() => {});
+  });
+
+  return Response.json({ ok: true, queued: true });
 }

@@ -28,7 +28,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       title: conv.topics[0] || '对话',
       messages: turnsToMessages(conv.turns),
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      // 正常情况：文件已被删除
+      return Response.json({ error: 'Conversation not found' }, { status: 404 });
+    }
     console.error(`[Conversations API] Failed to load ${(await params).id}:`, err);
     return Response.json({ error: 'Conversation not found' }, { status: 404 });
   }
