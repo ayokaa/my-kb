@@ -21,11 +21,16 @@ def fetch(url: str):
         with Camoufox(headless=True, block_images=True, i_know_what_im_doing=True) as browser:
             page = browser.new_page()
             try:
-                # Try domcontentloaded first (fast), fallback to load on timeout.
+                # Try domcontentloaded first (fast, sufficient for most sites)
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=FETCH_TIMEOUT)
                 except Exception:
-                    page.goto(url, wait_until="load", timeout=FETCH_TIMEOUT)
+                    # domcontentloaded 超时：尝试 load 作为 fallback，给更短时间
+                    try:
+                        page.goto(url, wait_until="load", timeout=5000)
+                    except Exception:
+                        # 连 load 也超时——页面可能已有部分内容，继续提取
+                        pass
 
                 title = page.title()
                 html = page.content()
