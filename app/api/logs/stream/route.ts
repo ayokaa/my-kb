@@ -6,6 +6,18 @@ const HEARTBEAT_INTERVAL_MS = 30000;
 
 export async function GET() {
   let unsubscribe: (() => void) | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+  const cleanup = () => {
+    if (heartbeat !== null) {
+      clearInterval(heartbeat);
+      heartbeat = null;
+    }
+    if (unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+  };
 
   const stream = new ReadableStream({
     start(controller) {
@@ -20,47 +32,27 @@ export async function GET() {
           const payload = JSON.stringify(entry);
           controller.enqueue(encoder.encode(`event: log\ndata: ${payload}\n\n`));
         } catch {
-          // Controller closed
-          if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = null;
-          }
+          cleanup();
         }
       });
 
-      // Heartbeat
-      const heartbeat = setInterval(() => {
+      // Heartbeat to keep the connection alive
+      heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(':ok\n\n'));
         } catch {
-          clearInterval(heartbeat);
-          if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = null;
-          }
+          cleanup();
         }
       }, HEARTBEAT_INTERVAL_MS);
 
-      // Clean up on close
-      const cleanup = () => {
-        clearInterval(heartbeat);
-        if (unsubscribe) {
-          unsubscribe();
-          unsubscribe = null;
-        }
-      };
-
-      // Signal abort handling
+      // Signal abort handling (Next.js may use AbortSignal on the request)
       if ('signal' in controller && (controller as any).signal) {
         (controller as any).signal.addEventListener('abort', cleanup);
       }
     },
 
     cancel() {
-      if (unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
-      }
+      cleanup();
     },
   });
 

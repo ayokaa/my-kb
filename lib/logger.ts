@@ -1,6 +1,7 @@
 import { mkdir, readdir, unlink } from 'fs/promises';
 import { join } from 'path';
-import { appendFileSync, mkdirSync } from 'fs';
+import { appendFile } from 'fs/promises';
+import { mkdirSync } from 'fs';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -46,6 +47,9 @@ export class Logger {
   private currentDate = '';
   private callbacks: NewLogCallback[] = [];
   private consolePatched = false;
+  private pendingLines: string[] = [];
+  private flushScheduled = false;
+  private flushPromise: Promise<void> = Promise.resolve();
 
   constructor(logDir?: string) {
     this.logDir = logDir || join(process.cwd(), getKnowledgeRoot(), 'meta', 'logs');
@@ -106,6 +110,33 @@ export class Logger {
     };
   }
 
+  /**
+   * Schedule an async flush of pending log lines to disk.
+   * Uses queueMicrotask to batch synchronous bursts (e.g. 26 RSS enqueue
+   * calls in a tight loop) into a single appendFile call, avoiding the
+   * event-loop blocking caused by the old appendFileSync approach.
+   */
+  private scheduleFlush(): void {
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    this.flushPromise = this.flushPromise.then(() => {
+      return new Promise<void>((resolve) => {
+        queueMicrotask(async () => {
+          this.flushScheduled = false;
+          const lines = this.pendingLines.splice(0);
+          if (lines.length > 0 && this.currentFile) {
+            try {
+              await appendFile(this.currentFile, lines.join(''));
+            } catch {
+              // ignore file write errors
+            }
+          }
+          resolve();
+        });
+      });
+    });
+  }
+
   private write(entry: LogEntry): void {
     this.buffer.push(entry);
     if (this.buffer.length > this.bufferMaxSize) {
@@ -116,11 +147,8 @@ export class Logger {
 
     const line = JSON.stringify(entry) + '\n';
     if (this.currentFile) {
-      try {
-        appendFileSync(this.currentFile, line);
-      } catch {
-        // ignore file write errors
-      }
+      this.pendingLines.push(line);
+      this.scheduleFlush();
     }
 
     for (const cb of this.callbacks) {
@@ -224,8 +252,21 @@ export class Logger {
     };
   }
 
-  close(): void {
-    // No-op: appendFileSync does not hold open file handles
+  async close(): Promise<void> {
+    // Flush any pending lines before closing
+    if (this.pendingLines.length > 0) {
+      this.flushScheduled = false;
+      const lines = this.pendingLines.splice(0);
+      if (this.currentFile) {
+        try {
+          await appendFile(this.currentFile, lines.join(''));
+        } catch {
+          // ignore
+        }
+      }
+    }
+    // Wait for any in-flight flush to complete
+    await this.flushPromise;
   }
 }
 

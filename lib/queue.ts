@@ -67,8 +67,12 @@ const workerRunningByType: Record<TaskType, boolean> = {
   web_fetch: false,
   relink: false,
 };
-let saveLock: Promise<void> = Promise.resolve();
+let saveInProgress = false;
+let saveRequested = false;
 let workerInitialized = false;
+let lastCleanup = Date.now();
+const MAX_INMEMORY_TASKS = 200;
+const TASK_CLEANUP_AGE_MS = 3_600_000; // 1 hour — remove completed tasks older than this
 
 function getKnowledgeRoot(): string {
   return process.env.KNOWLEDGE_ROOT || 'knowledge';
@@ -78,9 +82,44 @@ function getQueuePath(): string {
   return join(process.cwd(), getKnowledgeRoot(), 'meta', 'queue.json');
 }
 
+/** Prune old completed/failed tasks from the in-memory Map to limit memory growth.
+ *  Only runs periodically (not on every save) to avoid overhead. */
+function pruneOldTasks() {
+  const now = Date.now();
+  if (now - lastCleanup < 300_000) return; // at most every 5 minutes
+  if (tasks.size <= MAX_INMEMORY_TASKS) return; // only clean up when over threshold
+  lastCleanup = now;
+
+  const cutoff = new Date(now - TASK_CLEANUP_AGE_MS).toISOString();
+  for (const [id, task] of tasks) {
+    if (task.status === 'done' || task.status === 'failed') {
+      const completedAt = task.completedAt || task.createdAt;
+      if (completedAt < cutoff) {
+        tasks.delete(id);
+      }
+    }
+  }
+}
+
+/** Persist the current queue state to disk atomically.
+ *
+ *  Debounces rapid calls: if a save is already in-flight, marks a follow-up
+ *  save as needed and returns immediately.  This avoids the unbounded
+ *  promise-chain growth (saveLock = saveLock.then(…)) and coalesces bursts
+ *  of enqueue() calls (e.g. 26 RSS sources at the top of the hour) into at
+ *  most 2 disk writes instead of 26.
+ */
 async function saveQueueState() {
-  saveLock = saveLock
-    .then(async () => {
+  if (saveInProgress) {
+    saveRequested = true;
+    return;
+  }
+
+  saveInProgress = true;
+  try {
+    do {
+      saveRequested = false;
+      pruneOldTasks();
       const queuePath = getQueuePath();
       try {
         await mkdir(dirname(queuePath), { recursive: true });
@@ -103,11 +142,10 @@ async function saveQueueState() {
       } catch (err) {
         logger.error('Queue', `Failed to save state: ${(err as Error).message}`);
       }
-    })
-    .catch(() => {
-      // Errors are logged inside; keep the chain alive
-    });
-  await saveLock;
+    } while (saveRequested);
+  } finally {
+    saveInProgress = false;
+  }
 }
 
 async function loadQueueState() {

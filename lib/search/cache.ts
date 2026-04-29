@@ -7,7 +7,7 @@ import type { FileSystemStorage } from '../storage';
 
 let cachedIndex: InvertedIndexMap | null = null;
 let cachedAt = 0;
-const CACHE_TTL_MS = 5000;
+const CACHE_TTL_MS = 300_000; // 5 minutes — was 5s, which caused excessive 14MB index rebuilds
 let loadPromise: Promise<InvertedIndexMap> | null = null;
 
 /**

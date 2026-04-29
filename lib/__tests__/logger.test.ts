@@ -13,8 +13,8 @@ describe('Logger', () => {
     logger = new Logger(tmpDir);
   });
 
-  afterEach(() => {
-    logger.close();
+  afterEach(async () => {
+    await logger.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -154,9 +154,9 @@ describe('Logger', () => {
   });
 
   describe('file persistence', () => {
-    it('writes logs to daily file', () => {
+    it('writes logs to daily file', async () => {
       logger.info('File', 'persisted');
-      logger.close();
+      await logger.close();
 
       const today = new Date().toISOString().split('T')[0];
       const filePath = join(tmpDir, `app-${today}.log`);
@@ -189,6 +189,51 @@ describe('Logger', () => {
       );
       expect(found).toBeDefined();
       expect(found?.level).toBe('info');
+    });
+  });
+
+  describe('async non-blocking writes', () => {
+    it('does not block the event loop during rapid writes', async () => {
+      // Previously appendFileSync blocked for every log line.
+      // After the fix, write() should return synchronously and batch
+      // writes asynchronously without blocking the event loop.
+
+      const start = Date.now();
+      // Simulate burst: 100 rapid log writes (like RSS cron with 26 sources)
+      for (let i = 0; i < 100; i++) {
+        logger.info('Burst', `rapid message ${i}`);
+      }
+      const elapsed = Date.now() - start;
+
+      // All 100 writes should complete synchronously in well under 100ms.
+      // With the old appendFileSync, this would take seconds in WSL2.
+      expect(elapsed).toBeLessThan(100);
+
+      // Verify all entries are in the in-memory buffer immediately
+      const result = logger.query({ limit: 200 });
+      const burstLogs = result.logs.filter((e) => e.module === 'Burst');
+      expect(burstLogs.length).toBeGreaterThanOrEqual(100);
+    });
+
+    it('persists batch writes to disk asynchronously', async () => {
+      logger.info('Async', 'before flush');
+      logger.info('Async', 'after flush');
+
+      // Wait for the microtask flush to complete
+      await new Promise((r) => setTimeout(r, 100));
+
+      await logger.close();
+
+      const today = new Date().toISOString().split('T')[0];
+      const filePath = join(tmpDir, `app-${today}.log`);
+      expect(existsSync(filePath)).toBe(true);
+
+      const content = readFileSync(filePath, 'utf-8');
+      const lines = content.trim().split('\n');
+      const asyncLines = lines.filter((l) => {
+        try { return JSON.parse(l).module === 'Async'; } catch { return false; }
+      });
+      expect(asyncLines).toHaveLength(2);
     });
   });
 });

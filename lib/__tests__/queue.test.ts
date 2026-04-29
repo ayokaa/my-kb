@@ -7,7 +7,7 @@ process.env.KNOWLEDGE_ROOT = tmpDir;
 
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import yaml from 'js-yaml';
-import { writeFile } from 'fs/promises';
+import { writeFile, rename } from 'fs/promises';
 import { parseInboxEntry } from '../parsers';
 import { enqueue, getTask, listPending, listTasks, retryTask, initQueue } from '../queue';
 
@@ -251,6 +251,59 @@ describe('enqueue / getTask / listPending', () => {
     expect(allTasks.length).toBeGreaterThanOrEqual(before + 10);
     for (const id of ids) {
       expect(getTask(id)).toBeDefined();
+    }
+  });
+
+  /**
+   * Reproduction test for the unbounded promise chain issue in saveQueueState.
+   *
+   * The RSS cron fires at 0 * * * * and calls enqueue() for every subscription
+   * (26 in production). Each enqueue() triggers saveQueueState() which previously
+   * used saveLock = saveLock.then(...).catch(...) — an unbounded chain pattern.
+   *
+   * In WSL2 with slow 9p filesystem, 26 sequential atomicWrite (writeFile + rename)
+   * operations accumulated and contributed to event loop blocking.
+   *
+   * This test verifies that rapid enqueue() calls DO NOT trigger an equal number
+   * of file writes — they should be batched/debounced.
+   */
+  it('debounces saveQueueState: rapid enqueues should batch file writes', async () => {
+    // Reset the writeFile mock counter
+    (writeFile as any).mockClear();
+
+    // Simulate RSS cron: enqueue 26 tasks rapidly (matching production subscription count)
+    const N = 26;
+    for (let i = 0; i < N; i++) {
+      enqueue('rss_fetch', {
+        url: `https://example.com/feed-${i}.xml`,
+        name: `Feed ${i}`,
+        isSubscriptionCheck: true,
+      });
+    }
+
+    // Wait for async save operations to settle
+    await new Promise((r) => setTimeout(r, 500));
+
+    const writeCount = (writeFile as any).mock?.calls?.length || 0;
+    const renameCount = (rename as any).mock?.calls?.length || 0;
+
+    // After the fix: 26 rapid enqueues should batch into far fewer than 26 writes.
+    // Without the fix, this would be ~26+ writeFile calls (one per enqueue).
+    expect(writeCount).toBeLessThan(N);
+    // Allow a few extra writes from worker state updates (task start/complete),
+    // but the total should still be a small fraction of the enqueue count.
+    expect(writeCount).toBeLessThanOrEqual(6);
+
+    // Verify all tasks exist (some may have been processed by now; all should be findable)
+    const all = listTasks(500);
+    const rssTasks = all.filter(t => t.type === 'rss_fetch');
+    const rssTaskIds = new Set(rssTasks.map(t => t.id));
+    for (let i = 0; i < N; i++) {
+      // At least the tasks should be retrievable by getTask
+      const found = rssTasks.find(t =>
+        (t.payload as any).url === `https://example.com/feed-${i}.xml`
+      );
+      expect(found, `RSS task ${i} should exist`).toBeDefined();
     }
   });
 
