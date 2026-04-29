@@ -103,4 +103,20 @@ describe('fetchWebContent', () => {
   it('does not throw on closeBrowser()', async () => {
     await expect(closeBrowser()).resolves.toBeUndefined();
   });
+
+  it('throws when content is empty (page timeout)', async () => {
+    mockResponse('Some Title', '');
+
+    await expect(fetchWebContent('https://example.com/slow')).rejects.toThrow(
+      'returned empty content'
+    );
+  });
+
+  it('throws when content is whitespace only', async () => {
+    mockResponse('Some Title', '   \n  ');
+
+    await expect(fetchWebContent('https://example.com/blank')).rejects.toThrow(
+      'returned empty content'
+    );
+  });
 });

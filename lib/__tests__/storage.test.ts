@@ -133,6 +133,16 @@ describe('FileSystemStorage', () => {
       expect(notes.map(n => n.id).sort()).toEqual(['llm', 'rag']);
     });
 
+    it('sorts notes by created date descending (newest first)', async () => {
+      await storage.saveNote(createTestNote('old', { created: '2023-01-01' }));
+      await storage.saveNote(createTestNote('mid', { created: '2024-06-15' }));
+      await storage.saveNote(createTestNote('new', { created: '2025-12-31' }));
+
+      const notes = await storage.listNotes();
+      expect(notes).toHaveLength(3);
+      expect(notes.map(n => n.id)).toEqual(['new', 'mid', 'old']);
+    });
+
     it('skips corrupted files with warning', async () => {
       await storage.saveNote(createTestNote('good'));
       // Write a corrupted file

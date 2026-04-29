@@ -224,6 +224,33 @@ describe('enqueue / getTask / listPending', () => {
     expect(task?.result).toEqual({ skipped: true, reason: 'duplicate source' });
   });
 
+  it('skips web_fetch when URL already exists in note sources', async () => {
+    const { FileSystemStorage } = await import('@/lib/storage');
+    const prevImpl = (FileSystemStorage as any).getMockImplementation();
+    (FileSystemStorage as any).mockImplementation(function () {
+      return {
+        listNoteSources: vi.fn().mockResolvedValue([{ id: 'existing', sources: ['https://example.com/article'] }]),
+        listNotes: vi.fn().mockResolvedValue([]),
+        saveNote: vi.fn().mockResolvedValue(undefined),
+        rebuildBacklinks: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const id = enqueue('web_fetch', { url: 'https://example.com/article' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } catch {
+      const task = getTask(id);
+      throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
+    } finally {
+      (FileSystemStorage as any).mockImplementation(prevImpl as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ skipped: true, reason: 'duplicate source', url: 'https://example.com/article' });
+  });
+
   it('marks task failed when inbox file is missing (stat rejects)', async () => {
     const id = enqueue('ingest', { fileName: 'missing.md' });
     await waitForStatus(id, 'failed');
