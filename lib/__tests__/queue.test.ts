@@ -181,6 +181,28 @@ describe('enqueue / getTask / listPending', () => {
     expect(retryTask('non-existent')).toBeNull();
   });
 
+  it('retryTask preserves taskCache across retries', () => {
+    const id = enqueue('ingest', { fileName: 'cache-test.md' });
+    const task = getTask(id)!;
+    task.taskCache = { webContent: { title: 'Cached Title', content: 'Cached body text' } };
+
+    // Force task to failed so we can retry
+    task.status = 'failed';
+    task.error = 'Simulated LLM error';
+    task.completedAt = new Date().toISOString();
+
+    const retried = retryTask(id);
+    expect(retried!.taskCache).toEqual({ webContent: { title: 'Cached Title', content: 'Cached body text' } });
+    expect(retried!.error).toBeUndefined();
+    expect(retried!.result).toBeUndefined();
+  });
+
+  it('newly enqueued tasks have no taskCache', () => {
+    const id = enqueue('ingest', { fileName: 'fresh.md' });
+    const task = getTask(id)!;
+    expect(task.taskCache).toBeUndefined();
+  });
+
   it('retryTask returns null for non-failed task', () => {
     const freshId = enqueue('ingest', { fileName: 'fresh.md' });
     expect(retryTask(freshId)).toBeNull();

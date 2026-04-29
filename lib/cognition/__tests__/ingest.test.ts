@@ -282,6 +282,45 @@ describe('processInboxEntry', () => {
   });
 });
 
+  it('includes userHint in LLM prompt when present', async () => {
+    mockCreate.mockClear();
+    setupThreeStepMock();
+
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Distributed Systems Article',
+      content: 'This article covers distributed systems architecture patterns for building resilient cloud-native applications.',
+      rawMetadata: { userHint: '重点关注性能优化部分，提取具体的延迟数据和优化手段' },
+    };
+
+    await processInboxEntry(entry);
+
+    // Verify the user prompt sent to LLM contains the hint
+    const firstCallArgs = mockCreate.mock.calls[0][0];
+    const userMessage = firstCallArgs.messages[0].content;
+    expect(userMessage).toContain('【用户提示】');
+    expect(userMessage).toContain('重点关注性能优化部分');
+    expect(userMessage).toContain('提取具体的延迟数据和优化手段');
+  });
+
+  it('does not include hint section when userHint is absent', async () => {
+    mockCreate.mockClear();
+    setupThreeStepMock();
+
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Plain Article',
+      content: 'Some content about technology and science for general reading purposes.',
+      rawMetadata: {},
+    };
+
+    await processInboxEntry(entry);
+
+    const firstCallArgs = mockCreate.mock.calls[0][0];
+    const userMessage = firstCallArgs.messages[0].content;
+    expect(userMessage).not.toContain('【用户提示】');
+  });
+
 describe('selectCandidateTitles', () => {
   function makeNote(title: string, tags: string[] = [], summary = ''): Note {
     return {

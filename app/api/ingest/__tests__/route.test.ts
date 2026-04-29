@@ -32,6 +32,38 @@ describe('/api/ingest', () => {
     expect(data.taskId).toBe('task-mock-id');
   });
 
+  it('passes userHint to text ingest task', async () => {
+    const { enqueue } = await import('@/lib/queue');
+    (enqueue as any).mockClear();
+
+    const req = new Request('http://localhost/api/ingest', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'text', title: 'Test', content: 'Content', hint: 'Focus on architecture' }),
+    });
+
+    await POST(req);
+    expect(enqueue).toHaveBeenCalledWith(
+      'ingest',
+      expect.objectContaining({ userHint: 'Focus on architecture' })
+    );
+  });
+
+  it('omits userHint when not provided', async () => {
+    const { enqueue } = await import('@/lib/queue');
+    (enqueue as any).mockClear();
+
+    const req = new Request('http://localhost/api/ingest', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'text', title: 'No Hint', content: 'Content' }),
+    });
+
+    await POST(req);
+    expect(enqueue).toHaveBeenCalledWith(
+      'ingest',
+      expect.objectContaining({ userHint: undefined })
+    );
+  });
+
   it('returns 400 for unknown type', async () => {
     const req = new Request('http://localhost/api/ingest', {
       method: 'POST',
