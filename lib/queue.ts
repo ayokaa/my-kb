@@ -423,6 +423,11 @@ async function runIngestTask(payload: IngestPayload) {
   const raw = await readFile(filePath, 'utf-8');
   const entry = parseInboxEntry(raw, filePath);
 
+  // 用户提示词注入到 rawMetadata
+  if (payload.userHint) {
+    entry.rawMetadata.userHint = payload.userHint;
+  }
+
   const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
 
   const storage = new FileSystemStorage();

@@ -28,6 +28,7 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [result, setResult] = useState('');
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
+  const [hint, setHint] = useState('');
 
   const { show } = useToast();
 
@@ -79,7 +80,7 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         const res = await fetch('/api/inbox/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName }),
+          body: JSON.stringify({ fileName, hint: hint.trim() || undefined }),
         });
         const data = await res.json();
         if (data.ok) {
@@ -246,6 +247,13 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
                   </button>
                 </div>
               </div>
+              <textarea
+                placeholder="提示词（可选）——告诉 AI 重点关注什么"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                rows={2}
+                className="input-dark mt-3 w-full px-4 py-2 text-xs resize-none text-[var(--text-tertiary)]"
+              />
               {result && (
                 <p className={`mt-3 break-words rounded-md px-3 py-2 text-xs ${result.startsWith('已加入') ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : result.startsWith('已忽略') ? 'bg-[var(--bg-hover)] text-[var(--text-secondary)]' : 'bg-red-900/20 text-[var(--error)]'}`}>
                   {result}
