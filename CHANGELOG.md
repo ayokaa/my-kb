@@ -28,6 +28,14 @@ All notable changes to this project are documented in this file.
 - **Search cache TTL**：从 5 秒提升至 5 分钟，减少 14MB 倒排索引的重建频率。
 - **搜索索引去 content + ripgrep 兜底**：`buildNoteIndex` 不再对 `note.content` 做分词索引——正文贡献 80%+ 的索引体积但检索权重最低（0.8）。结构化搜索结果 < 3 条时，自动用 `rg -l -i` 扫描 notes/ 做全文关键词兜底。索引体积缩小 ~10x，构建速度提升 ~5x。
 - **中文分词从 n-gram 迁移至 jieba**：用 `@node-rs/jieba` 词典分词替换 `expandChineseTokens` 的纯 n-gram 滑动窗口。分词精度显著提升（"向量数据库" 从 8 个噪声 token 降为 ["向量","数据库"]），索引噪声大幅减少。`INDEX_VERSION` 升至 3 触发自动重建。
+- **URL 去重覆盖全路径**：`runWebFetchTask` 和 `runIngestTask` direct mode 新增 `listNoteSources()` 查重，同一 URL 不会重复生成笔记。去重覆盖了之前遗漏的 web_fetch 和文本/文件直接入库路径。
+- **笔记按创建时间倒序**：`listNotes()` 从 `readdir` 顺序改为按 `created` 降序，前端笔记列表最新排在前面。
+- **Web 抓取重试缓存**：`Task` 新增 `taskCache` 字段，`retryTask` 保留不清除。`runWebFetchTask` 抓取成功后缓存内容到 task，LLM 失败重试时跳过抓取直接用缓存。
+- **入库提示词**：所有入库入口（文本/链接/文件/收件箱）新增可选的提示词输入框，填入后作为 `【用户提示】` 注入 LLM 提取 prompt，引导 AI 重点关注特定方向。
+- **Web 抓取超时空内容直接失败**：`fetchWebContent` 返回空内容时抛异常（取代之前继续送 LLM 产出垃圾笔记），任务标记为 failed。
+- **笔记删除二次确认**：删除按钮改为与对话删除一致的两击模式——首次点击变红"确认删除"，3s 自动恢复，二次点击执行删除。
+- **Web 抓取超时提升至 60s**：Python 端 `goto` 超时从 15s 升至 60s，Node.js 端 90s。
+- **连接状态并入侧边栏**：`ConnectionStatus` 组件删除，功能并入 `Sidebar` 底部 Status 区域。三种状态：灰色"连接中" → 绿色"已连接" → 琥珀色脉冲"重连中"。
 
 ## 2026-04-28
 
