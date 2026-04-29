@@ -259,7 +259,12 @@ async function extractStructure(entry: InboxEntry, content: string): Promise<Ext
     entry.rawMetadata?.original_filename && `原始文件: ${entry.rawMetadata.original_filename}`,
   ].filter(Boolean).join('\n');
 
-  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}\n\n原始内容:\n${content.slice(0, 20000)}`;
+  const userHint = entry.rawMetadata?.userHint as string | undefined;
+  const hintSection = userHint
+    ? `\n\n【用户提示】用户希望你重点关注以下方面：\n${userHint}`
+    : '';
+
+  const userPrompt = `原始标题: ${entry.title}\n${sourceInfo}${hintSection}\n\n原始内容:\n${content.slice(0, 20000)}`;
 
   const raw = await callLLM(systemPrompt, userPrompt);
   const parsed = parseLLMJSON(raw);

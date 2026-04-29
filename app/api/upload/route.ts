@@ -70,6 +70,8 @@ export async function POST(req: Request) {
           ? 'pdf'
           : 'text';
 
+    const hint = formData.get('hint') as string | null;
+
     const taskId = enqueue('ingest', {
       title,
       content,
@@ -79,6 +81,7 @@ export async function POST(req: Request) {
         mime_type: fileType,
         attachment_path: attachmentPath,
       },
+      userHint: hint || undefined,
     });
 
     return Response.json({ ok: true, fileName, title, taskId, message: '已加入处理队列' });

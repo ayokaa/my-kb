@@ -1,13 +1,13 @@
 import { enqueue } from '@/lib/queue';
 
 export async function POST(req: Request) {
-  let body: { type?: unknown; content?: unknown; title?: unknown; url?: unknown };
+  let body: { type?: unknown; content?: unknown; title?: unknown; url?: unknown; hint?: unknown };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const { type, content, title, url } = body;
+  const { type, content, title, url, hint } = body;
 
   try {
     if (type === 'text') {
@@ -16,6 +16,7 @@ export async function POST(req: Request) {
         content: typeof content === 'string' ? content : '',
         sourceType: 'text',
         rawMetadata: {},
+        userHint: typeof hint === 'string' ? hint : undefined,
       });
       return Response.json({ ok: true, taskId, message: '已加入处理队列' });
     }
@@ -24,7 +25,10 @@ export async function POST(req: Request) {
       if (typeof url !== 'string') {
         return Response.json({ error: 'URL required for link ingest' }, { status: 400 });
       }
-      const taskId = enqueue('web_fetch', { url });
+      const taskId = enqueue('web_fetch', {
+        url,
+        userHint: typeof hint === 'string' ? hint : undefined,
+      });
       return Response.json({ ok: true, taskId, message: '已加入抓取队列' }, { status: 202 });
     }
 

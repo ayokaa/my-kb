@@ -23,6 +23,7 @@ export interface IngestPayload {
   content?: string;
   sourceType?: SourceType;
   rawMetadata?: Record<string, unknown>;
+  userHint?: string;  // 用户提供的提示词，引导 LLM 提取方向
 }
 
 export interface RSSFetchPayload {
@@ -34,6 +35,7 @@ export interface RSSFetchPayload {
 
 export interface WebFetchPayload {
   url: string;
+  userHint?: string;
 }
 
 export interface RelinkPayload {}
@@ -329,7 +331,10 @@ async function runWebFetchTask(payload: WebFetchPayload) {
     title: web.title || url,
     content: web.content || '',
     // 不传 source_url 到 rawMetadata —— 避免 enrichContent 重复抓取同一 URL
-    rawMetadata: { excerpt: web.excerpt },
+    rawMetadata: {
+      excerpt: web.excerpt,
+      userHint: payload.userHint,
+    },
     extractedAt: new Date().toISOString(),
   };
 
@@ -386,7 +391,10 @@ async function runIngestTask(payload: IngestPayload) {
       sourceType: payload.sourceType || 'text',
       title: payload.title,
       content: payload.content,
-      rawMetadata: payload.rawMetadata || {},
+      rawMetadata: {
+        ...payload.rawMetadata,
+        userHint: payload.userHint,
+      },
       extractedAt: new Date().toISOString(),
     };
 

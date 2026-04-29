@@ -16,6 +16,7 @@ export default function IngestPanel() {
   const [textInput, setTextInput] = useState('');
   const [textTitle, setTextTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
+  const [hint, setHint] = useState('');
 
   async function submitIngest(type: string, body: object) {
     setIngestLoading(true);
@@ -42,6 +43,7 @@ export default function IngestPanel() {
     if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
+    if (hint.trim()) formData.append('hint', hint);
     await submitIngest('file', formData);
   }
 
@@ -99,11 +101,19 @@ export default function IngestPanel() {
                 rows={8}
                 className="input-dark w-full px-4 py-3 text-sm resize-none"
               />
+              <textarea
+                placeholder="提示词（可选）——告诉 AI 重点关注什么"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                rows={2}
+                className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
+              />
               <button
                 onClick={() => {
-                  submitIngest('text', { type: 'text', title: textTitle, content: textInput });
+                  submitIngest('text', { type: 'text', title: textTitle, content: textInput, hint: hint || undefined });
                   setTextInput('');
                   setTextTitle('');
+                  setHint('');
                 }}
                 disabled={ingestLoading || !textInput.trim()}
                 className="btn-primary px-6 py-2.5 text-sm disabled:opacity-40"
@@ -121,10 +131,18 @@ export default function IngestPanel() {
                 onChange={(e) => setLinkUrl(e.target.value)}
                 className="input-dark w-full px-4 py-3 text-sm"
               />
+              <textarea
+                placeholder="提示词（可选）——告诉 AI 重点关注什么"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                rows={2}
+                className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
+              />
               <button
                 onClick={() => {
-                  submitIngest('link', { type: 'link', url: linkUrl });
+                  submitIngest('link', { type: 'link', url: linkUrl, hint: hint || undefined });
                   setLinkUrl('');
+                  setHint('');
                 }}
                 disabled={ingestLoading || !linkUrl.trim()}
                 className="btn-primary px-6 py-2.5 text-sm disabled:opacity-40"
@@ -147,6 +165,13 @@ export default function IngestPanel() {
                   className="hidden"
                 />
               </label>
+              <textarea
+                placeholder="提示词（可选）——告诉 AI 重点关注什么"
+                value={hint}
+                onChange={(e) => setHint(e.target.value)}
+                rows={2}
+                className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
+              />
               <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                 支持 PDF、Markdown、TXT
               </p>
