@@ -1,0 +1,208 @@
+import { describe, it, expect } from 'vitest';
+import {
+  emptyMemory,
+  mergeMemory,
+  getChatContext,
+  type UserMemory,
+  type MemoryExtractResult,
+} from '../memory';
+
+describe('memory module', () => {
+  describe('emptyMemory', () => {
+    it('returns a valid empty memory structure', () => {
+      const m = emptyMemory();
+      expect(m.profile.techStack).toEqual([]);
+      expect(m.profile.interests).toEqual([]);
+      expect(m.noteKnowledge).toEqual({});
+      expect(m.conversationDigest).toEqual([]);
+      expect(m.preferences).toEqual({});
+      expect(m.updatedAt).toBeTruthy();
+    });
+  });
+
+  describe('mergeMemory', () => {
+    it('applies profileChanges', () => {
+      const current = emptyMemory();
+      const extract: MemoryExtractResult = {
+        profileChanges: {
+          role: '全栈开发者',
+          techStack: ['TypeScript', 'Python'],
+          interests: ['RAG'],
+        },
+      };
+
+      const merged = mergeMemory(current, extract, 'conv-1');
+      expect(merged.profile.role).toBe('全栈开发者');
+      expect(merged.profile.techStack).toEqual(['TypeScript', 'Python']);
+      expect(merged.profile.interests).toEqual(['RAG']);
+    });
+
+    it('deduplicates techStack and interests on merge', () => {
+      const current = emptyMemory();
+      current.profile.techStack = ['TypeScript'];
+      current.profile.interests = ['RAG'];
+
+      const extract: MemoryExtractResult = {
+        profileChanges: {
+          techStack: ['TypeScript', 'Python'],
+          interests: ['RAG', '性能优化'],
+        },
+      };
+
+      const merged = mergeMemory(current, extract, 'conv-2');
+      expect(merged.profile.techStack).toEqual(['TypeScript', 'Python']);
+      expect(merged.profile.interests).toEqual(['RAG', '性能优化']);
+    });
+
+    it('updates noteKnowledge per-note', () => {
+      const current = emptyMemory();
+      const extract: MemoryExtractResult = {
+        noteFamiliarity: [
+          { noteId: 'rag-overview', level: 'discussed', notes: '理解基本概念' },
+        ],
+      };
+
+      const merged = mergeMemory(current, extract, 'conv-1');
+      expect(merged.noteKnowledge['rag-overview'].level).toBe('discussed');
+      expect(merged.noteKnowledge['rag-overview'].notes).toBe('理解基本概念');
+      expect(merged.noteKnowledge['rag-overview'].firstSeenAt).toBeTruthy();
+    });
+
+    it('preserves firstSeenAt when updating existing note knowledge', () => {
+      const current = emptyMemory();
+      const first: MemoryExtractResult = {
+        noteFamiliarity: [
+          { noteId: 'rag-overview', level: 'referenced', notes: '首次接触' },
+        ],
+      };
+      const merged1 = mergeMemory(current, first, 'conv-1');
+      const firstSeen = merged1.noteKnowledge['rag-overview'].firstSeenAt;
+
+      const second: MemoryExtractResult = {
+        noteFamiliarity: [
+          { noteId: 'rag-overview', level: 'discussed', notes: '深入讨论了' },
+        ],
+      };
+      const merged2 = mergeMemory(merged1, second, 'conv-2');
+
+      expect(merged2.noteKnowledge['rag-overview'].level).toBe('discussed');
+      expect(merged2.noteKnowledge['rag-overview'].firstSeenAt).toBe(firstSeen);
+    });
+
+    it('prepends conversationDigest and keeps max 20', () => {
+      const current = emptyMemory();
+      for (let i = 0; i < 25; i++) {
+        const extract: MemoryExtractResult = {
+          conversationDigest: { summary: `话题 ${i}`, topics: ['test'] },
+        };
+        const merged = mergeMemory(current, extract, `conv-${i}`);
+        Object.assign(current, merged);
+      }
+      expect(current.conversationDigest).toHaveLength(20);
+      expect(current.conversationDigest[0].summary).toBe('话题 24');
+    });
+
+    it('applies preferenceSignals', () => {
+      const current = emptyMemory();
+      const extract: MemoryExtractResult = {
+        preferenceSignals: { detailLevel: 'detailed', preferCodeExamples: true },
+      };
+
+      const merged = mergeMemory(current, extract, 'conv-1');
+      expect(merged.preferences.detailLevel).toBe('detailed');
+      expect(merged.preferences.preferCodeExamples).toBe(true);
+    });
+
+    it('handles empty extract (nothing changed)', () => {
+      const current = emptyMemory();
+      current.profile.role = 'dev';
+
+      const extract: MemoryExtractResult = {};
+      const merged = mergeMemory(current, extract, 'conv-1');
+
+      expect(merged.profile.role).toBe('dev');
+      expect(merged.conversationDigest).toHaveLength(0);
+    });
+  });
+
+  describe('getChatContext', () => {
+    function makeMemory(overrides?: Partial<UserMemory>): UserMemory {
+      return { ...emptyMemory(), ...overrides };
+    }
+
+    it('returns null for empty memory with no relevant notes', () => {
+      const m = emptyMemory();
+      expect(getChatContext(m, [])).toBeNull();
+    });
+
+    it('includes profile when populated', () => {
+      const m = makeMemory({
+        profile: {
+          role: '研究员',
+          techStack: ['Python'],
+          interests: ['AI'],
+          background: '',
+        },
+      });
+      const ctx = getChatContext(m, []);
+      expect(ctx).toContain('研究员');
+      expect(ctx).toContain('Python');
+      expect(ctx).toContain('AI');
+    });
+
+    it('includes recent 3 conversation digests', () => {
+      const m = makeMemory({
+        conversationDigest: [
+          { conversationId: 'c1', summary: '讨论 A', topics: [], timestamp: '' },
+          { conversationId: 'c2', summary: '讨论 B', topics: [], timestamp: '' },
+          { conversationId: 'c3', summary: '讨论 C', topics: [], timestamp: '' },
+          { conversationId: 'c4', summary: '讨论 D', topics: [], timestamp: '' },
+        ],
+      });
+      const ctx = getChatContext(m, []);
+      expect(ctx).toContain('讨论 A');
+      expect(ctx).toContain('讨论 B');
+      expect(ctx).toContain('讨论 C');
+      expect(ctx).not.toContain('讨论 D');
+    });
+
+    it('includes relevant note knowledge', () => {
+      const m = makeMemory({
+        noteKnowledge: {
+          'rag-overview': {
+            level: 'discussed',
+            firstSeenAt: '',
+            lastReferencedAt: '',
+            notes: '理解基本概念',
+          },
+          'vector-db': {
+            level: 'referenced',
+            firstSeenAt: '',
+            lastReferencedAt: '',
+            notes: '初步了解',
+          },
+        },
+      });
+
+      const ctx = getChatContext(m, ['rag-overview']);
+      expect(ctx).toContain('rag-overview');
+      expect(ctx).toContain('理解基本概念');
+      expect(ctx).not.toContain('vector-db');
+    });
+
+    it('limits relevant notes to 5', () => {
+      const ids = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7'];
+      const noteKnowledge: Record<string, any> = {};
+      for (const id of ids) {
+        noteKnowledge[id] = { level: 'aware' as const, firstSeenAt: '', lastReferencedAt: '', notes: id };
+      }
+      const m = makeMemory({ noteKnowledge });
+
+      const ctx = getChatContext(m, ids);
+      // Only 5 should be included
+      expect(ctx).toContain('n1');
+      expect(ctx).toContain('n5');
+      expect(ctx).not.toContain('n6');
+    });
+  });
+});

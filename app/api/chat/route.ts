@@ -6,6 +6,7 @@ import { loadOrBuildIndex } from '@/lib/search/cache';
 import { fetchWebContent } from '@/lib/ingestion/web';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
+import { loadMemory, getChatContext } from '@/lib/memory';
 
 const MAX_MESSAGE_LENGTH = 10000;
 const MAX_TOOL_CALLS = 3;
@@ -373,7 +374,14 @@ export async function POST(req: Request) {
 
 调用规则：仅在知识库内容明显不足时调用工具。如果知识库内容已足够，直接回答，不要调用工具。`;
 
-  const fixedSystemPrompt = `${baseSystem}\n\n${toolsSection}`;
+  // 用户记忆上下文
+  const memory = await loadMemory();
+  const relevantNoteIds = searchResults.map((r) => r.id);
+  const memoryContext = getChatContext(memory, relevantNoteIds);
+
+  const fixedSystemPrompt = [baseSystem, memoryContext, toolsSection]
+    .filter(Boolean)
+    .join('\n\n');
 
   const contextSection = contextText
     ? `【知识库检索结果】以下是从用户知识库中检索到的相关信息，请优先基于这些内容回答。如果信息不足，请明确说明。\n\n---\n${contextText}\n---\n\n【回答要求】\n1. 优先使用上述知识库内容\n2. 如果引用了知识库内容，请提及来源笔记名称\n3. 如果知识库内容不足以回答，明确说明"知识库中没有相关信息"\n4. 不要编造知识库中没有的信息`

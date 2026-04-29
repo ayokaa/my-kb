@@ -357,10 +357,16 @@ export default function ChatPanel() {
     try {
       await fetch(`/api/conversations/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) });
       loadConversations();
+      // 异步更新用户记忆（fire-and-forget）
+      fetch('/api/memory/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: id, messages }),
+      }).catch(() => {});
     } catch {
       show('保存对话失败', 'error');
     }
-  }, [loadConversations]);
+  }, [loadConversations, show]);
 
 
 

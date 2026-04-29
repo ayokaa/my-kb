@@ -340,7 +340,9 @@ async function runWebFetchTask(payload: WebFetchPayload, task?: Task) {
     title = web.title || url;
     content = web.content || '';
     // 缓存抓取结果，供重试时复用
-    task.taskCache = { webContent: { title, content } };
+    if (task) {
+      task.taskCache = { webContent: { title, content } };
+    }
   }
 
   const entry: InboxEntry = {
