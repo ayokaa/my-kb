@@ -23,7 +23,7 @@ const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'settings', label: '设置', icon: Settings },
 ];
 
-export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0 }: SidebarProps) {
+export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 0, connected = true }: SidebarProps & { connected?: boolean }) {
   const { theme, toggle } = useTheme();
   return (
     <aside className="glass flex h-screen w-64 flex-col">
@@ -96,8 +96,14 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
         <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
           <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">Status</p>
           <div className="mt-1 flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-[var(--success)] shadow-[0_0_4px_var(--success)]" />
-            <span className="text-xs text-[var(--text-secondary)]">系统正常</span>
+            <div className={`h-2 w-2 rounded-full transition-colors duration-500 ${
+              connected
+                ? 'bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]'
+                : 'bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)] animate-pulse'
+            }`} />
+            <span className="text-xs text-[var(--text-secondary)]">
+              {connected ? '已连接' : '重连中'}
+            </span>
           </div>
         </div>
       </div>

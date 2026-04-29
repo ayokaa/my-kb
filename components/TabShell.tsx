@@ -22,7 +22,7 @@ export default function TabShell({ notesPanel }: TabShellProps) {
   const [taskCount, setTaskCount] = useState(0);
 
   // SSE: 事件驱动更新侧边栏计数
-  useSSE({
+  const { connected } = useSSE({
     onInbox: useCallback((e: InboxEvent) => {
       if (e.action === 'new') {
         // 有新条目时刷新计数
@@ -61,7 +61,7 @@ export default function TabShell({ notesPanel }: TabShellProps) {
 
   return (
     <>
-      <Sidebar active={tab} onChange={setTab} inboxCount={inboxCount} taskCount={taskCount} />
+      <Sidebar active={tab} onChange={setTab} inboxCount={inboxCount} taskCount={taskCount} connected={connected} />
       <main className="flex-1 overflow-hidden p-5">
         <div data-testid="panel-chat" className={tab === 'chat' ? 'h-full' : 'hidden'}>
           <ChatPanel />
