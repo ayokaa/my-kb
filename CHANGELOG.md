@@ -13,6 +13,16 @@ All notable changes to this project are documented in this file.
 - **SSE events 无心跳断开** (`app/api/events/route.ts`)：新增 30s heartbeat、AbortSignal 处理和 cancel 清理，与 `/api/logs/stream` 保持一致，防止代理因空闲超时断开 SSE 连接。
 - **`node-cron` HMR 任务泄漏**：`rss/cron.ts` 和 `relink/cron.ts` 在启动新任务前，通过 `node-cron` 的 `getTasks()` registry 清理同名的旧任务实例，防止 Next.js dev 服务器热更新后僵尸任务累积。
 
+### Added
+
+- **类型化 SSE 事件系统** (`lib/events.ts`)：将单 `data: changed` 广播拆分为 `emitNoteEvent` / `emitTaskEvent` / `emitInboxEvent` 三个类型化函数，携带结构化 payload（action/id/title 等）。SSE 格式使用标准 `event:` + `data:` 字段，客户端可用 `EventSource.addEventListener()` 按事件类型精准订阅。
+- **全局 toast 通知** (`hooks/ToastContext.tsx`)：零依赖 React Context toast 系统。`ToastProvider` 包裹 app，`useToast().show(message, type)` 在右下角堆叠显示，4s 自动消失，点击即关闭。支持 success/error/info 三种类型。
+- **通用 SSE hook** (`hooks/useSSE.ts`)：封装 EventSource 连接、自动重连（指数退避 1s→2s→4s→max 30s）、JSON 解析、连接状态返回。一个 hook 替代此前每个面板中手动重复的 `new EventSource(...)` 代码。
+- **连接状态指示器** (`components/ConnectionStatus.tsx`)：侧边栏底部显示绿色/琥珀色圆点 + "已连接"/"重连中" 文字，反映 SSE 连接健康。
+- **收件箱实时更新**：InboxPanel 和 RSSPanel 首次通过 `useSSE({ onInbox })` 订阅收件箱变更事件。RSS cron 抓取到新内容时自动通知前端。
+- **任务完成通知**：TasksPanel 通过 `useSSE({ onTask })` 收到任务成功/失败事件时弹出 toast 通知，不再需要手动切到任务面板查看进度。
+- **操作反馈**：所有面板的 create/save/delete/approve/reject 操作都增加了 toast 反馈（成功/失败），取代此前仅 `console.error` 的静默失败。
+
 ### Changed
 
 - **Search cache TTL**：从 5 秒提升至 5 分钟，减少 14MB 倒排索引的重建频率。

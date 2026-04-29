@@ -124,7 +124,13 @@ components/         — React UI (Client Components + Server Components)
 ├── NotesPanelClient.tsx    — Client Component (interactivity + SSE)
 ├── RSSPanel.tsx
 ├── TasksPanel.tsx
-└── TabShell.tsx            — Tab container (CSS hidden for state preservation)
+├── TabShell.tsx            — Tab container (CSS hidden for state preservation)
+├── ConnectionStatus.tsx    — SSE connection health indicator
+└── Providers.tsx           — Client wrapper (ToastProvider + ConnectionStatus)
+
+hooks/
+├── ToastContext.tsx  — Global toast notification system (React Context)
+└── useSSE.ts         — Generic SSE hook with typed events + auto-reconnect
 
 lib/
 ├── types.ts        — Source of truth for all data shapes
@@ -133,7 +139,7 @@ lib/
 ├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch, relink)
 ├── settings.ts     — Runtime configuration (YAML persistence, env fallback)
 ├── llm.ts          — Centralized async LLM client factory (reads settings fresh every call)
-├── events.ts       — SSE event bus (server-to-client push for note changes)
+├── events.ts       — Typed SSE event bus (emitNoteEvent, emitTaskEvent, emitInboxEvent)
 ├── search/
 │   ├── inverted-index.ts  — Inverted index (tokenize, build, add, remove)
 │   ├── engine.ts          — Search scoring, link diffusion, context assembly
@@ -156,6 +162,73 @@ lib/
 - `lib/ingestion/*` only fetches raw data. It never touches the LLM.
 - `lib/cognition/ingest.ts` and `lib/cognition/relink.ts` are the only modules allowed to call the LLM for note generation / link refresh.
 - `lib/llm.ts` is the single source of truth for LLM client instantiation. All call sites (`ingest.ts`, `relink.ts`, `app/api/chat/route.ts`) go through it.
+
+---
+
+## Real-Time Updates (SSE + Toast)
+
+### Problem
+
+The original system used a single undifferentiated `data: changed` SSE broadcast for all events. Every panel that subscribed (only NotesPanel and TasksPanel) had to re-fetch its entire dataset because the signal carried no information about what changed. InboxPanel and RSSPanel had no SSE subscription at all — new RSS items and incoming inbox entries were invisible until the user manually refreshed or switched tabs. Operation feedback was limited to in-line status text (e.g., delete results) or silent `console.error` for failures.
+
+### Solution
+
+Three layers of infrastructure:
+
+**1. Typed SSE Events (`lib/events.ts`)**
+
+The single `broadcastNoteChanged()` is replaced by three typed emit functions:
+
+| Function | SSE event | Payload | Triggered by |
+|----------|-----------|---------|-------------|
+| `emitNoteEvent` | `note` | `{ action, id, title }` | `saveNote()`, `deleteNote()`, queue ingest/web_fetch workers |
+| `emitTaskEvent` | `task` | `{ action, id, type, error?, result? }` | `enqueue()`, worker start/complete/fail, `retryTask()` |
+| `emitInboxEvent` | `inbox` | `{ action, count }` | `writeInbox()` |
+
+Events use standard SSE format (`event: note\ndata: {"action":"created",...}\n\n`), enabling `EventSource.addEventListener()` for targeted handling.
+
+**2. Generic SSE Hook (`hooks/useSSE.ts`)**
+
+A single React hook replaces per-panel manual `EventSource` construction:
+
+```typescript
+const { connected } = useSSE({
+  onNote: (e) => { /* type: NoteEvent, payload parsed */ },
+  onTask: (e) => { /* type: TaskEvent */ },
+  onInbox: (e) => { /* type: InboxEvent */ },
+  onConnectionChange: (c) => { /* c: boolean */ },
+})
+```
+
+Features: exponential backoff reconnection (1s → 2s → 4s → max 30s), JSON parsing built-in, cleanup on unmount.
+
+**3. Global Toast (`hooks/ToastContext.tsx`)**
+
+Zero-dependency React Context system:
+
+```typescript
+const { show } = useToast()
+show('笔记已删除', 'info')
+show('任务完成', 'success')
+show('加载失败', 'error')
+```
+
+Toasts stack at bottom-right, auto-dismiss after 4 seconds, click to close. `ToastProvider` wraps the app in `layout.tsx`.
+
+**Connection Status:** `ConnectionStatus` renders a green/amber dot in the layout using `useSSE`'s `connected` state, providing visual feedback when the SSE connection drops.
+
+### Panel Migration
+
+All 6 panels migrated from manual `EventSource` + `console.error` to `useSSE` + `useToast`:
+
+| Panel | Before | After |
+|-------|--------|-------|
+| NotesPanelClient | Manual EventSource → load() | `useSSE({ onNote })` → load(); toast on delete/errors |
+| TasksPanel | Manual EventSource → load() | `useSSE({ onTask })` → load() + toast on complete/fail |
+| InboxPanel | **No SSE** | `useSSE({ onInbox })` → load(); toast on approve/reject |
+| RSSPanel | **No SSE** | `useSSE({ onInbox })` → load(); toast on add/remove/check |
+| ChatPanel | `console.error` | toast on save/create/delete errors |
+| TabShell | Manual EventSource → count fetch | `useSSE({ onInbox, onTask })` → badge count update |
 
 ---
 

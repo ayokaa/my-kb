@@ -139,7 +139,7 @@ function toAnthropicParams(openaiMessages: any[]): {
  * 处理单轮流式响应，实时转发文本，收集 tool_calls。
  */
 async function processStreamRound(
-  stream: Anthropic.MessageStream,
+  stream: AsyncIterable<Anthropic.MessageStreamEvent>,
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder
 ): Promise<StreamResult> {

@@ -31,25 +31,24 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
 
   const { show } = useToast();
 
-  // SSE: 收件箱新增时刷新（RSS 抓取结果进入收件箱）
-  useSSE({
-    onInbox: useCallback(() => {
-      load();
-    }, [load]),
-  });
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/rss/subscriptions');
       const data = await res.json();
       setSubscriptions(data.subscriptions || []);
-    } catch (err) {
-      console.error('[RSSPanel] Failed to load subscriptions:', err);
-      setSubscriptions([]);
+    } catch {
+      show('加载订阅源失败', 'error');
     }
     setLoading(false);
-  }, []);
+  }, [show]);
+
+  // SSE: 收件箱新增时刷新（RSS 抓取结果进入收件箱）
+  useSSE({
+    onInbox: useCallback(() => {
+      load();
+    }, [load]),
+  });
 
   useEffect(() => {
     load();
