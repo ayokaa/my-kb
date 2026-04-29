@@ -3,8 +3,10 @@ import {
   emptyMemory,
   mergeMemory,
   getChatContext,
+  computeNoteStatus,
   type UserMemory,
   type MemoryExtractResult,
+  type NoteKnowledge,
 } from '../memory';
 
 describe('memory module', () => {
@@ -203,6 +205,59 @@ describe('memory module', () => {
       expect(ctx).toContain('n1');
       expect(ctx).toContain('n5');
       expect(ctx).not.toContain('n6');
+    });
+  });
+
+  describe('computeNoteStatus', () => {
+    function nk(level: NoteKnowledge['level'], daysAgo = 0): NoteKnowledge {
+      const d = new Date(Date.now() - daysAgo * 86400000).toISOString();
+      return { level, firstSeenAt: d, lastReferencedAt: d, notes: 'test' };
+    }
+
+    it('seed → growing when user has encountered the note', () => {
+      expect(computeNoteStatus('seed', nk('referenced'), Date.now())).toBe('growing');
+      expect(computeNoteStatus('seed', nk('discussed'), Date.now())).toBe('growing');
+    });
+
+    it('seed stays seed when only aware', () => {
+      expect(computeNoteStatus('seed', nk('aware'), Date.now())).toBeNull();
+    });
+
+    it('seed stays seed when no knowledge', () => {
+      expect(computeNoteStatus('seed', undefined, Date.now())).toBeNull();
+    });
+
+    it('growing → evergreen when user discussed', () => {
+      expect(computeNoteStatus('growing', nk('discussed'), Date.now())).toBe('evergreen');
+    });
+
+    it('growing stays growing when only referenced', () => {
+      expect(computeNoteStatus('growing', nk('referenced'), Date.now())).toBeNull();
+    });
+
+    it('evergreen → stale after 30 days without reference', () => {
+      expect(computeNoteStatus('evergreen', nk('discussed', 31), Date.now())).toBe('stale');
+    });
+
+    it('evergreen stays evergreen within 30 days', () => {
+      expect(computeNoteStatus('evergreen', nk('discussed', 29), Date.now())).toBeNull();
+    });
+
+    it('evergreen → stale when no knowledge at all', () => {
+      expect(computeNoteStatus('evergreen', undefined, Date.now())).toBe('stale');
+    });
+
+    it('stale → growing when user references again', () => {
+      expect(computeNoteStatus('stale', nk('referenced'), Date.now())).toBe('growing');
+    });
+
+    it('stale stays stale when no knowledge', () => {
+      expect(computeNoteStatus('stale', undefined, Date.now())).toBeNull();
+    });
+
+    it('archived never changes', () => {
+      expect(computeNoteStatus('archived', nk('discussed'), Date.now())).toBeNull();
+      expect(computeNoteStatus('archived', undefined, Date.now())).toBeNull();
     });
   });
 });

@@ -220,3 +220,68 @@ export function getChatContext(
 
   return parts.join('\n');
 }
+
+// ── 笔记状态自动演进 ────────────────────────────────────────
+
+export interface StatusChange {
+  noteId: string;
+  from: string;
+  to: string;
+}
+
+/** 纯函数：根据 noteKnowledge 计算笔记应转换到的状态。返回 null 表示不变。 */
+export function computeNoteStatus(
+  currentStatus: string,
+  nk: NoteKnowledge | undefined,
+  now: number
+): string | null {
+  if (currentStatus === 'archived') return null;
+
+  switch (currentStatus) {
+    case 'seed':
+      if (nk && nk.level !== 'aware') return 'growing';
+      break;
+    case 'growing':
+      if (nk && nk.level === 'discussed') return 'evergreen';
+      break;
+    case 'evergreen':
+      if (!nk || (now - new Date(nk.lastReferencedAt).getTime()) > 30 * 86400000)
+        return 'stale';
+      break;
+    case 'stale':
+      if (nk) return 'growing';
+      break;
+  }
+  return null;
+}
+
+/**
+ * 根据用户记忆中的 noteKnowledge 自动演进笔记状态。
+ * 纯规则判断，不调用 LLM。
+ */
+export async function evolveNoteStatuses(memory: UserMemory): Promise<StatusChange[]> {
+  // 动态 import 避免循环依赖
+  const { FileSystemStorage } = await import('./storage');
+  const storage = new FileSystemStorage();
+  const notes = await storage.listNotes();
+  const changes: StatusChange[] = [];
+  const now = Date.now();
+
+  for (const note of notes) {
+    if (note.status === 'archived') continue;
+    const nk = memory.noteKnowledge[note.id];
+    const newStatus = computeNoteStatus(note.status, nk, now);
+
+    if (newStatus && newStatus !== note.status) {
+      changes.push({ noteId: note.id, from: note.status, to: newStatus });
+      note.status = newStatus as any;
+      await storage.saveNote(note, { skipBacklinkRebuild: true });
+    }
+  }
+
+  if (changes.length > 0) {
+    await storage.rebuildBacklinks();
+  }
+
+  return changes;
+}

@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
-import { loadMemory, saveMemory, mergeMemory, type MemoryExtractResult } from '@/lib/memory';
+import { loadMemory, saveMemory, mergeMemory, evolveNoteStatuses, type MemoryExtractResult } from '@/lib/memory';
 import { logger } from '@/lib/logger';
 
 const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 AI 助手的对话，提取以下信息。只基于对话内容，不要编造。
@@ -111,6 +111,12 @@ export async function POST(req: Request) {
     // 合并并保存
     const updated = mergeMemory(existingMemory, extracted, convId);
     await saveMemory(updated);
+
+    // 根据新的 noteKnowledge 自动演进笔记状态
+    const statusChanges = await evolveNoteStatuses(updated);
+    if (statusChanges.length > 0) {
+      logger.info('Memory', `Status changes: ${statusChanges.map(c => `${c.noteId}: ${c.from}→${c.to}`).join(', ')}`);
+    }
 
     logger.info('Memory', `Updated for conversation ${convId}`);
     return Response.json({ ok: true });
