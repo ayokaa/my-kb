@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useSSE } from '@/hooks/useSSE';
+import { useToast } from '@/hooks/ToastContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -84,34 +86,35 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteResult, setDeleteResult] = useState('');
 
-  async function load() {
+  const { show } = useToast();
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/notes');
       const data = await res.json();
       const list: Note[] = data.notes || [];
-      setNotes(list);
-      // If currently selected note no longer exists, pick the next available one
-      if (selected) {
-        const stillExists = list.find((n) => n.id === selected.id);
-        if (!stillExists) {
-          if (list.length > 0) {
-            setSelected(list[0]);
-          } else {
-            setSelected(null);
-          }
-          setShowDeleteConfirm(false);
-          setDeleteResult('');
+      setNotes((prev) => {
+        // If currently selected note no longer exists, pick the next available one
+        if (data.notes) {
+          setSelected((current) => {
+            if (!current) return list[0] || null;
+            const stillExists = list.find((n) => n.id === current.id);
+            if (!stillExists) {
+              setShowDeleteConfirm(false);
+              setDeleteResult('');
+              return list[0] || null;
+            }
+            return current;
+          });
         }
-      } else if (list.length > 0) {
-        setSelected(list[0]);
-      }
-    } catch (err) {
-      console.error('[NotesPanel] Failed to load notes:', err);
-      setNotes([]);
+        return list;
+      });
+    } catch {
+      show('加载笔记失败', 'error');
     }
     setLoading(false);
-  }
+  }, [show]);
 
   function navigateToNote(title: string) {
     // 先精确匹配
@@ -129,18 +132,10 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     }
   }
 
-  useEffect(() => {
-    const source = new EventSource('/api/events');
-    source.onmessage = (e) => {
-      if (e.data === 'changed') {
-        load();
-      }
-    };
-    source.onerror = (err) => {
-      console.error('[NotesPanel] SSE error:', err);
-    };
-    return () => source.close();
-  }, []);
+  // SSE: 笔记变更时自动刷新列表
+  useSSE({
+    onNote: useCallback(() => { load(); }, [load]),
+  });
 
   async function handleDelete(note: Note) {
     setDeletingId(note.id);
@@ -149,13 +144,13 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.ok) {
+        show(`已删除《${note.title}》`, 'info');
         await load();
       } else {
         setDeleteResult(`删除失败 · ${data.error}`);
       }
-    } catch (err) {
-      console.error('[NotesPanel] Failed to delete note:', err);
-      setDeleteResult('错误 · 删除失败');
+    } catch {
+      show('删除失败', 'error');
     }
     setDeletingId(null);
   }

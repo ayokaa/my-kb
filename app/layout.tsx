@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import ThemeProvider from '@/components/ThemeProvider';
+import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
   title: 'My Knowledge Base',
@@ -40,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh" data-theme="dark">
       <body className="antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <Providers><ThemeProvider>{children}</ThemeProvider></Providers>
       </body>
     </html>
   );

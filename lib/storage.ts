@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import type { Storage, Note, Conversation, InboxEntry, InvertedIndex, InvertedIndexEntry, AliasMapping, SourceType } from './types';
 import { parseNote, stringifyNote, parseInboxEntry } from './parsers';
 import { logger } from './logger';
+import { emitInboxEvent } from './events';
 
 let invertedIndexModule: typeof import('./search/inverted-index') | null = null;
 
@@ -437,6 +438,8 @@ export class FileSystemStorage implements Storage {
       const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
       await this.atomicWrite(path, content);
       entry.filePath = path;
+      // 通知客户端收件箱有新内容
+      emitInboxEvent('new', 0);
       return true;
     } finally {
       releaseLock?.();

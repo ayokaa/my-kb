@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ListChecks, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, RotateCcw } from 'lucide-react';
+import { useSSE } from '@/hooks/useSSE';
+import { useToast } from '@/hooks/ToastContext';
+import type { TaskEvent } from '@/lib/events';
 
 interface Task {
   id: string;
@@ -40,18 +43,19 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'pending' | 'running' | 'done' | 'failed'>('all');
 
-  async function load() {
+  const { show } = useToast();
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/tasks', { cache: 'no-store' });
       const data = await res.json();
       setTasks(data.tasks || []);
-    } catch (err) {
-      console.error('[TasksPanel] Failed to load tasks:', err);
-      setTasks([]);
+    } catch {
+      show('加载任务列表失败', 'error');
     }
     setLoading(false);
-  }
+  }, [show]);
 
   async function handleRetry(taskId: string) {
     setRetryingId(taskId);
@@ -62,24 +66,32 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
         body: JSON.stringify({ action: 'retry', taskId }),
       });
       if (res.ok) {
+        show('已重新加入队列', 'info');
         await load();
       }
     } catch {
-      // ignore
+      show('重试失败', 'error');
     }
     setRetryingId(null);
   }
 
+  // SSE: 任务状态变更时刷新列表 + toast 通知
+  useSSE({
+    onTask: useCallback((e: TaskEvent) => {
+      load();
+      if (e.action === 'completed') {
+        const typeLabel = e.type === 'ingest' ? '入库' : e.type === 'relink' ? '重链' : e.type === 'web_fetch' ? '抓取' : 'RSS';
+        show(`${typeLabel} 任务完成`, 'success');
+      } else if (e.action === 'failed') {
+        const typeLabel = e.type === 'ingest' ? '入库' : e.type === 'relink' ? '重链' : e.type === 'web_fetch' ? '抓取' : 'RSS';
+        show(`${typeLabel} 任务失败`, 'error');
+      }
+    }, [load, show]),
+  });
+
   useEffect(() => {
     load();
-    const source = new EventSource('/api/events');
-    source.onmessage = () => {
-      load();
-    };
-    return () => {
-      source.close();
-    };
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     if (isActive) {

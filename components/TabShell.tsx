@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSSE } from '@/hooks/useSSE';
 import Sidebar, { type Tab } from './Sidebar';
 import ChatPanel from './ChatPanel';
 import InboxPanel from './InboxPanel';
@@ -9,6 +10,7 @@ import RSSPanel from './RSSPanel';
 import TasksPanel from './TasksPanel';
 import SettingsPanel from './SettingsPanel';
 import LogsPanel from './LogsPanel';
+import type { InboxEvent } from '@/lib/events';
 
 interface TabShellProps {
   notesPanel?: React.ReactNode;
@@ -19,35 +21,43 @@ export default function TabShell({ notesPanel }: TabShellProps) {
   const [inboxCount, setInboxCount] = useState(0);
   const [taskCount, setTaskCount] = useState(0);
 
+  // SSE: 事件驱动更新侧边栏计数
+  useSSE({
+    onInbox: useCallback((e: InboxEvent) => {
+      if (e.action === 'new') {
+        // 有新条目时刷新计数
+        fetch('/api/inbox', { cache: 'no-store' })
+          .then((r) => r.json())
+          .then((d) => setInboxCount(d.entries?.length || 0))
+          .catch(() => {});
+      }
+    }, []),
+    onTask: useCallback(() => {
+      fetch('/api/tasks?filter=inbox_pending', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => setTaskCount(d.tasks?.length || 0))
+        .catch(() => {});
+    }, []),
+    onNote: useCallback(() => {
+      // 笔记变更时刷新计数（可能影响收件箱/任务状态）
+      fetch('/api/inbox', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => setInboxCount(d.entries?.length || 0))
+        .catch(() => {});
+    }, []),
+  });
+
   function refreshInboxCount() {
     fetch('/api/inbox', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => setInboxCount(d.entries?.length || 0))
-      .catch((err) => console.error('[TabShell] Failed to refresh inbox count:', err));
+      .catch(() => {});
   }
 
   useEffect(() => {
+    // tab 切换时刷新收件箱计数
     refreshInboxCount();
   }, [tab]);
-
-  useEffect(() => {
-    const refreshTasks = () => {
-      fetch('/api/tasks?filter=inbox_pending', { cache: 'no-store' })
-        .then((r) => r.json())
-        .then((d) => setTaskCount(d.tasks?.length || 0))
-        .catch((err) => console.error('[TabShell] Failed to refresh tasks:', err));
-    };
-    refreshTasks();
-
-    const source = new EventSource('/api/events');
-    source.onmessage = () => {
-      refreshInboxCount();
-      refreshTasks();
-    };
-    return () => {
-      source.close();
-    };
-  }, []);
 
   return (
     <>

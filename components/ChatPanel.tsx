@@ -5,6 +5,7 @@ import { useChat } from 'ai/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Bot, User, Plus, MessageSquare, Trash2, BookOpen, Sparkles, Globe } from 'lucide-react';
+import { useToast } from '@/hooks/ToastContext';
 
 interface ConversationItem {
   id: string;
@@ -259,6 +260,8 @@ export default function ChatPanel() {
   const [loadingConv, setLoadingConv] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
 
+  const { show } = useToast();
+
   const isCreatingRef = useRef(false);
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
@@ -275,8 +278,8 @@ export default function ChatPanel() {
         setActiveMessages([]);
         setCurrentSources([]);
       }
-    } catch (err) {
-      console.error('[ChatPanel] Failed to create conversation:', err);
+    } catch {
+      show('创建对话失败', 'error');
     } finally {
       isCreatingRef.current = false;
     }
@@ -296,8 +299,8 @@ export default function ChatPanel() {
       } else if (list.length > 0 && !activeIdRef.current) {
         setActiveId(list[0].id);
       }
-    } catch (err) {
-      console.error('[ChatPanel] Failed to load conversations:', err);
+    } catch {
+      show('加载对话列表失败', 'error');
     }
   }, [handleNewConversation]);
 
@@ -312,8 +315,8 @@ export default function ChatPanel() {
       if (res.ok) {
         setActiveMessages((data.messages || []).map((m: any, i: number) => ({ id: m.id || `msg-${i}`, role: m.role, content: m.content, createdAt: m.createdAt })));
       }
-    } catch (err) {
-      console.error('[ChatPanel] Failed to load messages:', err);
+    } catch {
+      show('加载消息失败', 'error');
     } finally {
       setLoadingConv(false);
     }
@@ -344,8 +347,9 @@ export default function ChatPanel() {
           return next;
         });
       }
-    } catch (err) {
-      console.error('[ChatPanel] Failed to delete conversation:', err);
+      show('对话已删除', 'info');
+    } catch {
+      show('删除对话失败', 'error');
     }
   }, [activeId, confirmingDeleteId, handleSelectConversation]);
 
@@ -353,8 +357,8 @@ export default function ChatPanel() {
     try {
       await fetch(`/api/conversations/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) });
       loadConversations();
-    } catch (err) {
-      console.error('[ChatPanel] Failed to save conversation:', err);
+    } catch {
+      show('保存对话失败', 'error');
     }
   }, [loadConversations]);
 

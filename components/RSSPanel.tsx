@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, RefreshCw, Upload, Rss, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { useSSE } from '@/hooks/useSSE';
+import { useToast } from '@/hooks/ToastContext';
 
 interface Subscription {
   url: string;
@@ -26,6 +28,15 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
   const [newName, setNewName] = useState('');
   const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
   const [importing, setImporting] = useState(false);
+
+  const { show } = useToast();
+
+  // SSE: 收件箱新增时刷新（RSS 抓取结果进入收件箱）
+  useSSE({
+    onInbox: useCallback(() => {
+      load();
+    }, [load]),
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,23 +73,27 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
       if (res.ok) {
         setNewUrl('');
         setNewName('');
+        show('已添加订阅源', 'success');
         load();
       }
-    } catch (err) {
-      console.error('[RSSPanel] Failed to add subscription:', err);
+    } catch {
+      show('添加订阅源失败', 'error');
     }
   }
 
   async function removeSubscription(url: string) {
     try {
-      await fetch('/api/rss/subscriptions', {
+      const res = await fetch('/api/rss/subscriptions', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      load();
-    } catch (err) {
-      console.error('[RSSPanel] Failed to remove subscription:', err);
+      if (res.ok) {
+        show('已移除订阅源', 'info');
+        load();
+      }
+    } catch {
+      show('移除订阅源失败', 'error');
     }
   }
 
@@ -89,9 +104,11 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
       const res = await fetch('/api/rss/subscriptions/check', { method: 'POST', body: '{}' });
       const data = await res.json();
       setCheckResults(data.results || []);
+      const total = (data.results || []).reduce((s: number, r: CheckResult) => s + r.newItems, 0);
+      if (total > 0) show(`找到 ${total} 篇新文章`, 'success');
       load();
-    } catch (err) {
-      console.error('[RSSPanel] Failed to check subscriptions:', err);
+    } catch {
+      show('检查更新失败', 'error');
     }
     setChecking(false);
   }

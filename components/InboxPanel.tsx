@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Check, X, Loader2, ExternalLink, Calendar, Tag, Inbox, RefreshCw, Rss } from 'lucide-react';
+import { useSSE } from '@/hooks/useSSE';
+import { useToast } from '@/hooks/ToastContext';
 
 interface InboxEntry {
   title: string;
@@ -27,26 +29,34 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
   const [result, setResult] = useState('');
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
 
-  async function load() {
+  const { show } = useToast();
+
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/inbox', { cache: 'no-store' });
       const data = await res.json();
       setEntries(data.entries || []);
-      if (data.entries?.length > 0 && !selected) {
-        setSelected(data.entries[0]);
+      if (data.entries?.length > 0) {
+        setSelected((current) => current ?? data.entries[0]);
       }
       onChange?.();
-    } catch (err) {
-      console.error('[InboxPanel] Failed to load entries:', err);
-      setEntries([]);
+    } catch {
+      show('加载收件箱失败', 'error');
     }
     setLoading(false);
-  }
+  }, [onChange, show]);
+
+  // SSE: 收件箱首次获得实时更新
+  useSSE({
+    onInbox: useCallback(() => {
+      load();
+    }, [load]),
+  });
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     if (isActive) {
@@ -73,6 +83,7 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         });
         const data = await res.json();
         if (data.ok) {
+          show('已加入处理队列', 'success');
           setResult('已加入处理队列');
         } else {
           setResult(`失败 · ${data.error}`);
@@ -87,6 +98,7 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         });
         const data = await res.json();
         if (data.ok) {
+          show('已忽略', 'info');
           setResult('已忽略');
         } else {
           setResult(`归档失败 · ${data.error}`);

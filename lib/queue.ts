@@ -9,11 +9,9 @@ import { fetchRSS } from './ingestion/rss';
 import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
-import { broadcastNoteChanged } from './events';
+import { emitNoteEvent, emitTaskEvent } from './events';
 
-function broadcastTaskChanged() {
-  broadcastNoteChanged();
-}
+// broadcastTaskChanged 已移除，改由 worker 中直接调用 emitTaskEvent
 import { runRelinkJob } from './cognition/relink';
 import { logger } from './logger';
 
@@ -194,7 +192,7 @@ export function enqueue(type: TaskType, payload: TaskPayload): string {
   pendingByType[type].push(id);
   logger.info('Queue', `Enqueued ${type} task ${id}`);
   saveQueueState();
-  broadcastTaskChanged();
+  emitTaskEvent('started', id, type);
   startWorker(type);
   return id;
 }
@@ -230,6 +228,7 @@ export function retryTask(id: string): Task | null {
   task.result = undefined;
   pendingByType[task.type].push(id);
   saveQueueState();
+  emitTaskEvent('started', id, task.type);
   startWorker(task.type);
   return task;
 }
@@ -250,7 +249,7 @@ async function startWorker(type: TaskType) {
     task.status = 'running';
     task.startedAt = new Date().toISOString();
     saveQueueState();
-    broadcastTaskChanged();
+    emitTaskEvent('started', id, type);
 
     try {
       if (task.type === 'ingest') {
@@ -258,26 +257,31 @@ async function startWorker(type: TaskType) {
         task.status = 'done';
         task.result = result || { ok: true };
         logger.info('Queue', `Task ${id} completed ${(result as any)?.skipped ? '(skipped)' : ''}`);
+        emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'rss_fetch') {
         const result = await runRSSFetchTask(task.payload as RSSFetchPayload);
         task.status = 'done';
         task.result = result;
         logger.info('Queue', `Task ${id} RSS fetch completed ${(result as any).newItems !== undefined ? `(${(result as any).newItems} new items)` : ''}`);
+        emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'web_fetch') {
         const result = await runWebFetchTask(task.payload as WebFetchPayload);
         task.status = 'done';
         task.result = result;
         logger.info('Queue', `Task ${id} web fetch completed ${(result as any).title || ''}`);
+        emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'relink') {
         const result = await runRelinkTask();
         task.status = 'done';
         task.result = result;
         logger.info('Queue', `Task ${id} relink completed ${JSON.stringify(result)}`);
+        emitTaskEvent('completed', id, type, undefined, result);
       }
     } catch (err) {
       task.status = 'failed';
       task.error = err instanceof Error ? err.message : 'Unknown error';
       logger.error('Queue', `Task ${id} failed: ${err instanceof Error ? err.message : String(err)}`);
+      emitTaskEvent('failed', id, type, task.error);
     }
     task.completedAt = new Date().toISOString();
     saveQueueState();
@@ -324,7 +328,7 @@ async function runWebFetchTask(payload: WebFetchPayload) {
   const { note } = await processInboxEntry(entry, existingNotes);
   await storage.saveNote(note, { skipBacklinkRebuild: true });
   await storage.rebuildBacklinks();
-  broadcastNoteChanged();
+  emitNoteEvent('created', note.id, note.title);
   return { ok: true, title: web.title, url };
 }
 
@@ -366,7 +370,7 @@ async function runIngestTask(payload: IngestPayload) {
     const { note } = await processInboxEntry(entry, existingNotes);
     await storage.saveNote(note, { skipBacklinkRebuild: true });
     await storage.rebuildBacklinks();
-    broadcastNoteChanged();
+    emitNoteEvent('created', note.id, note.title);
     return { ok: true, title: note.title };
   }
 
@@ -406,6 +410,6 @@ async function runIngestTask(payload: IngestPayload) {
   const { note } = await processInboxEntry(entry, existingNotes);
   await storage.saveNote(note, { skipBacklinkRebuild: true });
   await storage.archiveInbox(fileName);
-  broadcastNoteChanged();
+  emitNoteEvent('created', note.id, note.title);
   await storage.rebuildBacklinks();
 }
