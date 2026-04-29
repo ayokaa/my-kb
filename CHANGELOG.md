@@ -17,6 +17,7 @@ All notable changes to this project are documented in this file.
 
 - **Search cache TTL**：从 5 秒提升至 5 分钟，减少 14MB 倒排索引的重建频率。
 - **搜索索引去 content + ripgrep 兜底**：`buildNoteIndex` 不再对 `note.content` 做分词索引——正文贡献 80%+ 的索引体积但检索权重最低（0.8）。结构化搜索结果 < 3 条时，自动用 `rg -l -i` 扫描 notes/ 做全文关键词兜底。索引体积缩小 ~10x，构建速度提升 ~5x。
+- **中文分词从 n-gram 迁移至 jieba**：用 `@node-rs/jieba` 词典分词替换 `expandChineseTokens` 的纯 n-gram 滑动窗口。分词精度显著提升（"向量数据库" 从 8 个噪声 token 降为 ["向量","数据库"]），索引噪声大幅减少。`INDEX_VERSION` 升至 3 触发自动重建。
 
 ## 2026-04-28
 

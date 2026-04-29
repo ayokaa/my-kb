@@ -69,8 +69,6 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 4. Saves only when links changed. Returns `{ processed, updated, failed }` stats.
 
 **`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
-
-**`rss_fetch`** — Fetch an RSS feed and write new items to the inbox:
 1. Calls `fetchRSS(url)` to retrieve and parse the feed.
 2. Calls `processFeedItems()` which applies `lastPubDate` filtering and deduplication.
 3. Writes new items to `knowledge/inbox/` as Markdown files.
@@ -91,9 +89,9 @@ If the process crashes and restarts, `loadQueueState()` restores pending tasks a
 
 The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RAG) before calling the LLM:
 
-1. Loads the search index via `loadOrBuildIndex()` (5-second TTL memory cache; concurrent requests share the same promise). If loading fails, the cached promise is cleared via `try/finally` so subsequent requests retry instead of hanging on a permanently rejected promise.
-2. Tokenizes the last 3 user messages concatenated (Chinese whole-word + 2/3-char combos + English word-level).
-3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts > links > backlinks). **Content is not indexed** — it accounts for 80%+ of index volume but has the lowest retrieval weight (0.8) and `assembleContext` only uses the first 2000 chars.
+1. Loads the search index via `loadOrBuildIndex()` (5-minute TTL memory cache; concurrent requests share the same promise). If loading fails, the cached promise is cleared via `try/finally` so subsequent requests retry instead of hanging on a permanently rejected promise.
+2. Tokenizes the last 3 user messages concatenated (jieba dictionary segmentation for Chinese; whitespace-split + lowercase for English; stop-word filtering).
+3. Searches the inverted index with Zone-weighted scoring (tags > QAs > title > summary > keyFacts > links > backlinks). **Content is not indexed** — it accounts for 80%+ of index volume but the `assembleContext` context builder only uses the first 2000 chars of each note's body.
 4. If structured search returns fewer than 3 results, a **ripgrep fallback** (`rg -l -i pattern notes/`) scans all note bodies for the query terms. Any matches are loaded via `storage.loadNote()` and appended at a low fixed score (0.3).
 5. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
 6. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
@@ -402,5 +400,5 @@ The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledg
 | **Camoufox over fetch** | Required for modern client-rendered sites; anti-fingerprinting reduces bot detection. |
 | **Inbox review step** | LLM calls cost money and can produce garbage. Human approval prevents polluting the knowledge base. |
 | **YAML frontmatter** | Human-readable metadata that any Markdown editor can display. |
-| **Inverted index (JSON)** | Keyword-based search index stored as `search-index.json`. Updated incrementally on note save/delete. |
+| **Inverted index + ripgrep fallback** | Chinese tokenization via jieba dictionary; 7 metadata fields indexed (content excluded). Structured results below threshold trigger `rg` full-text scan. Index persisted as `search-index.json`, updated incrementally on note save/delete. |
 | **E2E data isolation via env var** | Single `KNOWLEDGE_ROOT` point of control; no mocking or dependency injection needed. |
