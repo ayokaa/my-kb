@@ -52,6 +52,8 @@ export interface Task {
   completedAt?: string;
   error?: string;
   result?: unknown;
+  /** 任务重试时保留——避免重复执行昂贵操作（如浏览器抓取） */
+  taskCache?: Record<string, unknown>;
 }
 
 const tasks = new Map<string, Task>();
@@ -228,6 +230,7 @@ export function retryTask(id: string): Task | null {
   task.startedAt = undefined;
   task.completedAt = undefined;
   task.result = undefined;
+  // taskCache 保留——避免重试时重复执行昂贵操作（如浏览器抓取）
   pendingByType[task.type].push(id);
   saveQueueState();
   emitTaskEvent('started', id, task.type);
@@ -267,7 +270,7 @@ async function startWorker(type: TaskType) {
         logger.info('Queue', `Task ${id} RSS fetch completed ${(result as any).newItems !== undefined ? `(${(result as any).newItems} new items)` : ''}`);
         emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'web_fetch') {
-        const result = await runWebFetchTask(task.payload as WebFetchPayload);
+        const result = await runWebFetchTask(task.payload as WebFetchPayload, task);
         task.status = 'done';
         task.result = result;
         logger.info('Queue', `Task ${id} web fetch completed ${(result as any).title || ''}`);
@@ -313,7 +316,7 @@ export function initQueue() {
 
 
 
-async function runWebFetchTask(payload: WebFetchPayload) {
+async function runWebFetchTask(payload: WebFetchPayload, task?: Task) {
   const { url } = payload;
   const storage = new FileSystemStorage();
 
@@ -324,15 +327,29 @@ async function runWebFetchTask(payload: WebFetchPayload) {
     return { skipped: true, reason: 'duplicate source', url };
   }
 
-  const web = await fetchWebContent(url);
+  // 重试时优先使用缓存，避免重复抓取
+  let title: string;
+  let content: string;
+  if (task?.taskCache?.webContent) {
+    const cached = task.taskCache.webContent as { title: string; content: string };
+    title = cached.title;
+    content = cached.content;
+    logger.info('Queue', `Using cached web fetch for ${url}`);
+  } else {
+    const web = await fetchWebContent(url);
+    title = web.title || url;
+    content = web.content || '';
+    // 缓存抓取结果，供重试时复用
+    task.taskCache = { webContent: { title, content } };
+  }
 
   const entry: InboxEntry = {
     sourceType: 'web',
-    title: web.title || url,
-    content: web.content || '',
+    title,
+    content,
     // 不传 source_url 到 rawMetadata —— 避免 enrichContent 重复抓取同一 URL
     rawMetadata: {
-      excerpt: web.excerpt,
+      excerpt: '',
       userHint: payload.userHint,
     },
     extractedAt: new Date().toISOString(),
@@ -347,7 +364,7 @@ async function runWebFetchTask(payload: WebFetchPayload) {
   await storage.saveNote(note, { skipBacklinkRebuild: true });
   await storage.rebuildBacklinks();
   emitNoteEvent('created', note.id, note.title);
-  return { ok: true, title: web.title, url };
+  return { ok: true, title, url };
 }
 
 async function runRSSFetchTask(payload: RSSFetchPayload) {
