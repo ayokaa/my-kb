@@ -12,6 +12,9 @@ All notable changes to this project are documented in this file.
 - **SSE events stale controller 泄漏**：当 controller set 超过 50 个时，主动发送 heartbeat 探测并清理已断开的 controller。
 - **SSE events 无心跳断开** (`app/api/events/route.ts`)：新增 30s heartbeat、AbortSignal 处理和 cancel 清理，与 `/api/logs/stream` 保持一致，防止代理因空闲超时断开 SSE 连接。
 - **`node-cron` HMR 任务泄漏**：`rss/cron.ts` 和 `relink/cron.ts` 在启动新任务前，通过 `node-cron` 的 `getTasks()` registry 清理同名的旧任务实例，防止 Next.js dev 服务器热更新后僵尸任务累积。
+- **LogsPanel 滚动按钮定位**：修复日志面板中"滚动到底部"按钮会随内容滚动而移动的布局问题，改为固定定位在右下角。（`2ff16c0`）
+- **MessageStream 类型修复**：修复 Anthropic Messages API 流式响应中的 `MessageStream` 类型不匹配问题，确保 TypeScript 编译通过。（`ac4b5f5`）
+- **RSSPanel 加载顺序**：修复 RSS 订阅面板在初始加载时的数据获取顺序问题，避免空状态闪烁。（`ac4b5f5`）
 
 ### Added
 
@@ -22,6 +25,9 @@ All notable changes to this project are documented in this file.
 - **收件箱实时更新**：InboxPanel 和 RSSPanel 首次通过 `useSSE({ onInbox })` 订阅收件箱变更事件。RSS cron 抓取到新内容时自动通知前端。
 - **任务完成通知**：TasksPanel 通过 `useSSE({ onTask })` 收到任务成功/失败事件时弹出 toast 通知，不再需要手动切到任务面板查看进度。
 - **操作反馈**：所有面板的 create/save/delete/approve/reject 操作都增加了 toast 反馈（成功/失败），取代此前仅 `console.error` 的静默失败。
+- **用户记忆系统** (`lib/memory.ts`)：聊天后自动分析对话，提取用户画像（角色、技术栈、兴趣、背景）、笔记熟悉度（`aware`/`referenced`/`discussed`）、对话摘要和偏好信号。记忆持久化到 `knowledge/meta/user-memory.json`，增量合并，不重复已有信息。`getChatContext()` 将记忆注入聊天 system prompt，实现个性化回复。（`e9e21d6`）
+- **笔记状态自动进化** (`lib/memory.ts`)：根据用户记忆中的 `noteKnowledge` 自动演进笔记状态。纯规则判断，不调用 LLM：`seed` → 用户提及过 → `growing`；`growing` → 深入讨论过 → `evergreen`；`evergreen` → 30 天未提及 → `stale`；`stale` → 再次被提及 → `growing`。每次 `/api/memory/update` 完成后自动执行。（`e4cfcd9`）
+- **笔记面板服务端全文搜索** (`app/api/notes/route.ts`)：`GET /api/notes` 新增 `?search=` 查询参数。后端使用 `ripgrep` 扫描所有笔记正文做全文匹配，同时叠加标题/摘要/标签的字符串包含匹配。返回结果后前端不再做客户端过滤，解决大知识库下前端搜索性能问题。（`3d19174`）
 
 ### Changed
 
@@ -35,7 +41,8 @@ All notable changes to this project are documented in this file.
 - **Web 抓取超时空内容直接失败**：`fetchWebContent` 返回空内容时抛异常（取代之前继续送 LLM 产出垃圾笔记），任务标记为 failed。
 - **笔记删除二次确认**：删除按钮改为与对话删除一致的两击模式——首次点击变红"确认删除"，3s 自动恢复，二次点击执行删除。
 - **Web 抓取超时提升至 60s**：Python 端 `goto` 超时从 15s 升至 60s，Node.js 端 90s。
-- **连接状态并入侧边栏**：`ConnectionStatus` 组件删除，功能并入 `Sidebar` 底部 Status 区域。三种状态：灰色"连接中" → 绿色"已连接" → 琥珀色脉冲"重连中"。
+- **SSE 刷新保留搜索词**：`NotesPanelClient` 在收到 SSE `note` 事件自动刷新列表时，保留当前搜索框中的搜索词，不再跳回全量列表。（`cd4327f`）
+- **连接状态并入侧边栏**：`ConnectionStatus` 组件删除，功能并入 `Sidebar` 底部 Status 区域。三种状态：灰色"连接中" → 绿色"已连接" → 琥珀色脉冲"重连中"。（`05d9763`）
 
 ## 2026-04-28
 

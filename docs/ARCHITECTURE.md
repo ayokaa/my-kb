@@ -125,12 +125,15 @@ components/         — React UI (Client Components + Server Components)
 ├── RSSPanel.tsx
 ├── TasksPanel.tsx
 ├── TabShell.tsx            — Tab container (CSS hidden for state preservation)
-├── ConnectionStatus.tsx    — SSE connection health indicator
-└── Providers.tsx           — Client wrapper (ToastProvider + ConnectionStatus)
+├── Providers.tsx           — Client wrapper (ToastProvider)
+└── Providers.tsx           — Client wrapper (ToastProvider)
 
 hooks/
 ├── ToastContext.tsx  — Global toast notification system (React Context)
 └── useSSE.ts         — Generic SSE hook with typed events + auto-reconnect
+
+lib/
+├── memory.ts       — User memory modeling (profile, note familiarity, conversation digest)
 
 lib/
 ├── types.ts        — Source of truth for all data shapes
@@ -161,7 +164,7 @@ lib/
 **Rules:**
 - `lib/ingestion/*` only fetches raw data. It never touches the LLM.
 - `lib/cognition/ingest.ts` and `lib/cognition/relink.ts` are the only modules allowed to call the LLM for note generation / link refresh.
-- `lib/llm.ts` is the single source of truth for LLM client instantiation. All call sites (`ingest.ts`, `relink.ts`, `app/api/chat/route.ts`) go through it.
+- `lib/llm.ts` is the single source of truth for LLM client instantiation. All call sites (`ingest.ts`, `relink.ts`, `app/api/chat/route.ts`, `app/api/memory/update/route.ts`) go through it.
 
 ---
 
@@ -215,7 +218,7 @@ show('加载失败', 'error')
 
 Toasts stack at bottom-right, auto-dismiss after 4 seconds, click to close. `ToastProvider` wraps the app in `layout.tsx`.
 
-**Connection Status:** `ConnectionStatus` renders a green/amber dot in the layout using `useSSE`'s `connected` state, providing visual feedback when the SSE connection drops.
+**Connection Status:** `Sidebar` renders a green/amber dot in its footer using `useSSE`'s `connected` state, providing visual feedback when the SSE connection drops. Three states: gray "连接中" → green "已连接" → amber pulsing "重连中".
 
 ### Panel Migration
 
@@ -296,6 +299,66 @@ LLM credentials, model names, and cron intervals were statically baked into envi
 ### UI
 
 `components/SettingsPanel.tsx` is a `'use client'` form that fetches current settings on mount and POSTs changes on save. It lives in the main tab switcher (`TabShell`) alongside Chat, Inbox, Notes, etc.
+
+---
+
+## User Memory System
+
+### Problem
+
+The chat system treated every conversation as stateless. It had no memory of the user's background, preferences, or prior familiarity with knowledge base topics. This meant:
+- A user who had discussed "vector databases" extensively would still receive beginner-level explanations on the next mention.
+- The LLM had no awareness of the user's role, tech stack, or interests, leading to generic responses.
+- Note status (`seed`/`growing`/`evergreen`) was purely manual — there was no signal from actual usage.
+
+### Solution
+
+A lightweight user memory model (`lib/memory.ts`) that is updated automatically after each conversation.
+
+**Data Model** (`UserMemory`, persisted at `knowledge/meta/user-memory.json`):
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `profile` | `{ role?, techStack[], interests[], background? }` | User's professional identity and domain knowledge |
+| `noteKnowledge` | `Record<noteId, { level, firstSeenAt, lastReferencedAt, notes }>` | Observed familiarity with specific notes (`aware` → `referenced` → `discussed`) |
+| `conversationDigest` | `{ conversationId, summary, topics[], timestamp }[]` | Rolling window of the last 20 conversation summaries |
+| `preferences` | `Record<string, unknown>` | Observed signals (detail level, code example preference, etc.) |
+
+**Update Pipeline** (`POST /api/memory/update`):
+
+1. **Load existing memory** from `user-memory.json` (or empty memory if first time).
+2. **Build prompt** containing:
+   - Current user profile summary (if any)
+   - Recent 3 conversation summaries
+   - The full conversation to analyze
+3. **LLM extraction** with a structured JSON output prompt. The LLM returns only *changes* — fields with no new information are omitted.
+4. **Merge** (`mergeMemory()`) using field-specific strategies:
+   - Arrays (`techStack`, `interests`): dedup append
+   - Scalars (`role`, `background`): overwrite
+   - `conversationDigest`: insert at front, cap at 20 entries
+   - `noteKnowledge`: per-note overwrite with `firstSeenAt` preservation
+5. **Atomic save** (tmp+rename) to `user-memory.json`.
+6. **Status evolution** (`evolveNoteStatuses()`) scans all notes and transitions status based on `noteKnowledge`:
+   - `seed` → `growing` when `level !== 'aware'`
+   - `growing` → `evergreen` when `level === 'discussed'`
+   - `evergreen` → `stale` after 30 days without reference
+   - `stale` → `growing` when referenced again
+   - `archived` is never changed
+
+**Chat Integration** (`getChatContext()`):
+
+Before each chat completion, the system calls `getChatContext(memory, relevantNoteIds)` to produce a structured "user profile" block that is injected into the system prompt. This block includes:
+- Profile lines (role, tech stack, interests, background)
+- Preference signals
+- Recent 3 conversation summaries
+- Familiarity notes for relevant knowledge base entries
+
+If no memory exists, the block is omitted entirely — zero overhead for new users.
+
+**Design Decisions:**
+- **No LLM on read path**: `getChatContext()` is a pure formatting function; no LLM call is made when loading memory for chat.
+- **Incremental, not replacement**: The LLM only emits *changes*, and the merge logic preserves history. This prevents the model from "forgetting" information due to context window limits.
+- **Pure rules for status evolution**: `computeNoteStatus()` uses simple time + level thresholds. No LLM involvement means instant, deterministic, and cheap updates.
 
 ---
 

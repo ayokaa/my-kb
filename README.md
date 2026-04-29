@@ -14,12 +14,14 @@
        └────────────────── Chat ←───────────────────────────┘
 ```
 
-- **Ingest**: Web links, RSS feeds, PDF/TXT/MD files, plain text
+- **Ingest**: Web links, RSS feeds, PDF/TXT/MD files, plain text — all with an optional **user hint** to guide the LLM's extraction focus
 - **Inbox Review**: Pending content is confirmed by the user (or auto-approved) before processing
-- **LLM Processing**: Calls the configured LLM API (Anthropic Messages API or compatible endpoint) to extract tags, summaries, key facts, timelines, links, and other structured information
+- **LLM Processing**: Calls the configured LLM API (Anthropic Messages API or compatible endpoint) to extract tags, summaries, key facts, timelines, links, QAs, and other structured information
 - **Settings**: Runtime-configurable LLM credentials, model, RSS interval, and relink cron schedule via the Settings UI panel — no server restart required
-- **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem
-- **Chat**: Streamed AI conversation with RAG retrieval — searches the knowledge base and injects relevant context into the system prompt; LLM can invoke `web_fetch` tool calls to scrape referenced web pages on-the-fly when knowledge is insufficient
+- **Knowledge Notes**: Stored as Markdown + YAML Frontmatter on the local filesystem; status (`seed`/`growing`/`evergreen`/`stale`/`archived`) auto-evolves based on your familiarity
+- **Search**: Server-side full-text search in the Notes panel; ripgrep-backed with title/summary/tag matching
+- **Chat**: Streamed AI conversation with RAG retrieval + **user memory** — searches the knowledge base, injects relevant context *and* your profile/preferences into the system prompt; LLM can invoke `web_fetch` tool calls to scrape referenced web pages on-the-fly when knowledge is insufficient
+- **Real-time**: Typed SSE events push note/task/inbox changes to all connected clients instantly, with toast notifications for operation feedback
 
 ## Tech Stack
 
@@ -36,10 +38,10 @@
 - **AI Streaming**: `ai` SDK + Anthropic Messages API
 - **Web Scraping**: Camoufox (Python, Firefox anti-fingerprinting) + trafilatura
 - **RSS**: `feedsmith` + incremental updates (`lastPubDate` watermark), queued async fetch
-- **Search**: Keyword-based RAG with Zone-weighted scoring for chat context augmentation; 5-second TTL memory cache for the search index
+- **Search**: Inverted index with jieba Chinese segmentation + Zone-weighted scoring for chat RAG; ripgrep full-text fallback for notes panel search; 5-minute TTL memory cache
 - **Storage**: Pure filesystem (`knowledge/` directory), atomic writes
-- **Testing**: Vitest (307 unit tests) + Playwright (50 E2E tests)
-- **Real-time**: SSE event bus for server-to-client push (note changes, chat data events)
+- **Testing**: Vitest (307+ unit tests) + Playwright (50+ E2E tests)
+- **Real-time**: Typed SSE event bus (`note`/`task`/`inbox`) with auto-reconnect, toast notifications, and connection status indicator
 
 ## Quick Start
 
@@ -102,32 +104,47 @@ npm run test:all
 my-kb/
 ├── app/                    # Next.js App Router
 │   ├── api/                # API routes
-│   ├── layout.tsx          # Root layout (bootstraps RSS cron)
-│   └── page.tsx            # Main page (tab switcher)
-├── components/             # React UI (Client Components)
+│   ├── layout.tsx          # Root layout (bootstraps RSS cron + relink cron)
+│   └── page.tsx            # Main page (Server Component, tab switcher)
+├── components/             # React UI
 │   ├── Sidebar.tsx
 │   ├── ChatPanel.tsx
 │   ├── InboxPanel.tsx
-│   ├── NotesPanel.tsx
-│   ├── NotesPanelClient.tsx
+│   ├── IngestPanel.tsx
+│   ├── LogsPanel.tsx
+│   ├── NotesPanel.tsx          # Server Component (fetches initial data)
+│   ├── NotesPanelClient.tsx    # Client Component (interactivity + SSE)
 │   ├── RSSPanel.tsx
+│   ├── SettingsPanel.tsx
 │   ├── TasksPanel.tsx
-│   └── SettingsPanel.tsx
+│   ├── TabShell.tsx            # Tab container (CSS hidden for state preservation)
+│   └── Providers.tsx           # Client wrapper (ToastProvider)
+├── hooks/
+│   ├── ToastContext.tsx    # Global toast notification system
+│   └── useSSE.ts           # Generic SSE hook with typed events + auto-reconnect
 ├── lib/                    # Core business logic
 │   ├── types.ts            # Type definitions
-│   ├── storage.ts          # Filesystem storage
-│   ├── parsers.ts          # Markdown parse/serialize
-│   ├── queue.ts            # Task queue (memory + JSON persistence)
+│   ├── storage.ts          # Filesystem storage (atomic writes, CRUD, index mgmt)
+│   ├── parsers.ts          # Markdown parse/serialize + inbox parsing
+│   ├── queue.ts            # Task queue (per-type isolated workers + JSON persistence)
+│   ├── memory.ts           # User memory modeling (profile, note familiarity, preferences)
+│   ├── settings.ts         # Runtime configuration (YAML persistence, env fallback)
+│   ├── llm.ts              # Centralized async LLM client factory
+│   ├── events.ts           # Typed SSE event bus (emitNoteEvent / emitTaskEvent / emitInboxEvent)
+│   ├── logger.ts           # Structured logging (memory buffer + file rotation + SSE broadcast)
 │   ├── cognition/          # LLM calls (ingest + relink)
 │   ├── ingestion/          # Content scraping (Web/RSS/PDF)
-│   ├── rss/                # RSS subscription management
+│   ├── search/             # Inverted index, scoring engine, evaluation framework, cache
+│   ├── rss/                # RSS subscription management + cron
 │   └── relink/             # Background link-refresh cron
 ├── e2e/                    # Playwright E2E tests
 ├── knowledge/              # Data storage (.gitignore, local only)
 │   ├── notes/              # Structured notes
 │   ├── inbox/              # Pending review entries
+│   ├── archive/
+│   │   └── inbox/          # Rejected or processed inbox files
 │   ├── conversations/      # Chat history (*.md)
-│   ├── meta/               # Metadata (index, queue, RSS subscriptions)
+│   ├── meta/               # Metadata (search-index, queue, RSS subscriptions, settings, user-memory)
 │   └── attachments/        # Uploaded original files
 ├── knowledge-test/         # E2E test data isolation (.gitignore, local only)
 ├── docs/                   # Documentation
@@ -140,11 +157,11 @@ my-kb/
 
 ## Data Storage
 
-All data is stored as Markdown / YAML files in the `knowledge/` directory. No database is required:
+All data is stored as Markdown / YAML / JSON files in the `knowledge/` directory. No database is required:
 
 - **Notes**: `knowledge/notes/{id}.md` — YAML Frontmatter + Markdown body
 - **Inbox**: `knowledge/inbox/{timestamp}-{slug}.md`
-- **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state, runtime settings
+- **Metadata**: `knowledge/meta/` — inverted index, RSS subscription list, task queue state, runtime settings, user memory
 
 Both `knowledge/` and `knowledge-test/` and `.env*.local` are excluded by `.gitignore` to ensure personal data never enters version control.
 
@@ -158,9 +175,11 @@ E2E tests run against a separate `knowledge-test/` directory (set via `KNOWLEDGE
 |----------|-----------|
 | **Filesystem storage** | Notes are documents; Markdown is the native format. Git provides versioning for free. |
 | **Camoufox scraping** | Modern sites are client-side rendered. Pure `fetch` only retrieves an empty HTML shell. Camoufox launches a privacy-hardened Firefox, executes JS, and returns the rendered HTML to Python `trafilatura` for article extraction. |
-| **Memory queue + JSON persistence** | Workload is small (single user, a few dozen tasks per day). Avoids Redis operational overhead. |
+| **Memory queue + JSON persistence** | Workload is small (single user, a few dozen tasks per day). Avoids Redis operational overhead. Per-type isolated workers prevent ingest from blocking RSS or relink tasks. |
 | **RSS incremental updates** | Uses `lastPubDate` as a watermark to avoid re-fetching duplicates. First check is limited to 5 items. |
 | **Inbox review step** | LLM calls cost money and can produce noise. Human approval prevents polluting the knowledge base. |
+| **Inverted index + ripgrep fallback** | jieba dictionary segmentation for Chinese; 7 metadata fields indexed (content excluded to save space). Structured results below threshold trigger `rg` full-text scan. Index persisted as `search-index.json`, updated incrementally on note save/delete. |
+| **User memory** | Conversations are not stateless. Auto-extracted profile, note familiarity, and preferences are injected into chat prompts for personalized responses. Status evolution keeps the knowledge base organically maintained without manual curation. |
 
 ## Documentation
 

@@ -202,11 +202,61 @@ For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + 
 
 ---
 
+## Memory
+
+### `POST /api/memory/update`
+
+Analyze a conversation and update the user memory model. Called automatically by the chat system after each completed conversation turn.
+
+**Request body:**
+```json
+{
+  "conversationId": "conv-...",
+  "messages": [
+    { "role": "user", "content": "..." },
+    { "role": "assistant", "content": "..." }
+  ]
+}
+```
+
+**Behavior:**
+1. Loads existing memory from `knowledge/meta/user-memory.json` (or empty memory if not exists).
+2. Sends the conversation + existing profile to the LLM with a structured extraction prompt.
+3. The LLM returns JSON containing:
+   - `profileChanges` — incremental updates to role, techStack, interests, background
+   - `noteFamiliarity` — observed familiarity level (`aware`/`referenced`/`discussed`) for relevant notes
+   - `conversationDigest` — summary and topics of this conversation
+   - `preferenceSignals` — observed preferences (detail level, code examples, etc.)
+4. Merges extracted data into existing memory using field-specific strategies (dedup append for arrays, overwrite for scalars, insert-at-front for digest with 20-entry cap).
+5. Persists merged memory atomically (tmp+rename).
+6. Triggers `evolveNoteStatuses()` which automatically transitions note statuses based on `noteKnowledge`:
+   - `seed` → `growing` when user has referenced the note
+   - `growing` → `evergreen` when user has discussed it in depth
+   - `evergreen` → `stale` after 30 days without mention
+   - `stale` → `growing` when mentioned again
+
+**Response:**
+```json
+{ "ok": true }
+```
+
+**Error:** `400` if messages array is too short; `500` on LLM or persistence failure.
+
+---
+
 ## Notes
 
 ### `GET /api/notes`
 
-List all notes.
+List all notes. Supports optional server-side full-text search via query parameter.
+
+**Query params:** `?search=关键词` (optional)
+
+When `search` is provided, the endpoint performs two-phase matching:
+1. **ripgrep full-text scan**: Scans all note bodies in `knowledge/notes/` for the search term.
+2. **Metadata matching**: Also matches against note `title`, `summary`, and `tags` (case-insensitive substring).
+
+Only notes that match at least one phase are returned. When `search` is omitted, all notes are returned sorted by `created` descending.
 
 **Response:**
 ```json

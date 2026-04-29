@@ -26,7 +26,7 @@ export class FileSystemStorage implements Storage {
   private inboxWriteLock: Promise<void> = Promise.resolve();
 
   constructor(root?: string, execFileAsync?: ExecFileAsyncType) {
-    this.root = root || join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge');
+    this.root = root || join(/*turbopackIgnore: true*/ process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge');
     this.execFileAsync = execFileAsync || defaultExecFileAsync;
   }
 
