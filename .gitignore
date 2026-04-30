@@ -38,6 +38,9 @@ knowledge/
 knowledge-test/
 attachments/
 
+# analysis & design docs (not for version control)
+/archive/
+
 # playwright
 test-results/
 playwright-report/
