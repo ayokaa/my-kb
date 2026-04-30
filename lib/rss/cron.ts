@@ -3,8 +3,18 @@ import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
 import { logger } from '@/lib/logger';
 
+const RSS_CRON_KEY = '__my_kb_rss_cron_task__';
+
 let task: ScheduledTask | null = null;
 let isRunning = false;
+
+function getStoredTask(): ScheduledTask | null {
+  return ((globalThis as Record<string, unknown>)[RSS_CRON_KEY] as ScheduledTask | null) ?? null;
+}
+
+function storeTask(t: ScheduledTask | null): void {
+  (globalThis as Record<string, unknown>)[RSS_CRON_KEY] = t;
+}
 
 function buildCronExpr(intervalMinutes: number): string {
   const n = Math.max(1, intervalMinutes);
@@ -12,10 +22,18 @@ function buildCronExpr(intervalMinutes: number): string {
 }
 
 export function startRSSCron(intervalMinutes = 60) {
-  // Destroy orphaned tasks from previous module loads (HMR leak prevention)
+  // Destroy task from previous module instance (survives HMR via globalThis)
+  const stored = getStoredTask();
+  if (stored) {
+    try { stored.stop(); } catch {}
+    try { stored.destroy(); } catch {}
+    storeTask(null);
+  }
+
+  // Also clean up node-cron global registry
   getTasks().forEach((t) => {
     if (t.name === 'rss-cron') {
-      t.destroy();
+      try { t.destroy(); } catch {}
     }
   });
 
@@ -46,6 +64,7 @@ export function startRSSCron(intervalMinutes = 60) {
     }
   }, { name: 'rss-cron' });
 
+  storeTask(task);
   logger.info('RSS', `Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
 }
 
@@ -54,8 +73,14 @@ export function stopRSSCron() {
     task.stop();
     task.destroy();
     task = null;
-    logger.info('RSS', 'Stopped');
   }
+  const stored = getStoredTask();
+  if (stored) {
+    try { stored.stop(); } catch {}
+    try { stored.destroy(); } catch {}
+    storeTask(null);
+  }
+  logger.info('RSS', 'Stopped');
 }
 
 export function restartRSSCron(intervalMinutes: number) {

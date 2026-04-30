@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-04-30
+
+### Fixed
+
+- **`node-cron` HMR 任务泄漏（增强）**：`lib/rss/cron.ts` 和 `lib/relink/cron.ts` 新增 `globalThis` 跨模块实例存储机制。HMR 重载后，新模块实例通过 `globalThis` 直接定位并销毁旧任务，弥补模块级变量重置后 `getTasks()` registry 清理可能遗漏的竞态窗口。配合 `getTasks()` 形成双重保险，确保 dev 模式下快速连续 HMR 不会累积僵尸 cron 任务。
+
+### Added
+
+- **HMR 防护单元测试**：新增 `lib/rss/__tests__/hmr-globals.test.ts`（4 个测试）和 `lib/relink/__tests__/hmr-globals.test.ts`（2 个测试），使用真实 `node-cron` 验证 `vi.resetModules()` 模拟 HMR 场景下 globalThis 清理的正确性，包括单次重载、连续 5 次快速重载、以及 `stopXxxCron` 彻底清理等场景。
+
 ## 2026-04-29
 
 ### Fixed
