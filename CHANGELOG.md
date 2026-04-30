@@ -11,6 +11,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - **HMR 防护单元测试**：新增 `lib/rss/__tests__/hmr-globals.test.ts`（4 个测试）和 `lib/relink/__tests__/hmr-globals.test.ts`（2 个测试），使用真实 `node-cron` 验证 `vi.resetModules()` 模拟 HMR 场景下 globalThis 清理的正确性，包括单次重载、连续 5 次快速重载、以及 `stopXxxCron` 彻底清理等场景。
+- **提示词自动文档化**：新增 `scripts/extract-prompts.ts`，通过 TypeScript AST 静态分析自动提取代码库中所有 LLM 提示词（system prompt、tool definition、user template），生成 `docs/PROMPTS.md`。支持 `npm run extract-prompts` 一键更新，确保提示词修改后文档同步刷新。
 
 ## 2026-04-29
 

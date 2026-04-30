@@ -10,7 +10,8 @@
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test"
+    "test:all": "vitest run && playwright test",
+    "extract-prompts": "npx tsx scripts/extract-prompts.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
