@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-01
+
+### Changed
+
+- **定时任务库从 `node-cron` 4.2.1 替换为 `cron` 4.4.0**：`node-cron` 4.2.1 存在已知的 missed execution 误报问题（issue #485），在无干扰环境下也会触发 false positive。替换为周下载量 120万+ 的 `cron` 包，其内置 250ms 容忍阈值（`threshold`），延迟在阈值内仍正常执行任务，超出阈值才跳过，行为更合理可靠。
+- **增强错误处理**：RSS 和 Relink 的 `CronJob` 配置中新增 `name: 'rss-cron' / 'relink-cron'` 和 `errorHandler`，未捕获的 cron 执行异常会被转发到项目 logger，而不是直接输出到控制台。
+- **更新相关文件**：`lib/rss/cron.ts`、`lib/relink/cron.ts`、`app/api/settings/route.ts`（验证逻辑改用 `validateCronExpression`）、所有相关测试文件及文档（`AGENTS.md`、`docs/ARCHITECTURE.md`）。
+- **新增错误处理测试**：`lib/rss/__tests__/cron-error.test.ts`（3 个测试），验证 `CronJob.errorHandler` 对同步抛错和异步 reject 的捕获行为，以及 `name` 属性是否正确传递。
+
 ## 2026-04-30
 
 ### Fixed

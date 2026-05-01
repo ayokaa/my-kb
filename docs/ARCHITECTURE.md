@@ -156,9 +156,9 @@ lib/
 │   └── pdf.ts      — PDF text extraction
 ├── rss/
 │   ├── manager.ts  — Subscription CRUD + incremental ingest
-│   └── cron.ts     — node-cron wrapper (enqueues rss_fetch tasks, restartable)
+│   └── cron.ts     — cron wrapper (enqueues rss_fetch tasks, restartable)
 └── relink/
-    └── cron.ts     — node-cron wrapper (enqueues relink tasks, restartable)
+    └── cron.ts     — cron wrapper (enqueues relink tasks, restartable)
 ```
 
 **Rules:**
@@ -474,7 +474,7 @@ Each subscription stores the latest `pubDate` it has processed:
 
 Two layers of defense prevent overlapping execution:
 
-1. **Cron-level `isRunning` lock** (`lib/rss/cron.ts`): If a previous cron tick is still enqueueing tasks, subsequent ticks are skipped. This prevents `node-cron` "missed execution" pile-up when many subscriptions are checked.
+1. **Cron-level `isRunning` lock** (`lib/rss/cron.ts`): If a previous cron tick is still enqueueing tasks, subsequent ticks are skipped. This prevents cron "missed execution" pile-up when many subscriptions are checked.
 2. **Feed-level `processingFeeds: Set<string>`** (`lib/rss/manager.ts`): Prevents two concurrent `rss_fetch` tasks from ingesting the same feed URL at the same time.
 
 ---

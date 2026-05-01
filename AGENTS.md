@@ -33,7 +33,7 @@
 | RSS | `feedsmith` |
 | PDF | `pdf-parse` |
 | 配置 | YAML 通过 `js-yaml` 读写 |
-| 定时 | `node-cron` |
+| 定时 | `cron` |
 
 ---
 
@@ -96,7 +96,7 @@ my-kb/
 │   │   └── eval.ts               # 检索质量量化评估框架
 │   ├── rss/
 │   │   ├── manager.ts            # RSS 订阅的增删查改与自动入库
-│   │   └── cron.ts               # node-cron 定时任务封装（可 stop/restart）
+│   │   └── cron.ts               # cron 定时任务封装（可 stop/restart）
 │   └── relink/
 │       └── cron.ts               # 关联刷新定时任务（可 stop/restart）
 ├── docs/                         # 文档（API 参考、架构设计）
