@@ -12,14 +12,14 @@ export const metadata: Metadata = {
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test') {
   import('@/lib/queue').then(({ initQueue }) => initQueue()).catch(() => {});
 
-  (async () => {
-    try {
-      const { patchConsole } = await import('@/lib/logger');
-      patchConsole();
-    } catch {
-      // Logger not available in some runtimes, that's fine
-    }
-  })();
+  // patchConsole is disabled: all server-side code now uses logger.xxx()
+  // explicitly. Keeping it would flood logs with Next.js framework noise.
+  // (async () => {
+  //   try {
+  //     const { patchConsole } = await import('@/lib/logger');
+  //     patchConsole();
+  //   } catch {}
+  // })();
 
   (async () => {
     try {

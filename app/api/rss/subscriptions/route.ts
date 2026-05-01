@@ -1,12 +1,13 @@
 import { listSubscriptions, addSubscription, removeSubscription } from '@/lib/rss/manager';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
     const subs = await listSubscriptions();
     return Response.json({ subscriptions: subs });
   } catch (err) {
-    console.error('[RSS API] Failed to list subscriptions:', err);
+    logger.error('RSS API', 'Failed to list subscriptions', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
     const sub = await addSubscription(url, typeof name === 'string' ? name : undefined);
     return Response.json({ ok: true, subscription: sub });
   } catch (err) {
-    console.error('[RSS API] Failed to add subscription:', err);
+    logger.error('RSS API', 'Failed to add subscription', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 400 });
   }
 }
@@ -49,7 +50,7 @@ export async function DELETE(req: Request) {
     await removeSubscription(url);
     return Response.json({ ok: true });
   } catch (err) {
-    console.error('[RSS API] Failed to remove subscription:', err);
+    logger.error('RSS API', 'Failed to remove subscription', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 404 });
   }
 }

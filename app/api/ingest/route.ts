@@ -1,4 +1,5 @@
 import { enqueue } from '@/lib/queue';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   let body: { type?: unknown; content?: unknown; title?: unknown; url?: unknown; hint?: unknown };
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
 
     return Response.json({ error: 'Unknown ingest type' }, { status: 400 });
   } catch (err) {
-    console.error('[Ingest] Failed to process ingest:', err);
+    logger.error('Ingest', 'Failed to process ingest', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

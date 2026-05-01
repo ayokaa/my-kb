@@ -1,5 +1,6 @@
 import { FileSystemStorage } from '@/lib/storage';
 import { fetchWebContent } from '@/lib/ingestion/web';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   const { query, maxResults = 3 } = await req.json();
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
         });
         entries.push({ title: web.title, url: result.link });
       } catch (fetchErr: any) {
-        console.warn(`Failed to fetch search result ${result.link}:`, fetchErr.message);
+        logger.warn('Search', `Failed to fetch search result ${result.link}`, { error: fetchErr });
       }
     }
 

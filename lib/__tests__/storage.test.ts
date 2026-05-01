@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FileSystemStorage } from '../storage';
+import { logger } from '../logger';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -149,11 +150,10 @@ describe('FileSystemStorage', () => {
       writeFileSync(join(tmpDir, 'notes', 'bad.md'), 'not valid markdown');
 
       const warnLogs: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (...args: unknown[]) => warnLogs.push(args.join(' '));
+      const spy = vi.spyOn(logger, 'warn').mockImplementation((_module, message) => warnLogs.push(message));
 
       const notes = await storage.listNotes();
-      console.warn = originalWarn;
+      spy.mockRestore();
 
       expect(notes).toHaveLength(1);
       expect(notes[0].id).toBe('good');
@@ -299,11 +299,10 @@ describe('FileSystemStorage', () => {
       writeFileSync(join(tmpDir, 'inbox', 'bad.md'), '---\nbad: [unclosed\n---\n\ncontent');
 
       const warnLogs: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (...args: unknown[]) => warnLogs.push(args.join(' '));
+      const spy = vi.spyOn(logger, 'warn').mockImplementation((_module, message) => warnLogs.push(message));
 
       const entries = await storage.listInbox();
-      console.warn = originalWarn;
+      spy.mockRestore();
 
       expect(entries).toHaveLength(1);
       expect(warnLogs.some(l => l.includes('bad'))).toBe(true);
@@ -547,11 +546,10 @@ describe('FileSystemStorage', () => {
       writeFileSync(join(tmpDir, 'conversations', 'bad.md'), '---\nbad: [unclosed\n---\n\nbody');
 
       const warnLogs: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (...args: unknown[]) => warnLogs.push(args.join(' '));
+      const spy = vi.spyOn(logger, 'warn').mockImplementation((_module, message) => warnLogs.push(message));
 
       const convs = await storage.listConversations();
-      console.warn = originalWarn;
+      spy.mockRestore();
 
       expect(convs).toHaveLength(1);
       expect(warnLogs.some(l => l.includes('bad'))).toBe(true);
@@ -597,11 +595,10 @@ describe('FileSystemStorage', () => {
       const gitStorage = new FileSystemStorage(tmpDir, mockExecFile as any);
 
       const warnLogs: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (...args: unknown[]) => warnLogs.push(args.join(' '));
+      const spy = vi.spyOn(logger, 'warn').mockImplementation((_module, message) => warnLogs.push(message));
 
       await gitStorage.commit('[test] with warning');
-      console.warn = originalWarn;
+      spy.mockRestore();
 
       expect(warnLogs.some(l => l.includes('some warning'))).toBe(true);
     });

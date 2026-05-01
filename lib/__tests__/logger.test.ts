@@ -30,6 +30,7 @@ describe('Logger', () => {
     });
 
     it('writes debug log', () => {
+      logger.setLevel('debug');
       logger.debug('DebugMod', 'debug msg');
       const result = logger.query();
       expect(result.logs[0].level).toBe('debug');
@@ -68,6 +69,7 @@ describe('Logger', () => {
 
   describe('query filtering', () => {
     beforeEach(() => {
+      logger.setLevel('debug');
       logger.debug('A', 'alpha debug');
       logger.info('A', 'alpha info');
       logger.warn('B', 'beta warn');
@@ -168,6 +170,136 @@ describe('Logger', () => {
       const parsed = JSON.parse(lines[0]);
       expect(parsed.level).toBe('info');
       expect(parsed.message).toBe('persisted');
+    });
+  });
+
+  describe('setLevel and filtering', () => {
+    it('default level is info: debug not persisted to file', async () => {
+      const fresh = new Logger(tmpDir);
+      fresh.debug('Lvl', 'debug msg');
+      fresh.info('Lvl', 'info msg');
+      await fresh.close();
+
+      const today = new Date().toISOString().split('T')[0];
+      const content = readFileSync(join(tmpDir, `app-${today}.log`), 'utf-8');
+      const lines = content.trim().split('\n').filter(Boolean);
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]).message).toBe('info msg');
+      await fresh.close();
+    });
+
+    it('buffer captures all levels regardless of currentLevel', () => {
+      // default level is info
+      logger.debug('Lvl', 'debug should be in buffer');
+      logger.info('Lvl', 'info msg');
+      const result = logger.query({ limit: 100 });
+      expect(result.total).toBe(2);
+      expect(result.logs.find((e) => e.level === 'debug')).toBeDefined();
+    });
+
+    it('SSE callbacks receive all levels regardless of currentLevel', () => {
+      const received: LogEntry[] = [];
+      logger.onNewLog((entry) => received.push(entry));
+
+      logger.debug('Lvl', 'debug callback');
+      logger.info('Lvl', 'info callback');
+      expect(received).toHaveLength(2);
+      expect(received[0].level).toBe('debug');
+      expect(received[1].level).toBe('info');
+    });
+
+    it('switching to debug level persists previously skipped levels', async () => {
+      const fresh = new Logger(tmpDir);
+      fresh.debug('Lvl', 'before switch — not persisted');
+      fresh.setLevel('debug');
+      fresh.debug('Lvl', 'after switch — persisted');
+      await fresh.close();
+
+      const today = new Date().toISOString().split('T')[0];
+      const content = readFileSync(join(tmpDir, `app-${today}.log`), 'utf-8');
+      const lines = content.trim().split('\n').filter(Boolean);
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]).message).toBe('after switch — persisted');
+      await fresh.close();
+    });
+
+    it('switching to warn level filters out info', async () => {
+      const fresh = new Logger(tmpDir);
+      fresh.setLevel('warn');
+      fresh.info('Lvl', 'info should not persist');
+      fresh.warn('Lvl', 'warn should persist');
+      fresh.error('Lvl', 'error should persist');
+      await fresh.close();
+
+      const today = new Date().toISOString().split('T')[0];
+      const content = readFileSync(join(tmpDir, `app-${today}.log`), 'utf-8');
+      const lines = content.trim().split('\n').filter(Boolean);
+      const levels = lines.map((l) => JSON.parse(l).level);
+      expect(levels.sort()).toEqual(['error', 'warn']);
+      // buffer still has all 3
+      expect(fresh.query().total).toBe(3);
+      await fresh.close();
+    });
+  });
+
+  describe('Error stack extraction', () => {
+    it('auto-extracts Error stack from metadata.error', () => {
+      const err = new Error('boom');
+      logger.error('Err', 'something failed', { error: err });
+      const entry = logger.query().logs[0];
+      expect(entry.message).toContain('something failed');
+      expect(entry.message).toContain('boom');
+      expect(entry.message).toContain('Error: boom');
+      // Error object should be removed from metadata
+      expect(entry.metadata?.error).toBeUndefined();
+    });
+
+    it('preserves other metadata fields alongside error', () => {
+      const err = new Error('fail');
+      logger.error('Err', 'with extra', { error: err, requestId: 'abc-123' });
+      const entry = logger.query().logs[0];
+      expect(entry.metadata?.requestId).toBe('abc-123');
+      expect(entry.metadata?.error).toBeUndefined();
+      expect(entry.message).toContain('Error: fail');
+    });
+
+    it('does not modify message when no error in metadata', () => {
+      logger.info('Err', 'plain message', { key: 'val' });
+      const entry = logger.query().logs[0];
+      expect(entry.message).toBe('plain message');
+    });
+
+    it('does not modify message when error is not an Error instance', () => {
+      logger.error('Err', 'string error', { error: 'not an Error' });
+      const entry = logger.query().logs[0];
+      expect(entry.message).toBe('string error');
+      expect(entry.metadata?.error).toBe('not an Error');
+    });
+  });
+
+  describe('toLocalISOString format', () => {
+    it('produces ISO 8601 with timezone offset', () => {
+      logger.info('Time', 'ts test');
+      const entry = logger.query().logs[0];
+      // Should match: 2026-05-01T20:30:00.123+08:00 or -05:00
+      expect(entry.timestamp).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/
+      );
+    });
+
+    it('timestamp is parseable by Date constructor', () => {
+      logger.info('Time', 'parse test');
+      const entry = logger.query().logs[0];
+      const parsed = new Date(entry.timestamp);
+      expect(parsed.getTime()).not.toBeNaN();
+    });
+
+    it('entry id contains the same timestamp', () => {
+      logger.info('Time', 'id test');
+      const entry = logger.query().logs[0];
+      // id format: <timestamp>-<6-digit-seq>
+      expect(entry.id).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}-\d{6}$/);
+      expect(entry.id.startsWith(entry.timestamp)).toBe(true);
     });
   });
 

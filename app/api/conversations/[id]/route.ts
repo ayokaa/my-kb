@@ -1,5 +1,6 @@
 import { FileSystemStorage } from '@/lib/storage';
 import type { Conversation, ConversationTurn } from '@/lib/types';
+import { logger } from '@/lib/logger';
 
 function turnsToMessages(turns: ConversationTurn[]) {
   return turns.map((t, i) => ({
@@ -33,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       // 正常情况：文件已被删除
       return Response.json({ error: 'Conversation not found' }, { status: 404 });
     }
-    console.error(`[Conversations API] Failed to load ${(await params).id}:`, err);
+    logger.error('Conversations API', `Failed to load ${(await params).id}`, { error: err });
     return Response.json({ error: 'Conversation not found' }, { status: 404 });
   }
 }
@@ -45,7 +46,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     await storage.deleteConversation(id);
     return Response.json({ ok: true });
   } catch (err) {
-    console.error(`[Conversations API] Failed to delete ${(await params).id}:`, err);
+    logger.error('Conversations API', `Failed to delete ${(await params).id}`, { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -86,7 +87,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await storage.saveConversation(conv);
     return Response.json({ ok: true });
   } catch (err) {
-    console.error(`[Conversations API] Failed to save ${(await params).id}:`, err);
+    logger.error('Conversations API', `Failed to save ${(await params).id}`, { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

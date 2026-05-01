@@ -7,6 +7,7 @@ import { fetchWebContent } from '@/lib/ingestion/web';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
 import { loadMemory, getChatContext } from '@/lib/memory';
+import { logger } from '@/lib/logger';
 
 const MAX_MESSAGE_LENGTH = 10000;
 const MAX_TOOL_CALLS = 3;
@@ -244,7 +245,7 @@ async function executeToolCalls(
 ): Promise<Array<{ id: string; name: string; url: string; content: string }>> {
   const limitedCalls = toolCalls.slice(0, MAX_TOOL_CALLS);
   if (toolCalls.length > MAX_TOOL_CALLS) {
-    console.warn(`[Chat] LLM returned ${toolCalls.length} tool calls, limiting to ${MAX_TOOL_CALLS}`);
+    logger.warn('Chat', `LLM returned ${toolCalls.length} tool calls, limiting to ${MAX_TOOL_CALLS}`);
   }
 
   const results: Array<{ id: string; name: string; url: string; content: string }> = [];
@@ -258,7 +259,7 @@ async function executeToolCalls(
         args = {};
       }
       const url = args.url || '';
-      console.log(`[Chat] Tool call web_fetch: ${url} (${args.reason || ''})`);
+      logger.info('Chat', `Tool call web_fetch: ${url} (${args.reason || ''})`);
 
       if (url && isValidHttpUrl(url)) {
         try {
@@ -270,7 +271,7 @@ async function executeToolCalls(
             content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
           });
         } catch (err) {
-          console.error(`[Chat] web_fetch failed:`, err);
+          logger.error('Chat', 'web_fetch failed', { error: err });
           results.push({
             id: toolCall.id,
             name: 'web_fetch',
@@ -297,7 +298,7 @@ export async function POST(req: Request) {
   try {
     messages = validateMessages(body.messages);
   } catch (err) {
-    console.error('[Chat] Validation error:', err);
+    logger.error('Chat', 'Validation error', { error: err });
     return Response.json({ error: 'Invalid messages' }, { status: 400 });
   }
 
@@ -356,12 +357,12 @@ export async function POST(req: Request) {
         .slice(0, 5)
         .map((r) => `${r.note.title}(${r.score.toFixed(2)})`)
         .join(', ');
-      console.log(`[Chat] Retrieved ${results.length} notes for query: "${query.slice(0, 50)}" — top: ${topScores}`);
+      logger.info('Chat', `Retrieved ${results.length} notes for query: "${query.slice(0, 50)}" — top: ${topScores}`);
     } else {
-      console.log(`[Chat] No relevant notes found for query: "${query.slice(0, 50)}"`);
+      logger.info('Chat', `No relevant notes found for query: "${query.slice(0, 50)}"`);
     }
   } else {
-    console.log(`[Chat] Skipping search: ${notes.length} notes, query length ${query.length}`);
+    logger.info('Chat', `Skipping search: ${notes.length} notes, query length ${query.length}`);
   }
 
   // 拆分 system prompt：固定部分 + 动态检索部分
@@ -465,7 +466,7 @@ export async function POST(req: Request) {
           ];
         }
       } catch (err) {
-        console.error('[Chat] Stream error:', err);
+        logger.error('Chat', 'Stream error', { error: err });
         controller.error(err);
       } finally {
         controller.close();

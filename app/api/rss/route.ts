@@ -1,5 +1,6 @@
 import { enqueue } from '@/lib/queue';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   let body: { url?: unknown; name?: unknown; maxItems?: unknown };
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     const taskId = enqueue('rss_fetch', { url, name: typeof name === 'string' ? name : undefined, maxItems: typeof maxItems === 'number' ? maxItems : 5 });
     return Response.json({ ok: true, taskId, message: 'RSS fetch queued' }, { status: 202 });
   } catch (err) {
-    console.error('[RSS] Failed to enqueue RSS fetch:', err);
+    logger.error('RSS', 'Failed to enqueue RSS fetch', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

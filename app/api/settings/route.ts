@@ -1,5 +1,6 @@
 import { loadSettings, saveSettings, safeSettings, type RuntimeSettings } from '@/lib/settings';
 import { restartRSSCron } from '@/lib/rss/cron';
+import { logger } from '@/lib/logger';
 import { restartRelinkCron } from '@/lib/relink/cron';
 import { validateCronExpression } from 'cron';
 
@@ -8,7 +9,7 @@ export async function GET() {
     const settings = await loadSettings();
     return Response.json(safeSettings(settings));
   } catch (err) {
-    console.error('[Settings API] GET error:', err);
+    logger.error('Settings API', 'GET error', { error: err });
     return Response.json({ error: 'Failed to load settings' }, { status: 500 });
   }
 }
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
 
     return Response.json({ success: true });
   } catch (err) {
-    console.error('[Settings API] POST error:', err);
+    logger.error('Settings API', 'POST error', { error: err });
     return Response.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
   }
 }

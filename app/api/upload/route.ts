@@ -1,5 +1,6 @@
 import { enqueue } from '@/lib/queue';
 import { extractPDF } from '@/lib/ingestion/pdf';
+import { logger } from '@/lib/logger';
 import { writeFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import { join, basename } from 'path';
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true, fileName, title, taskId, message: '已加入处理队列' });
   } catch (err) {
-    console.error('[Upload] Failed to process upload:', err);
+    logger.error('Upload', 'Failed to process upload', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

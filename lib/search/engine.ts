@@ -11,6 +11,7 @@ import type {
 } from './types';
 import { DEFAULT_ZONE_WEIGHTS } from './types';
 import { tokenize } from './inverted-index';
+import { logger } from '../logger';
 
 const execAsync = promisify(execFile);
 
@@ -346,7 +347,7 @@ export async function contentFallback(
     if (err.code === 1) return [];
     // 其他错误（rg 未安装、超时等）
     if (err.code !== 'ENOENT') {
-      console.warn('[search] rg fallback failed:', err.message);
+      logger.warn('search', 'rg fallback failed', { error: err });
     }
     return [];
   }

@@ -1,7 +1,8 @@
-import { mkdir, readdir, unlink } from 'fs/promises';
+import { mkdir, readdir, unlink, appendFile } from 'fs/promises';
 import { join } from 'path';
-import { appendFile } from 'fs/promises';
 import { mkdirSync } from 'fs';
+import pino from 'pino';
+import pretty from 'pino-pretty';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -34,9 +35,40 @@ function getKnowledgeRoot(): string {
   return process.env.KNOWLEDGE_ROOT || 'knowledge';
 }
 
-function getTodayStr(): string {
-  return new Date().toISOString().split('T')[0];
+function getTodayStr(date?: Date): string {
+  const d = date || new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
+
+function toLocalISOString(date: Date): string {
+  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
+  const tzOffset = -date.getTimezoneOffset(); // minutes, positive for east of UTC
+  const sign = tzOffset >= 0 ? '+' : '-';
+  const tzHours = pad(Math.floor(Math.abs(tzOffset) / 60));
+  const tzMins = pad(Math.abs(tzOffset) % 60);
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `.${pad(date.getMilliseconds(), 3)}${sign}${tzHours}:${tzMins}`
+  );
+}
+
+const PINO_LEVELS: Record<LogLevel, number> = {
+  debug: 20,
+  info: 30,
+  warn: 40,
+  error: 50,
+};
+
+// Keep references to original console methods for internal use
+const originalConsole = {
+  log: console.log,
+  warn: console.warn,
+  error: console.error,
+};
 
 export class Logger {
   private buffer: LogEntry[] = [];
@@ -50,6 +82,8 @@ export class Logger {
   private pendingLines: string[] = [];
   private flushInProgress = false;
   private flushRequested = false;
+  private pino: pino.Logger;
+  private currentLevel: LogLevel = 'info';
 
   constructor(logDir?: string) {
     this.logDir = logDir || join(process.cwd(), getKnowledgeRoot(), 'meta', 'logs');
@@ -58,6 +92,39 @@ export class Logger {
     } catch {
       // ignore
     }
+
+    this.pino = this.createPino();
+  }
+
+  private createPino(): pino.Logger {
+    const isDev = process.env.NODE_ENV === 'development';
+    const isTest = process.env.NODE_ENV === 'test';
+
+    const pinoOpts: pino.LoggerOptions = {
+      level: isTest ? 'silent' : this.currentLevel,
+      base: undefined, // remove default pid/hostname
+      timestamp: pino.stdTimeFunctions.isoTime,
+    };
+
+    if (isDev) {
+      // Development: colorized terminal output via pino-pretty stream
+      // Using stream mode avoids pino.transport() Worker Thread issues in Next.js
+      return pino(
+        pinoOpts,
+        pretty({
+          colorize: true,
+          translateTime: 'SYS:HH:MM:ss.l',
+          ignore: 'pid,hostname',
+          messageFormat: (log: Record<string, unknown>, messageKey: string) => {
+            const mod = (log.module as string) || 'app';
+            return `[${mod}] ${log[messageKey] as string}`;
+          },
+        })
+      );
+    }
+
+    // Production / Test: no terminal output, level filtering only
+    return pino({ ...pinoOpts, level: isTest ? 'silent' : this.currentLevel });
   }
 
   private rotateIfNeeded(): void {
@@ -77,7 +144,7 @@ export class Logger {
   private async cleanupOldLogs(): Promise<void> {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const cutoffStr = getTodayStr(cutoff);
 
     try {
       const files = await readdir(this.logDir);
@@ -100,25 +167,27 @@ export class Logger {
   ): LogEntry {
     const now = new Date();
     this.seq = (this.seq + 1) % 1000000;
+
+    // Auto-extract Error stack trace from metadata.error
+    let msg = message;
+    const meta = metadata ? { ...metadata } : undefined;
+    if (meta?.error instanceof Error) {
+      msg = `${message}\n${meta.error.stack || meta.error.message}`;
+      delete meta.error;
+    }
+
     return {
-      id: `${now.toISOString()}-${String(this.seq).padStart(6, '0')}`,
-      timestamp: now.toISOString(),
+      id: `${toLocalISOString(now)}-${String(this.seq).padStart(6, '0')}`,
+      timestamp: toLocalISOString(now),
       level,
       module,
-      message,
-      metadata,
+      message: msg,
+      metadata: meta,
     };
   }
 
   /**
    * Schedule an async flush of pending log lines to disk.
-   * Uses queueMicrotask to batch synchronous bursts (e.g. 26 RSS enqueue
-   * calls in a tight loop) into a single appendFile call, avoiding the
-   * event-loop blocking caused by the old appendFileSync approach.
-   *
-   * Uses a debounced mutex (flushInProgress + flushRequested) instead of an
-   * unbounded Promise chain so that slow appendFile calls cannot accumulate
-   * indefinitely.
    */
   private scheduleFlush(): void {
     if (this.flushInProgress) {
@@ -143,20 +212,38 @@ export class Logger {
     });
   }
 
+  private shouldLog(level: LogLevel): boolean {
+    return PINO_LEVELS[level] >= PINO_LEVELS[this.currentLevel];
+  }
+
   private write(entry: LogEntry): void {
+    const shouldPersist = this.shouldLog(entry.level);
+
+    // Memory buffer: all levels, for query API
     this.buffer.push(entry);
     if (this.buffer.length > this.bufferMaxSize) {
       this.buffer.shift();
     }
 
-    this.rotateIfNeeded();
+    // File persistence: level-filtered
+    if (shouldPersist) {
+      this.rotateIfNeeded();
+      const line = JSON.stringify(entry) + '\n';
+      if (this.currentFile) {
+        this.pendingLines.push(line);
+        this.scheduleFlush();
+      }
 
-    const line = JSON.stringify(entry) + '\n';
-    if (this.currentFile) {
-      this.pendingLines.push(line);
-      this.scheduleFlush();
+      // Pino terminal output: level-filtered
+      if (process.env.NODE_ENV !== 'test') {
+        this.pino[entry.level](
+          { module: entry.module, id: entry.id, ...entry.metadata },
+          entry.message
+        );
+      }
     }
 
+    // SSE push: all levels, for real-time log panel
     for (const cb of this.callbacks) {
       try {
         cb(entry);
@@ -164,6 +251,12 @@ export class Logger {
         // ignore callback errors
       }
     }
+  }
+
+  /** Change the minimum log level at runtime. */
+  setLevel(level: LogLevel): void {
+    this.currentLevel = level;
+    this.pino.level = level;
   }
 
   debug(module: string, message: string, metadata?: Record<string, unknown>): void {
@@ -195,7 +288,7 @@ export class Logger {
       }
       if (module && e.module !== module) continue;
       if (search && !e.message.toLowerCase().includes(search.toLowerCase())) continue;
-      if (from && e.timestamp < from) continue;
+      if (from && new Date(e.timestamp) < new Date(from)) continue;
 
       filtered.push(e);
     }
@@ -230,29 +323,29 @@ export class Logger {
     return this.consolePatched;
   }
 
+  /**
+   * Replace console.log/warn/error with logger calls.
+   * Note: intercepted messages are NOT printed to the original console
+   * (i.e. terminal output is suppressed). This avoids duplicating logs
+   * since pino already handles terminal output.
+   */
   patchConsole(): void {
     if (this.consolePatched) return;
     this.consolePatched = true;
 
-    const originalLog = console.log;
-    const originalWarn = console.warn;
-    const originalError = console.error;
     const self = this;
 
     console.log = (...args: unknown[]) => {
-      originalLog.apply(console, args);
       const mod = detectModule(args);
       self.info(mod, formatArgs(args));
     };
 
     console.warn = (...args: unknown[]) => {
-      originalWarn.apply(console, args);
       const mod = detectModule(args);
       self.warn(mod, formatArgs(args));
     };
 
     console.error = (...args: unknown[]) => {
-      originalError.apply(console, args);
       const mod = detectModule(args);
       self.error(mod, formatArgs(args));
     };
@@ -308,6 +401,3 @@ export function getLogger(): Logger {
 export function patchConsole(): void {
   logger.patchConsole();
 }
-
-// Graceful shutdown: file handles are managed per-write (appendFileSync),
-// so no global process listeners are needed here.

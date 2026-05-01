@@ -4,6 +4,7 @@ import { buildIndex } from './inverted-index';
 import type { InvertedIndexMap } from './types';
 import type { Note } from '../types';
 import type { FileSystemStorage } from '../storage';
+import { logger } from '../logger';
 
 let cachedIndex: InvertedIndexMap | null = null;
 let cachedAt = 0;
@@ -69,7 +70,7 @@ async function doLoadOrBuild(storage: FileSystemStorage, notes?: Note[]): Promis
       await mkdir(dirname(indexPath), { recursive: true });
       await writeFile(indexPath, serializeIndex(index, noteList.map((n) => n.id)));
     } catch (err) {
-      console.warn('[Chat] Failed to persist search index:', err);
+      logger.warn('Chat', 'Failed to persist search index', { error: err });
     }
   })();
 

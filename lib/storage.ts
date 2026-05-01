@@ -163,7 +163,7 @@ export class FileSystemStorage implements Storage {
       }
       await this.atomicWrite(indexPath, serializeIndex(indexMap, noteIds));
     } catch (err) {
-      console.warn('[Storage] Failed to update search index:', (err as Error).message);
+      logger.warn('Storage', 'Failed to update search index', { error: err });
     }
   }
 
@@ -182,7 +182,7 @@ export class FileSystemStorage implements Storage {
       try {
         notes.push(await this.loadNote(id));
       } catch (err) {
-        console.warn(`[Storage] Skip corrupted note "${id}":`, (err as Error).message);
+        logger.warn('Storage', `Skip corrupted note "${id}"`, { error: err });
       }
     }
     // 按创建时间倒序（最新的在前）
@@ -257,14 +257,14 @@ export class FileSystemStorage implements Storage {
         await this.atomicWrite(indexPath, serializeIndex(cleaned, noteIds));
       }
     } catch (err) {
-      console.warn('[Storage] Failed to clean up search index:', (err as Error).message);
+      logger.warn('Storage', 'Failed to clean up search index', { error: err });
     }
 
     // Rebuild backlinks since a note was removed
     try {
       await this.rebuildBacklinks();
     } catch (err) {
-      console.warn('[Storage] Failed to rebuild backlinks after delete:', (err as Error).message);
+      logger.warn('Storage', 'Failed to rebuild backlinks after delete', { error: err });
     }
   }
 
@@ -310,7 +310,7 @@ export class FileSystemStorage implements Storage {
         if (!conv.id) conv.id = id;
         convs.push(conv);
       } catch (err) {
-        console.warn(`[Storage] Skip corrupted conversation "${id}":`, (err as Error).message);
+        logger.warn('Storage', `Skip corrupted conversation "${id}"`, { error: err });
       }
     }
     return convs.sort((a, b) => (b.updatedAt || b.date).localeCompare(a.updatedAt || a.date));
@@ -464,7 +464,7 @@ export class FileSystemStorage implements Storage {
         const raw = await readFile(path, 'utf-8');
         entries.push(parseInboxEntry(raw, path));
       } catch (err) {
-        console.warn(`[Storage] Skip corrupted inbox "${file}":`, (err as Error).message);
+        logger.warn('Storage', `Skip corrupted inbox "${file}"`, { error: err });
       }
     }
     return entries.sort((a, b) => {
@@ -517,7 +517,7 @@ export class FileSystemStorage implements Storage {
     try {
       const { stderr } = await this.execFileAsync('git', ['commit', '-m', message], { cwd: process.cwd() });
       if (stderr && !stderr.includes('nothing to commit') && !stderr.includes('no changes added')) {
-        console.warn('[Git]', stderr);
+        logger.warn('Git', stderr);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';

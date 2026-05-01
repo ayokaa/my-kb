@@ -1,5 +1,6 @@
 import { FileSystemStorage } from '@/lib/storage';
 import type { Conversation } from '@/lib/types';
+import { logger } from '@/lib/logger';
 
 function convToResponse(conv: Conversation) {
   return {
@@ -19,7 +20,7 @@ export async function GET() {
     const convs = await storage.listConversations();
     return Response.json({ conversations: convs.map(convToResponse) });
   } catch (err) {
-    console.error('[Conversations API] Failed to list:', err);
+    logger.error('Conversations API', 'Failed to list', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
 
     return Response.json({ ok: true, conversation: convToResponse(conv) });
   } catch (err) {
-    console.error('[Conversations API] Failed to create:', err);
+    logger.error('Conversations API', 'Failed to create', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }

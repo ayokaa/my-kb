@@ -1,5 +1,6 @@
 import { FileSystemStorage } from '@/lib/storage';
 import { basename } from 'path';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   let body: { fileName?: unknown };
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     await storage.archiveInbox(safeFileName);
     return Response.json({ ok: true, message: '已归档' });
   } catch (err) {
-    console.error('[Inbox Archive] Failed to archive:', err);
+    logger.error('Inbox Archive', 'Failed to archive', { error: err });
     return Response.json({ error: 'Internal error' }, { status: 500 });
   }
 }
