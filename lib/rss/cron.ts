@@ -1,18 +1,18 @@
-import { schedule, getTasks, type ScheduledTask } from 'node-cron';
+import { CronJob } from 'cron';
 import { listSubscriptions } from './manager';
 import { enqueue } from '@/lib/queue';
 import { logger } from '@/lib/logger';
 
 const RSS_CRON_KEY = '__my_kb_rss_cron_task__';
 
-let task: ScheduledTask | null = null;
+let task: CronJob | null = null;
 let isRunning = false;
 
-function getStoredTask(): ScheduledTask | null {
-  return ((globalThis as Record<string, unknown>)[RSS_CRON_KEY] as ScheduledTask | null) ?? null;
+function getStoredTask(): CronJob | null {
+  return ((globalThis as Record<string, unknown>)[RSS_CRON_KEY] as CronJob | null) ?? null;
 }
 
-function storeTask(t: ScheduledTask | null): void {
+function storeTask(t: CronJob | null): void {
   (globalThis as Record<string, unknown>)[RSS_CRON_KEY] = t;
 }
 
@@ -22,47 +22,47 @@ function buildCronExpr(intervalMinutes: number): string {
 }
 
 export function startRSSCron(intervalMinutes = 60) {
-  // Destroy task from previous module instance (survives HMR via globalThis)
+  // Stop task from previous module instance (survives HMR via globalThis)
   const stored = getStoredTask();
   if (stored) {
     try { stored.stop(); } catch {}
-    try { stored.destroy(); } catch {}
     storeTask(null);
   }
 
-  // Also clean up node-cron global registry
-  getTasks().forEach((t) => {
-    if (t.name === 'rss-cron') {
-      try { t.destroy(); } catch {}
-    }
-  });
-
   if (task) {
     task.stop();
-    task.destroy();
+    task = null;
   }
 
   const cronExpr = buildCronExpr(intervalMinutes);
 
-  task = schedule(cronExpr, async () => {
-    if (isRunning) {
-      logger.info('RSS', 'Previous check still running, skipping this tick');
-      return;
-    }
-    isRunning = true;
-    logger.info('RSS', `Queuing feed checks at ${new Date().toISOString()}`);
-    try {
-      const sources = await listSubscriptions();
-      for (const source of sources) {
-        enqueue('rss_fetch', { url: source.url, name: source.name, isSubscriptionCheck: true });
+  task = CronJob.from({
+    cronTime: cronExpr,
+    onTick: async () => {
+      if (isRunning) {
+        logger.info('RSS', 'Previous check still running, skipping this tick');
+        return;
       }
-      logger.info('RSS', `Queued ${sources.length} feed checks`);
-    } catch (err) {
-      logger.error('RSS', `Error: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      isRunning = false;
-    }
-  }, { name: 'rss-cron' });
+      isRunning = true;
+      logger.info('RSS', `Queuing feed checks at ${new Date().toISOString()}`);
+      try {
+        const sources = await listSubscriptions();
+        for (const source of sources) {
+          enqueue('rss_fetch', { url: source.url, name: source.name, isSubscriptionCheck: true });
+        }
+        logger.info('RSS', `Queued ${sources.length} feed checks`);
+      } catch (err) {
+        logger.error('RSS', `Error: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        isRunning = false;
+      }
+    },
+    start: true,
+    name: 'rss-cron',
+    errorHandler: (err) => {
+      logger.error('RSS', `Cron error: ${err instanceof Error ? err.message : String(err)}`);
+    },
+  });
 
   storeTask(task);
   logger.info('RSS', `Started, checking every ${intervalMinutes} minutes (${cronExpr})`);
@@ -71,13 +71,11 @@ export function startRSSCron(intervalMinutes = 60) {
 export function stopRSSCron() {
   if (task) {
     task.stop();
-    task.destroy();
     task = null;
   }
   const stored = getStoredTask();
   if (stored) {
     try { stored.stop(); } catch {}
-    try { stored.destroy(); } catch {}
     storeTask(null);
   }
   logger.info('RSS', 'Stopped');

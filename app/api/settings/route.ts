@@ -1,7 +1,7 @@
 import { loadSettings, saveSettings, safeSettings, type RuntimeSettings } from '@/lib/settings';
 import { restartRSSCron } from '@/lib/rss/cron';
 import { restartRelinkCron } from '@/lib/relink/cron';
-import cron from 'node-cron';
+import { validateCronExpression } from 'cron';
 
 export async function GET() {
   try {
@@ -31,7 +31,8 @@ export async function POST(req: Request) {
     };
 
     // Validate cron expression
-    if (!cron.validate(next.cron.relinkCronExpression)) {
+    const cronValidation = validateCronExpression(next.cron.relinkCronExpression);
+    if (!cronValidation.valid) {
       return Response.json({ error: `Invalid cron expression: ${next.cron.relinkCronExpression}` }, { status: 400 });
     }
 
