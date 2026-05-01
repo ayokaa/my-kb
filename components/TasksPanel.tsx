@@ -141,7 +141,9 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
       <div className="flex-1 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4">
         {filtered.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center py-16">
-            <ListChecks className="h-8 w-8 text-[var(--text-tertiary)]" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
+              <ListChecks className="h-6 w-6 text-[var(--accent)] opacity-60" />
+            </div>
             <p className="mt-3 text-sm text-[var(--text-tertiary)]">
               {tasks.length === 0 ? '还没有任务' : '无匹配结果'}
             </p>

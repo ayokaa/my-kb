@@ -317,6 +317,7 @@ export async function POST(req: Request) {
   // 执行检索
   let contextText = '';
   let searchResults: Array<{ id: string; title: string; score: number }> = [];
+
   if (notes.length > 0 && query.length > 0) {
     let results = search(query, notes, index, {
       statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
@@ -367,7 +368,7 @@ export async function POST(req: Request) {
 
   // 拆分 system prompt：固定部分 + 动态检索部分
   const baseSystem =
-    '你是用户的个人知识库助手。当用户消息中提供了知识库检索结果时，优先基于这些内容作答并引用来源笔记。如果知识库中没有相关信息，明确告知用户，然后可以补充一般性知识，但要明确区分两者。';
+    '你是用户的个人知识库助手。当用户消息中提供了知识库检索结果时，优先基于这些内容作答并引用来源笔记。如果知识库中没有相关信息，明确告知用户，然后可以补充一般性知识，但要明确区分两者。\n\n【对话原则】当用户输入简短、模糊或无明显意图时（如单个字、表情符号、打招呼），简短自然地回应，不要主动罗列知识库内容或展开长篇解释。只有在用户明确提出问题或表达求知意图时才检索和引用知识库。';
 
   const toolsSection = `【可用工具】
 当知识库内容不足以回答问题时，你可以调用工具来获取更多信息。当前可用工具：

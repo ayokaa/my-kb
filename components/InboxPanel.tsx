@@ -158,8 +158,11 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         <div className="flex-1 space-y-1 overflow-y-auto p-3">
           {entries.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center py-16">
-              <Inbox className="h-8 w-8 text-[var(--text-tertiary)]" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
+                <Inbox className="h-6 w-6 text-[var(--accent)] opacity-60" />
+              </div>
               <p className="mt-3 text-sm text-[var(--text-tertiary)]">收件箱为空</p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)] opacity-60">新内容会自动出现在这里</p>
             </div>
           )}
 
@@ -322,7 +325,9 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-[var(--text-tertiary)]">
-            <Inbox className="h-10 w-10 opacity-40" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-dim)]">
+              <Inbox className="h-7 w-7 text-[var(--accent)] opacity-60" />
+            </div>
             <p className="mt-3 text-sm">选择左侧条目查看详情</p>
           </div>
         )}

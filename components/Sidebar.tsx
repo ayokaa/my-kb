@@ -63,17 +63,14 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
               <Icon className={`h-4 w-4 transition-colors ${isActive ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'}`} />
               <span className="flex-1 text-left font-medium">{item.label}</span>
               {item.id === 'inbox' && inboxCount > 0 && (
-                <span className="rounded-md bg-[var(--error)] px-2 py-0.5 text-[10px] font-bold text-white">
+                <span className="rounded-full bg-[var(--error)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white min-w-[18px] text-center">
                   {inboxCount}
                 </span>
               )}
               {item.id === 'tasks' && taskCount > 0 && (
-                <span className="rounded-md bg-orange-500/20 px-2 py-0.5 text-[10px] font-bold text-orange-400">
+                <span className="rounded-full bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[var(--accent)] min-w-[18px] text-center">
                   {taskCount}
                 </span>
-              )}
-              {isActive && (
-                <div className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_6px_var(--accent)]" />
               )}
             </button>
           );
@@ -81,21 +78,9 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
       </nav>
 
       {/* Footer */}
-      <div className="p-4 space-y-3">
-        <button
-          onClick={toggle}
-          className="flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2.5 text-sm transition-all duration-200 hover:border-[var(--border-hover)] hover:bg-[var(--bg-hover)]"
-        >
-          {theme === 'dark' ? (
-            <Sun className="h-4 w-4 text-[var(--accent)]" />
-          ) : (
-            <Moon className="h-4 w-4 text-[var(--accent)]" />
-          )}
-          <span className="text-[var(--text-secondary)]">{theme === 'dark' ? '日间模式' : '夜间模式'}</span>
-        </button>
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-          <p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">Status</p>
-          <div className="mt-1 flex items-center gap-2">
+      <div className="border-t border-[var(--border)] p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             {connected == null ? (
               <>
                 <div className="h-2 w-2 rounded-full bg-[var(--text-tertiary)]" />
@@ -103,16 +88,23 @@ export default function Sidebar({ active, onChange, inboxCount = 0, taskCount = 
               </>
             ) : connected ? (
               <>
-                <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.4)]" />
+                <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
                 <span className="text-xs text-[var(--text-secondary)]">已连接</span>
               </>
             ) : (
               <>
-                <div className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.4)] animate-pulse" />
+                <div className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)] animate-pulse" />
                 <span className="text-xs text-[var(--text-secondary)]">重连中</span>
               </>
             )}
           </div>
+          <button
+            onClick={toggle}
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-[var(--text-tertiary)] transition-all duration-200 hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+            title={theme === 'dark' ? '切换到日间模式' : '切换到夜间模式'}
+          >
+            {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
     </aside>

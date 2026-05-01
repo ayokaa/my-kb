@@ -122,13 +122,13 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
       <div className="mb-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
         {messages.length === 0 && (
           <div className="flex flex-1 flex-col items-center justify-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent-dim)]">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent-dim)] shadow-[0_0_40px_var(--accent-glow)]">
               <Bot className="h-8 w-8 text-[var(--accent)]" />
             </div>
             <p className="font-[family-name:var(--font-serif)] text-xl font-semibold tracking-wide text-[var(--text-primary)]">
               知识库助手
             </p>
-            <p className="mt-1 text-sm text-[var(--text-tertiary)]">基于已有知识回答你的问题</p>
+            <p className="mt-1.5 text-sm text-[var(--text-tertiary)]">基于已有知识回答你的问题</p>
           </div>
         )}
 
@@ -385,8 +385,10 @@ export default function ChatPanel() {
 
         <div className="flex-1 overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-2">
           {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-[var(--text-tertiary)]">
-              <MessageSquare className="h-6 w-6 opacity-40" />
+            <div className="flex flex-col items-center justify-center py-10 text-[var(--text-tertiary)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
+                <MessageSquare className="h-5 w-5 text-[var(--accent)] opacity-60" />
+              </div>
               <p className="mt-2 text-xs">还没有对话</p>
             </div>
           ) : (
@@ -440,7 +442,9 @@ export default function ChatPanel() {
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">
-            <MessageSquare className="h-10 w-10 opacity-40" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-dim)]">
+              <MessageSquare className="h-7 w-7 text-[var(--accent)] opacity-60" />
+            </div>
             <p className="text-sm">点击「新对话」开始聊天</p>
           </div>
         )}

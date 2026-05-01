@@ -339,7 +339,9 @@ export default function LogsPanel({ isActive }: LogsPanelProps) {
       >
         {filteredLogs.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center py-16">
-            <FileText className="h-8 w-8 text-[var(--text-tertiary)]" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
+              <FileText className="h-6 w-6 text-[var(--accent)] opacity-60" />
+            </div>
             <p className="mt-3 text-sm text-[var(--text-tertiary)]">
               {logs.length === 0 ? '还没有日志' : '无匹配结果'}
             </p>

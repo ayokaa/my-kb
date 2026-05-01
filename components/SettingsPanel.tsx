@@ -72,28 +72,26 @@ export default function SettingsPanel() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex items-center gap-3">
-        <Settings className="h-6 w-6 text-[var(--accent)]" />
-        <h2 className="text-xl font-semibold text-[var(--text-primary)]">系统设置</h2>
+    <div className="mx-auto flex h-full max-w-2xl flex-col gap-4">
+      <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] px-5 py-3">
+        <Settings className="h-4 w-4 text-[var(--accent)]" />
+        <h2 className="font-[family-name:var(--font-serif)] text-base font-semibold tracking-wide">系统设置</h2>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-[var(--error)] bg-red-500/10 px-4 py-3 text-sm text-[var(--error)]">
-          {error}
+      {(error || saved) && (
+        <div className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
+          saved
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+            : 'border-[var(--error)] bg-red-500/10 text-[var(--error)]'
+        }`}>
+          {saved && <CheckCircle2 className="h-4 w-4 shrink-0" />}
+          {saved ? '配置已保存' : error}
         </div>
       )}
 
-      {saved && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-          <CheckCircle2 className="h-4 w-4" />
-          配置已保存
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+      <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
             LLM 配置
           </h3>
           <div className="space-y-4">
@@ -131,8 +129,8 @@ export default function SettingsPanel() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
             定时任务
           </h3>
           <div className="space-y-4">
