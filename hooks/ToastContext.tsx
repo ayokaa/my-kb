@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface Toast {
   id: string;
@@ -42,19 +43,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
-      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+      <ToastPortal toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
 }
 
-function ToastContainer({
+function ToastPortal({
   toasts,
   onDismiss,
 }: {
   toasts: Toast[];
   onDismiss: (id: string) => void;
 }) {
-  if (toasts.length === 0) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || toasts.length === 0) return null;
 
   const typeStyles: Record<Toast['type'], string> = {
     success: 'border-[var(--accent)]/30 bg-emerald-950/80 text-emerald-300',
@@ -62,8 +69,8 @@ function ToastContainer({
     info: 'border-[var(--border)] bg-[var(--bg-elevated)]/95 text-[var(--text-primary)]',
   };
 
-  return (
-    <div className="pointer-events-none fixed bottom-20 right-4 z-50 flex flex-col-reverse gap-2">
+  return createPortal(
+    <div className="pointer-events-none fixed bottom-6 right-6 z-[9999] flex flex-col-reverse gap-2">
       {toasts.map((t) => (
         <button
           key={t.id}
@@ -73,6 +80,7 @@ function ToastContainer({
           <span className="flex-1">{t.message}</span>
         </button>
       ))}
-    </div>
+    </div>,
+    document.body
   );
 }

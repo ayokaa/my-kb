@@ -364,19 +364,19 @@ export default function LogsPanel({ isActive }: LogsPanelProps) {
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] tabular-nums text-[var(--text-tertiary)]" title={log.timestamp}>
+                    <span className="text-xs tabular-nums text-[var(--text-tertiary)]" title={log.timestamp}>
                       {formatTime(log.timestamp)}
                     </span>
-                    <span className={`rounded px-1 py-0.5 text-[9px] font-semibold ${cfg.bg} ${cfg.color}`}>
+                    <span className={`rounded px-1 py-0.5 text-[11px] font-semibold ${cfg.bg} ${cfg.color}`}>
                       {log.module}
                     </span>
-                    <span className="text-xs text-[var(--text-primary)]">{log.message}</span>
+                    <span className="text-sm text-[var(--text-primary)]">{log.message}</span>
                   </div>
 
                   {hasMetadata && (
                     <button
                       onClick={() => toggleExpand(log.id)}
-                      className="mt-1 flex items-center gap-0.5 text-[10px] text-[var(--text-tertiary)] hover:text-[var(--accent)]"
+                      className="mt-1 flex items-center gap-0.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--accent)]"
                     >
                       {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       {isExpanded ? '收起' : '详情'}
@@ -384,7 +384,7 @@ export default function LogsPanel({ isActive }: LogsPanelProps) {
                   )}
 
                   {isExpanded && hasMetadata && (
-                    <pre className="mt-1 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[10px] text-[var(--text-secondary)]">
+                    <pre className="mt-1 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-xs text-[var(--text-secondary)]">
                       {JSON.stringify(log.metadata, null, 2)}
                     </pre>
                   )}

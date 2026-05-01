@@ -391,8 +391,18 @@ function formatArgs(args: unknown[]): string {
     .join(' ');
 }
 
-// Global singleton
-export const logger = new Logger();
+// Global singleton — use globalThis to survive Next.js HMR / Turbopack module re-evaluation
+const LOGGER_KEY = '__my_kb_logger__' as const;
+
+function getOrCreateLogger(): Logger {
+  const g = globalThis as Record<string, unknown>;
+  if (!g[LOGGER_KEY]) {
+    g[LOGGER_KEY] = new Logger();
+  }
+  return g[LOGGER_KEY] as Logger;
+}
+
+export const logger: Logger = getOrCreateLogger();
 
 export function getLogger(): Logger {
   return logger;
