@@ -81,7 +81,7 @@ my-kb/
 │   ├── settings.ts               # 运行时配置（YAML 持久化）
 │   ├── llm.ts                    # 集中式 LLM 客户端工厂
 │   ├── events.ts                 # SSE 事件总线（服务端推送）
-│   ├── logger.ts                 # 结构化日志（内存缓冲 + 文件持久化 + SSE 广播）
+│   ├── logger.ts                 # 结构化日志（pino + 内存缓冲 + 文件持久化 + SSE 广播）
 │   ├── cognition/
 │   │   ├── ingest.ts             # LLM 调用：将 inbox 加工成 note
 │   │   └── relink.ts             # LLM 调用：刷新笔记间关联

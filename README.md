@@ -131,7 +131,7 @@ my-kb/
 │   ├── settings.ts         # Runtime configuration (YAML persistence, env fallback)
 │   ├── llm.ts              # Centralized async LLM client factory
 │   ├── events.ts           # Typed SSE event bus (emitNoteEvent / emitTaskEvent / emitInboxEvent)
-│   ├── logger.ts           # Structured logging (memory buffer + file rotation + SSE broadcast)
+│   ├── logger.ts           # Structured logging (pino + memory buffer + file rotation + SSE broadcast)
 │   ├── cognition/          # LLM calls (ingest + relink)
 │   ├── ingestion/          # Content scraping (Web/RSS/PDF)
 │   ├── search/             # Inverted index, scoring engine, evaluation framework, cache

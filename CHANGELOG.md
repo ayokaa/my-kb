@@ -6,6 +6,18 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- **日志系统重构：集成 pino，统一日志输出**：`lib/logger.ts` 集成 `pino` + `pino-pretty`，开发环境提供彩色结构化终端输出（stream 模式，避开 Next.js Worker Thread 兼容问题），生产环境静默（仅写文件），测试环境完全关闭。
+  - 新增 `setLevel(level)` 运行时级别切换，默认 `info`。
+  - Buffer 和 SSE 回调保留所有级别日志（供 query API 和日志面板使用），级别过滤仅影响文件写入和 pino 终端输出。
+  - `metadata.error` 自动提取 Error stack trace，调用点通过 `{ error: err }` 传参即可保留完整调用栈。
+  - 时间戳从 UTC `toISOString()` 改为本地时区 `toLocalISOString()`，修复 UTC+8 凌晨日期偏移问题。
+  - 禁用 `patchConsole()`（`app/layout.tsx` 中注释掉），所有服务端代码显式使用 `logger.xxx()`。
+  - 全局替换：14 个文件 24 处 `console.xxx` → `logger.xxx`，Error 对象统一通过 metadata 传递。
+  - 新增依赖：`pino` 10.3.1、`pino-pretty` 13.1.3、`@types/pino` 7.0.4。
+- **新增测试覆盖**（12 个）：`setLevel` 运行时切换、级别过滤行为（buffer vs 文件）、Error stack 自动提取、`toLocalISOString` 输出格式验证。
+
+### Changed (cron)
+
 - **定时任务库从 `node-cron` 4.2.1 替换为 `cron` 4.4.0**：`node-cron` 4.2.1 存在已知的 missed execution 误报问题（issue #485），在无干扰环境下也会触发 false positive。替换为周下载量 120万+ 的 `cron` 包，其内置 250ms 容忍阈值（`threshold`），延迟在阈值内仍正常执行任务，超出阈值才跳过，行为更合理可靠。
 - **增强错误处理**：RSS 和 Relink 的 `CronJob` 配置中新增 `name: 'rss-cron' / 'relink-cron'` 和 `errorHandler`，未捕获的 cron 执行异常会被转发到项目 logger，而不是直接输出到控制台。
 - **更新相关文件**：`lib/rss/cron.ts`、`lib/relink/cron.ts`、`app/api/settings/route.ts`（验证逻辑改用 `validateCronExpression`）、所有相关测试文件及文档（`AGENTS.md`、`docs/ARCHITECTURE.md`）。
