@@ -1,37 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const scheduledTasks: Array<{ expression: string; callback: () => Promise<void>; task: any }> = [];
-const mockRegistry = new Map<string, any>();
 
-function createMockTask(name?: string) {
-  const task: any = { stop: vi.fn(), name };
-  task.destroy = vi.fn(() => {
-    for (const [key, value] of mockRegistry.entries()) {
-      if (value === task) {
-        mockRegistry.delete(key);
-        break;
-      }
-    }
-  });
-  mockRegistry.set(String(mockRegistry.size), task);
+function createMockTask() {
+  const task: any = { stop: vi.fn(), isActive: true };
   return task;
 }
 
-vi.mock('node-cron', () => ({
-  default: {
-    schedule: vi.fn((expression: string, callback: () => Promise<void>, options?: any) => {
-      const task = createMockTask(options?.name);
-      scheduledTasks.push({ expression, callback, task });
+vi.mock('cron', () => ({
+  CronJob: {
+    from: vi.fn((params: any) => {
+      const task = createMockTask();
+      scheduledTasks.push({ expression: params.cronTime, callback: params.onTick, task });
       return task;
     }),
-    getTasks: vi.fn(() => mockRegistry),
   },
-  schedule: vi.fn((expression: string, callback: () => Promise<void>, options?: any) => {
-    const task = createMockTask(options?.name);
-    scheduledTasks.push({ expression, callback, task });
-    return task;
-  }),
-  getTasks: vi.fn(() => mockRegistry),
 }));
 
 vi.mock('@/lib/queue', () => ({
@@ -41,7 +24,6 @@ vi.mock('@/lib/queue', () => ({
 describe('startRelinkCron', () => {
   beforeEach(async () => {
     scheduledTasks.length = 0;
-    mockRegistry.clear();
     vi.clearAllMocks();
     vi.resetModules();
   });
@@ -95,21 +77,20 @@ describe('startRelinkCron', () => {
     const firstTask = scheduledTasks[0].task;
     startRelinkCron();
     expect(firstTask.stop).toHaveBeenCalled();
-    expect(firstTask.destroy).toHaveBeenCalled();
     expect(scheduledTasks).toHaveLength(2);
   });
 
-  it('destroys orphaned tasks from previous module loads (HMR leak prevention)', async () => {
+  it('stops orphaned tasks from previous module loads (HMR leak prevention)', async () => {
     const mod1 = await loadCron();
-    mod1.startRelinkCron();
+    mod1.startRelinkCron('0 3 * * *');
     const firstTask = scheduledTasks[0].task;
 
     vi.resetModules();
     const mod2 = await loadCron();
 
-    mod2.startRelinkCron();
+    mod2.startRelinkCron('0 3 * * *');
 
-    expect(firstTask.destroy).toHaveBeenCalled();
+    expect(firstTask.stop).toHaveBeenCalled();
     expect(scheduledTasks).toHaveLength(2);
   });
 });
