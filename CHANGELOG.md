@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-02
+
+### Changed
+
+- **Relink 改为全量替换模式**：`lib/cognition/relink.ts` 中 `relinkNote` 不再增量追加关联，而是直接用 LLM 重新评估后的完整 `links` 列表替换现有关联。解决了长期运行后关联只增不减、过时链接累积的问题。
+  - prompt 更新：明确要求 LLM "基于当前笔记的完整内容重新判断"并"输出完整的关联列表，不是增量补充"。
+  - `linksEqual` 同步增强：除 `target` 外，新增比较 `weight` 和 `context`，确保关联属性变化也能触发保存。
+- **关联候选数量从 5 提升到 20**：`lib/cognition/ingest.ts` 中 `CANDIDATE_LIMIT` 从 5 改为 20。ingest 和 relink 传给 LLM 的候选笔记上限从 5 篇提升到 20 篇，显著扩大 LLM 的视野。
+- **候选笔记信息丰富化**：`selectCandidateTitles` 重构为 `selectCandidates`，返回完整的 `Note[]` 而非仅标题字符串。ingest 和 relink 的 system prompt 现在向 LLM 展示每篇候选笔记的**标题、摘要和关键事实**。
+- **LLM 输出上限提升**：ingest 和 relink 中的 `max_tokens` 从 4096 提升至 **8192**，以容纳更长的候选笔记上下文。
+- **关联数量上限设为 5 个**：ingest 和 relink 的 prompt 中明确要求"最多关联 5 个笔记，优先保留关联度最高的"，同时代码层做 `slice(0, 5)` 兜底截断，防止关联列表过度膨胀。
+
 ## 2026-05-01
 
 ### Changed
