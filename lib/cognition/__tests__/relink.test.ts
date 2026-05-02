@@ -53,7 +53,7 @@ function makeNote(id: string, title: string, extra: Partial<Note> = {}): Note {
 }
 
 describe('relinkNote', () => {
-  it('merges new links with existing links without deleting old ones', async () => {
+  it('replaces existing links with LLM output (full replacement)', async () => {
     const noteA = makeNote('a', 'Note A', {
       links: [{ target: 'Note C', weight: 'strong', context: 'old' }],
     });
@@ -62,9 +62,9 @@ describe('relinkNote', () => {
 
     const result = await relinkNote(noteA, [noteA, noteB, noteC]);
 
-    expect(result).toHaveLength(2);
-    expect(result.map((l) => l.target)).toContain('Note B');
-    expect(result.map((l) => l.target)).toContain('Note C');
+    // LLM mocked to return only Note B, so Note C should be removed
+    expect(result).toHaveLength(1);
+    expect(result[0].target).toBe('Note B');
   });
 
   it('does not link a note to itself', async () => {
@@ -105,7 +105,7 @@ describe('relinkNote', () => {
     vi.doUnmock('@anthropic-ai/sdk');
   });
 
-  it('deduplicates links by target (prefer existing)', async () => {
+  it('overrides existing links with LLM output', async () => {
     const noteA = makeNote('a', 'Note A', {
       links: [{ target: 'Note B', weight: 'strong', context: 'existing' }],
     });
@@ -113,9 +113,10 @@ describe('relinkNote', () => {
 
     const result = await relinkNote(noteA, [noteA, noteB]);
 
+    // LLM mocked to return Note B with weight 'weak' and context 'related'
     const linkB = result.find((l) => l.target === 'Note B');
-    expect(linkB?.weight).toBe('strong');
-    expect(linkB?.context).toBe('existing');
+    expect(linkB?.weight).toBe('weak');
+    expect(linkB?.context).toBe('related');
   });
 
   it('returns empty links when no other notes exist', async () => {
