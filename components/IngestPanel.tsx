@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { FileText, Link, Upload, Loader2 } from 'lucide-react';
+import { onCtrlEnter, onEnter } from '@/hooks/useKeyboardShortcuts';
 
 const tabs = [
   { id: 'link' as const, label: '链接', icon: Link },
@@ -98,6 +99,13 @@ export default function IngestPanel() {
                 placeholder="输入文本内容..."
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={onCtrlEnter(() => {
+                  if (!textInput.trim() || ingestLoading) return;
+                  submitIngest('text', { type: 'text', title: textTitle, content: textInput, hint: hint || undefined });
+                  setTextInput('');
+                  setTextTitle('');
+                  setHint('');
+                })}
                 rows={8}
                 className="input-dark w-full px-4 py-3 text-sm resize-none"
               />
@@ -105,6 +113,13 @@ export default function IngestPanel() {
                 placeholder="提示词（可选）——告诉 AI 重点关注什么"
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
+                onKeyDown={onCtrlEnter(() => {
+                  if (!textInput.trim() || ingestLoading) return;
+                  submitIngest('text', { type: 'text', title: textTitle, content: textInput, hint: hint || undefined });
+                  setTextInput('');
+                  setTextTitle('');
+                  setHint('');
+                })}
                 rows={2}
                 className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
               />
@@ -129,12 +144,24 @@ export default function IngestPanel() {
                 placeholder="https://..."
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={onEnter(() => {
+                  if (!linkUrl.trim() || ingestLoading) return;
+                  submitIngest('link', { type: 'link', url: linkUrl, hint: hint || undefined });
+                  setLinkUrl('');
+                  setHint('');
+                })}
                 className="input-dark w-full px-4 py-3 text-sm"
               />
               <textarea
                 placeholder="提示词（可选）——告诉 AI 重点关注什么"
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
+                onKeyDown={onCtrlEnter(() => {
+                  if (!linkUrl.trim() || ingestLoading) return;
+                  submitIngest('link', { type: 'link', url: linkUrl, hint: hint || undefined });
+                  setLinkUrl('');
+                  setHint('');
+                })}
                 rows={2}
                 className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
               />
@@ -169,6 +196,9 @@ export default function IngestPanel() {
                 placeholder="提示词（可选）——告诉 AI 重点关注什么"
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
+                onKeyDown={onCtrlEnter(() => {
+                  document.querySelector<HTMLInputElement>('input[type=file]')?.click();
+                })}
                 rows={2}
                 className="input-dark w-full px-4 py-3 text-xs resize-none text-[var(--text-tertiary)]"
               />

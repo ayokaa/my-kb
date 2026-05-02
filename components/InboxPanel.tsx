@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Check, X, Loader2, ExternalLink, Calendar, Tag, Inbox, RefreshCw, Rss } from 'lucide-react';
 import { useSSE } from '@/hooks/useSSE';
 import { useToast } from '@/hooks/ToastContext';
+import { onCtrlEnter } from '@/hooks/useKeyboardShortcuts';
 
 interface InboxEntry {
   title: string;
@@ -254,6 +255,9 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
                 placeholder="提示词（可选）——告诉 AI 重点关注什么"
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
+                onKeyDown={onCtrlEnter(() => {
+                  if (selected) processEntry(selected, 'approve');
+                })}
                 rows={2}
                 className="input-dark mt-3 w-full px-4 py-2 text-xs resize-none text-[var(--text-tertiary)]"
               />

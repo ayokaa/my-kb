@@ -358,6 +358,7 @@ npm run test:e2e
 | 修改聊天 RAG 行为 | `app/api/chat/route.ts` 中的上下文组装逻辑 |
 | 修改 UI 主题色 | `app/globals.css` 中的 `:root` CSS 变量 |
 | 新增组件 | `components/{Name}.tsx`，并在 `app/page.tsx` 中引用 |
+| 新增/修改前端快捷键 | `hooks/useKeyboardShortcuts.ts` |
 | 调整任务队列逻辑 | `lib/queue.ts` |
 | 修改任务面板 UI | `components/TasksPanel.tsx` |
 | 新增/修改日志输出 | `lib/logger.ts` |

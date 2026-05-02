@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## 2026-05-02
 
+### Added
+
+- **前端快捷键支持**：所有涉及文本输入的交互统一快捷键行为。
+  - `ChatPanel`：聊天输入框改为 `textarea`，Enter 换行，Ctrl/Cmd+Enter 发送，内容自动增高（最高 200px），发送后高度重置。
+  - `IngestPanel`：文本/链接/文件三个 tab 的输入区统一快捷键——内容 `textarea` 用 Ctrl+Enter 提交，URL `input` 用 Enter 提交，提示词 `textarea` 用 Ctrl+Enter 提交（文件 tab 触发文件选择）。
+  - `InboxPanel`：提示词 `textarea` 用 Ctrl+Enter 将当前条目加入知识库。
+  - 快捷键逻辑统一封装到 `hooks/useKeyboardShortcuts.ts`，提供 `onCtrlEnter(handler)` 和 `onEnter(handler)` 两个工具函数，消除各组件中重复的判断代码。
+  - 新增单元测试 `hooks/__tests__/useKeyboardShortcuts.test.ts`（7 个测试），覆盖 Ctrl+Enter、Meta+Enter、纯 Enter、其他按键等场景。
+
 ### Changed
 
 - **Relink 改为全量替换模式**：`lib/cognition/relink.ts` 中 `relinkNote` 不再增量追加关联，而是直接用 LLM 重新评估后的完整 `links` 列表替换现有关联。解决了长期运行后关联只增不减、过时链接累积的问题。

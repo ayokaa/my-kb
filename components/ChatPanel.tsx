@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Bot, User, Plus, MessageSquare, Trash2, BookOpen, Sparkles, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/ToastContext';
+import { onCtrlEnter } from '@/hooks/useKeyboardShortcuts';
 
 interface ConversationItem {
   id: string;
@@ -38,6 +39,7 @@ interface ChatAreaProps {
 function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewConversation }: ChatAreaProps) {
   const [sources, setSources] = useState<SourceNote[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const savedRef = useRef(false);
   const pendingQueueRef = useRef<string[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
@@ -103,17 +105,19 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
     }
   }, [data, onSources]);
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const onSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    e?.preventDefault();
     savedRef.current = false;
     if (!input.trim()) return;
     if (isLoading) {
       pendingQueueRef.current.push(input);
       setQueuedMessages((prev) => [...prev, input]);
       handleInputChange({ target: { value: '' } } as any);
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
       return;
     }
-    handleSubmit(e);
+    handleSubmit(e as React.FormEvent<HTMLFormElement>);
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   return (
@@ -226,13 +230,23 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
       )}
 
       {/* Input */}
-      <form onSubmit={onSubmit} className="flex gap-3">
-        <input
+      <form onSubmit={onSubmit} className="flex items-end gap-3">
+        <textarea
+          ref={textareaRef}
           value={input}
-          onChange={handleInputChange}
+          onChange={(e) => {
+            handleInputChange(e);
+            const el = textareaRef.current;
+            if (el) {
+              el.style.height = 'auto';
+              el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+            }
+          }}
+          onKeyDown={onCtrlEnter(() => onSubmit())}
           placeholder="问点什么..."
           aria-label="聊天输入"
-          className="input-dark flex-1 px-4 py-3.5 text-sm"
+          rows={1}
+          className="input-dark flex-1 resize-none px-4 py-3.5 text-sm max-h-[200px]"
         />
         <button type="button" aria-label="新对话" title="新对话" onClick={onNewConversation} className="flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3.5 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]">
           <Plus className="h-4 w-4" />
