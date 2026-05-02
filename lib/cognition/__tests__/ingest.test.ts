@@ -351,7 +351,7 @@ describe('selectCandidateTitles', () => {
     expect(candidates).toContain('Note 9');
   });
 
-  it('returns top 5 candidates via search when note count > 10', () => {
+  it('returns top 20 candidates via search when note count > 10', () => {
     const irrelevant = Array.from({ length: 15 }, (_, i) =>
       makeNote(`Irrelevant ${i}`, ['random', 'noise'], 'something unrelated')
     );
@@ -371,7 +371,7 @@ describe('selectCandidateTitles', () => {
 
     const candidates = selectCandidateTitles(source, allNotes);
 
-    expect(candidates.length).toBeLessThanOrEqual(5);
+    expect(candidates.length).toBeLessThanOrEqual(20);
     expect(candidates).toContain('React Hooks Guide');
     expect(candidates).toContain('TypeScript Tips');
     expect(candidates).toContain('Frontend Architecture');

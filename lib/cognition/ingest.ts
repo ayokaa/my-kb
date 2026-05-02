@@ -210,7 +210,7 @@ export function validateLLMOutput(parsed: unknown): asserts parsed is Record<str
 // ─── Candidate Title Selection ────────────────────────────────────
 
 const FULL_PASS_THRESHOLD = 10;
-const CANDIDATE_LIMIT = 5;
+const CANDIDATE_LIMIT = 20;
 
 interface TextSource {
   title: string;
