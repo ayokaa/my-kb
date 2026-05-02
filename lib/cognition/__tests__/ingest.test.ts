@@ -24,7 +24,7 @@ vi.mock('@/lib/ingestion/web', () => ({
   }),
 }));
 
-import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidateTitles } from '../ingest';
+import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidates } from '../ingest';
 
 function anthropicResponse(text: string) {
   return {
@@ -321,7 +321,7 @@ describe('processInboxEntry', () => {
     expect(userMessage).not.toContain('【用户提示】');
   });
 
-describe('selectCandidateTitles', () => {
+describe('selectCandidates', () => {
   function makeNote(title: string, tags: string[] = [], summary = ''): Note {
     return {
       id: title.toLowerCase().replace(/\s+/g, '-'),
@@ -345,10 +345,10 @@ describe('selectCandidateTitles', () => {
   it('returns all titles when note count <= 10', () => {
     const notes = Array.from({ length: 10 }, (_, i) => makeNote(`Note ${i}`));
     const source = { title: 'Test', content: 'hello world' };
-    const candidates = selectCandidateTitles(source, notes);
+    const candidates = selectCandidates(source, notes);
     expect(candidates).toHaveLength(10);
-    expect(candidates).toContain('Note 0');
-    expect(candidates).toContain('Note 9');
+    expect(candidates.map(n => n.title)).toContain('Note 0');
+    expect(candidates.map(n => n.title)).toContain('Note 9');
   });
 
   it('returns top 20 candidates via search when note count > 10', () => {
@@ -369,17 +369,17 @@ describe('selectCandidateTitles', () => {
       content: 'This article covers React hooks, TypeScript integration, and frontend architecture best practices.',
     };
 
-    const candidates = selectCandidateTitles(source, allNotes);
+    const candidates = selectCandidates(source, allNotes);
 
     expect(candidates.length).toBeLessThanOrEqual(20);
-    expect(candidates).toContain('React Hooks Guide');
-    expect(candidates).toContain('TypeScript Tips');
-    expect(candidates).toContain('Frontend Architecture');
+    expect(candidates.map(n => n.title)).toContain('React Hooks Guide');
+    expect(candidates.map(n => n.title)).toContain('TypeScript Tips');
+    expect(candidates.map(n => n.title)).toContain('Frontend Architecture');
   });
 
   it('returns empty array when no notes exist', () => {
     const source = { title: 'Test', content: 'hello' };
-    const candidates = selectCandidateTitles(source, []);
+    const candidates = selectCandidates(source, []);
     expect(candidates).toEqual([]);
   });
 });

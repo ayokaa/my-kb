@@ -1,12 +1,15 @@
 import type { Note, NoteLink } from '../types';
-import { selectCandidateTitles } from './ingest';
+import { selectCandidates } from './ingest';
 import Anthropic from '@anthropic-ai/sdk';
 import { getLLMClient, getLLMModel } from '../llm';
 import { logger } from '../logger';
 
-function buildRelinkPrompt(existingTitles: string[] = []): string {
-  const titleHint = existingTitles.length > 0
-    ? `\n\n知识库中可能相关的笔记标题（links 只能关联这些真实存在的笔记，不要编造不存在的标题）：\n${existingTitles.map(t => `- ${t}`).join('\n')}`
+function buildRelinkPrompt(candidates: Note[] = []): string {
+  const candidateHint = candidates.length > 0
+    ? `\n\n知识库中可能相关的笔记（links 只能关联这些真实存在的笔记，不要编造不存在的标题）：\n${candidates.map(n => {
+      const facts = n.keyFacts.length > 0 ? `\n关键事实：\n${n.keyFacts.map(f => `  - ${f}`).join('\n')}` : '';
+      return `【${n.title}】\n摘要：${n.summary}${facts}`;
+    }).join('\n\n')}`
     : '\n\n知识库目前没有相关笔记，links 留空即可。';
 
   return `你是一个个人知识库助手。请基于当前笔记的完整内容，重新判断它应该与知识库中的哪些笔记建立关联。
@@ -21,21 +24,21 @@ function buildRelinkPrompt(existingTitles: string[] = []): string {
 JSON 格式如下：
 {
   "links": [{"target": "关联笔记标题", "weight": "weak", "context": "关联原因"}]
-}${titleHint}`;
+}${candidateHint}`;
 }
 
 export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink[]> {
   const otherNotes = allNotes.filter((n) => n.id !== note.id);
   if (otherNotes.length === 0) return note.links;
 
-  const candidateTitles = selectCandidateTitles(
+  const candidates = selectCandidates(
     { title: note.title, content: note.content },
     otherNotes
   );
 
-  if (candidateTitles.length === 0) return note.links;
+  if (candidates.length === 0) return note.links;
 
-  const systemPrompt = buildRelinkPrompt(candidateTitles);
+  const systemPrompt = buildRelinkPrompt(candidates);
   const userPrompt = `当前笔记标题: ${note.title}\n标签: ${note.tags.join(', ')}\n摘要: ${note.summary}\n关键事实: ${note.keyFacts.join('; ')}\n内容:\n${note.content.slice(0, 8000)}`;
 
   async function callLLM(retries = 1): Promise<string> {
@@ -44,7 +47,7 @@ export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink
       const model = await getLLMModel();
       const response = await client.messages.create({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         temperature: 0.3,

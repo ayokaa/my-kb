@@ -56,9 +56,12 @@ function buildQAPrompt(): string {
 }`;
 }
 
-function buildLinkPrompt(existingTitles: string[] = []): string {
-  const titleHint = existingTitles.length > 0
-    ? `\n\n知识库中已有的笔记标题（links 只能关联这些真实存在的笔记，不要编造不存在的标题）：\n${existingTitles.map(t => `- ${t}`).join('\n')}`
+function buildLinkPrompt(candidates: Note[] = []): string {
+  const candidateHint = candidates.length > 0
+    ? `\n\n知识库中可能相关的笔记（links 只能关联这些真实存在的笔记，不要编造不存在的标题）：\n${candidates.map(n => {
+      const facts = n.keyFacts.length > 0 ? `\n关键事实：\n${n.keyFacts.map(f => `  - ${f}`).join('\n')}` : '';
+      return `【${n.title}】\n摘要：${n.summary}${facts}`;
+    }).join('\n\n')}`
     : '\n\n知识库目前没有笔记，links 留空即可。';
 
   return `你是一个个人知识库助手。基于以下已提取的结构化笔记信息，判断它与知识库中已有笔记的关联关系。
@@ -68,7 +71,7 @@ function buildLinkPrompt(existingTitles: string[] = []): string {
 2. 为每个关联说明具体原因
 3. 设置关联权重：strong（核心主题相同）、weak（主题相关但不相同）、context（仅在特定上下文相关）
 4. 如果没有真正相关的笔记，links 留空
-${titleHint}
+${candidateHint}
 
 只输出纯 JSON，不要 markdown 代码块，不要其他解释文字。JSON 格式如下：
 {
@@ -85,7 +88,7 @@ async function callLLM(systemPrompt: string, userPrompt: string, retries = 2): P
       const model = await getLLMModel();
       const response = await client.messages.create({
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         temperature: 0.3,
@@ -217,9 +220,9 @@ interface TextSource {
   content: string;
 }
 
-export function selectCandidateTitles(source: TextSource, existingNotes: Note[]): string[] {
+export function selectCandidates(source: TextSource, existingNotes: Note[]): Note[] {
   if (existingNotes.length <= FULL_PASS_THRESHOLD) {
-    return existingNotes.map((n) => n.title);
+    return existingNotes;
   }
 
   const query = `${source.title} ${source.content.slice(0, 5000)}`;
@@ -230,7 +233,7 @@ export function selectCandidateTitles(source: TextSource, existingNotes: Note[])
     statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
   });
 
-  return results.map((r) => r.note.title);
+  return results.map((r) => r.note);
 }
 
 // ─── Pipeline Steps ───────────────────────────────────────────────
@@ -307,14 +310,14 @@ async function generateQA(step1: ExtractResult): Promise<QAEntry[]> {
 }
 
 async function generateLinks(step1: ExtractResult, existingNotes: Note[]): Promise<NoteLink[]> {
-  const candidateTitles = selectCandidateTitles(
+  const candidates = selectCandidates(
     { title: step1.title, content: step1.content },
     existingNotes,
   );
 
-  if (candidateTitles.length === 0) return [];
+  if (candidates.length === 0) return [];
 
-  const systemPrompt = buildLinkPrompt(candidateTitles);
+  const systemPrompt = buildLinkPrompt(candidates);
   const structuredInfo = [
     `标题: ${step1.title}`,
     `标签: ${step1.tags.join(', ')}`,
