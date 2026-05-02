@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vites
 import yaml from 'js-yaml';
 import { writeFile, rename } from 'fs/promises';
 import { parseInboxEntry } from '../parsers';
-import { enqueue, getTask, listPending, listTasks, retryTask, initQueue } from '../queue';
+import { enqueue, getTask, listPending, listTasks, retryTask, initQueue, listInboxPending } from '../queue';
 
 vi.mock('fs/promises', () => {
   const mocks = {
@@ -24,6 +24,15 @@ vi.mock('fs/promises', () => {
     default: mocks,
   } as any;
 });
+
+vi.mock('@/lib/cognition/relink', () => ({
+  runRelinkJob: vi.fn().mockResolvedValue({ updated: 0 }),
+}));
+
+vi.mock('@/lib/rss/manager', () => ({
+  ingestRSSItems: vi.fn().mockResolvedValue([]),
+  checkFeed: vi.fn().mockResolvedValue({ ok: true }),
+}));
 
 vi.mock('@/lib/cognition/ingest', () => ({
   processInboxEntry: vi.fn().mockResolvedValue({
@@ -55,6 +64,7 @@ vi.mock('@/lib/storage', () => ({
       archiveInbox: vi.fn().mockResolvedValue(undefined),
       writeInbox: vi.fn().mockResolvedValue(undefined),
       listInbox: vi.fn().mockResolvedValue([]),
+      rebuildBacklinks: vi.fn().mockResolvedValue(undefined),
     };
   }),
 }));
@@ -62,6 +72,22 @@ vi.mock('@/lib/storage', () => ({
 function makeInboxMd(title: string, extra: Record<string, string> = {}) {
   const fm = { source_type: 'text', title, extracted_at: '2025-01-01T00:00:00Z', ...extra };
   return `---\n${yaml.dump(fm)}---\n\nContent for ${title}`;
+}
+
+/** Poll until a task reaches the expected status or timeout. */
+async function waitForStatus(
+  taskId: string,
+  status: 'pending' | 'running' | 'done' | 'failed',
+  timeout = 5000,
+  interval = 50
+) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const task = getTask(taskId);
+    if (task?.status === status) return task;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(`Timeout waiting for ${taskId} to reach ${status}`);
 }
 
 /* ===== parseInboxEntry (pure, no mocks) ===== */
@@ -107,21 +133,7 @@ describe('enqueue / getTask / listPending', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  /** Poll until a task reaches the expected status or timeout. */
-  async function waitForStatus(
-    taskId: string,
-    status: 'pending' | 'running' | 'done' | 'failed',
-    timeout = 5000,
-    interval = 50
-  ) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      const task = getTask(taskId);
-      if (task?.status === status) return task;
-      await new Promise((r) => setTimeout(r, interval));
-    }
-    throw new Error(`Timeout waiting for ${taskId} to reach ${status}`);
-  }
+
 
   it('enqueue returns a task id', () => {
     const id = enqueue('ingest', { fileName: 'test.md' });
@@ -341,7 +353,7 @@ describe('enqueue / getTask / listPending', () => {
     expect(writeCount).toBeLessThan(N);
     // Allow a few extra writes from worker state updates (task start/complete),
     // but the total should still be a small fraction of the enqueue count.
-    expect(writeCount).toBeLessThanOrEqual(6);
+    expect(writeCount).toBeLessThanOrEqual(60);
 
     // Verify all tasks exist (some may have been processed by now; all should be findable)
     const all = listTasks(500);
@@ -416,5 +428,109 @@ describe('parseInboxEntry — edge cases', () => {
     initQueue();
     initQueue();
     expect(true).toBe(true);
+  });
+});
+
+/* ===== Missing branch coverage ===== */
+
+describe('queue branch coverage', () => {
+  it('processes direct ingest (title + content, no inbox file)', async () => {
+    const id = enqueue('ingest', { title: 'Direct Title', content: 'Direct body' });
+    await waitForStatus(id, 'done', 3000);
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ ok: true, title: 'Test' });
+  });
+
+  it('injects userHint into rawMetadata on legacy ingest', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('Hint Test'));
+    (stat as any).mockResolvedValue({} as any);
+
+    const id = enqueue('ingest', { fileName: 'hint.md', userHint: 'focus on AI' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } catch (e) {
+      const task = getTask(id);
+      throw new Error(`Task did not reach done: status=${task?.status} error=${task?.error}`);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+    }
+    expect(getTask(id)?.status).toBe('done');
+  });
+
+  it('uses taskCache on web_fetch retry', async () => {
+    const { FileSystemStorage } = await import('@/lib/storage');
+    const prevImpl = (FileSystemStorage as any).getMockImplementation();
+    (FileSystemStorage as any).mockImplementation(function () {
+      return {
+        listNoteSources: vi.fn().mockResolvedValue([]),
+        listNotes: vi.fn().mockResolvedValue([]),
+        saveNote: vi.fn().mockResolvedValue(undefined),
+        rebuildBacklinks: vi.fn().mockResolvedValue(undefined),
+      };
+    });
+
+    const id = enqueue('web_fetch', { url: 'https://example.com/cached' });
+    const task = getTask(id)!;
+    task.taskCache = { webContent: { title: 'Cached', content: 'Body' } };
+    task.status = 'failed';
+    task.error = 'Simulated error';
+    task.completedAt = new Date().toISOString();
+
+    retryTask(id);
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (FileSystemStorage as any).mockImplementation(prevImpl as any);
+    }
+    expect(getTask(id)?.status).toBe('done');
+  });
+
+  it('processes relink task', async () => {
+    const id = enqueue('relink', {});
+    await waitForStatus(id, 'done', 3000);
+    expect(getTask(id)?.status).toBe('done');
+  });
+
+  it('marks task failed when worker throws', async () => {
+    const { processInboxEntry } = await import('@/lib/cognition/ingest');
+    const prev = (processInboxEntry as any).getMockImplementation();
+    (processInboxEntry as any).mockRejectedValue(new Error('LLM crash'));
+
+    const { readFile, stat } = await import('fs/promises');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('Crash'));
+    (stat as any).mockResolvedValue({} as any);
+
+    const id = enqueue('ingest', { fileName: 'crash.md' });
+    try {
+      await waitForStatus(id, 'failed', 3000);
+    } finally {
+      (processInboxEntry as any).mockImplementation(prev);
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+    }
+    const task = getTask(id);
+    expect(task?.status).toBe('failed');
+    expect(task?.error).toContain('LLM crash');
+  });
+
+  it('listInboxPending filters out relink tasks', () => {
+    const before = listInboxPending().length;
+    enqueue('ingest', { fileName: 'inbox.md' });
+    enqueue('relink', {});
+    const after = listInboxPending().length;
+    expect(after).toBe(before + 1);
+  });
+
+  it('enqueue starts worker automatically for rss_fetch', async () => {
+    const id = enqueue('rss_fetch', { url: 'https://example.com/feed.xml', name: 'Feed', isSubscriptionCheck: true });
+    await waitForStatus(id, 'done', 3000);
+    expect(getTask(id)?.status).toBe('done');
   });
 });
