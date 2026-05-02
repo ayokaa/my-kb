@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **消除 `as any` 滥用**：修复 18 处非测试代码中的 `as any`，统一替换为更精确的类型（`Record<string, unknown>`、`FormData`、`ChangeEvent`、`YamlDumpOptions` 等）。新增 `hooks/useKeyboardShortcuts.ts` 封装快捷键判断逻辑，避免各组件重复手写 `if ((e.ctrlKey || e.metaKey) && e.key === 'Enter')`。
+- **补充 `lib/queue.ts` 单元测试**：新增 7 个测试，覆盖直接入库（title+content）、userHint 注入、web_fetch 缓存复用、relink 任务、worker 异常捕获、listInboxPending 过滤、自动启动 worker 等分支。queue.ts 行覆盖从 62.8% 提升到 81.3%，分支覆盖从 38.7% 提升到 58.0%。
 - **前端快捷键支持**：所有涉及文本输入的交互统一快捷键行为。
   - `ChatPanel`：聊天输入框改为 `textarea`，Enter 换行，Ctrl/Cmd+Enter 发送，内容自动增高（最高 200px），发送后高度重置。
   - `IngestPanel`：文本/链接/文件三个 tab 的输入区统一快捷键——内容 `textarea` 用 Ctrl+Enter 提交，URL `input` 用 Enter 提交，提示词 `textarea` 用 Ctrl+Enter 提交（文件 tab 触发文件选择）。
