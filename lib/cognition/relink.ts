@@ -19,7 +19,8 @@ function buildRelinkPrompt(candidates: Note[] = []): string {
 2. 每个 link 包含 target（目标笔记标题）、weight（strong/weak/context）、context（关联原因，一句话）
 3. 如果当前笔记与候选笔记没有实质性关联，links 留空
 4. 请输出完整的关联列表，不是增量补充；之前存在的关联如果仍然有效请保留，无效的请移除
-5. 只输出纯 JSON，不要 markdown 代码块，不要其他解释文字
+5. 最多关联 5 个笔记，优先保留关联度最高的
+6. 只输出纯 JSON，不要 markdown 代码块，不要其他解释文字
 
 JSON 格式如下：
 {
@@ -97,7 +98,7 @@ export async function relinkNote(note: Note, allNotes: Note[]): Promise<NoteLink
     logger.info('Relink', `${note.title}: ${newLinks.length} new link(s) suggested`);
   }
 
-  return newLinks;
+  return newLinks.slice(0, 5);
 }
 
 export interface RelinkResult {

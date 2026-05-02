@@ -70,7 +70,8 @@ function buildLinkPrompt(candidates: Note[] = []): string {
 1. 只关联与当前笔记内容确实有关系的笔记（共享主题、概念互补、因果关联等）
 2. 为每个关联说明具体原因
 3. 设置关联权重：strong（核心主题相同）、weak（主题相关但不相同）、context（仅在特定上下文相关）
-4. 如果没有真正相关的笔记，links 留空
+4. 最多关联 5 个笔记，优先保留关联度最高的
+5. 如果没有真正相关的笔记，links 留空
 ${candidateHint}
 
 只输出纯 JSON，不要 markdown 代码块，不要其他解释文字。JSON 格式如下：
@@ -350,7 +351,7 @@ async function generateLinks(step1: ExtractResult, existingNotes: Note[]): Promi
     logger.info('Ingest', `Filtered ${parsed.links.length - validLinks.length} void links, kept ${validLinks.length}`);
   }
 
-  return validLinks;
+  return validLinks.slice(0, 5);
 }
 
 // ─── Main Entry Point ─────────────────────────────────────────────
