@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file.
   - `InboxPanel`：提示词 `textarea` 用 Ctrl+Enter 将当前条目加入知识库。
   - 快捷键逻辑统一封装到 `hooks/useKeyboardShortcuts.ts`，提供 `onCtrlEnter(handler)` 和 `onEnter(handler)` 两个工具函数，消除各组件中重复的判断代码。
   - 新增单元测试 `hooks/__tests__/useKeyboardShortcuts.test.ts`（7 个测试），覆盖 Ctrl+Enter、Meta+Enter、纯 Enter、其他按键等场景。
+- **补充 E2E 测试覆盖**：新增 `e2e/settings.spec.ts`（5 个测试），覆盖设置面板导航、默认值加载、修改保存、非法 cron 表达式校验、非法 RSS 间隔校验。更新 `e2e/chat.spec.ts`，补充 Enter 换行和 Ctrl+Enter 发送的快捷键行为验证。更新 `e2e/ingest.spec.ts`，补充文本和链接 tab 的 Ctrl+Enter 快捷键提交验证。
 
 ### Changed
 

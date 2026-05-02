@@ -142,7 +142,7 @@ export default function SettingsPanel() {
                 type="number"
                 min={1}
                 value={settings?.cron.rssIntervalMinutes || 60}
-                onChange={(e) => setSettings((s) => s ? { ...s, cron: { ...s.cron, rssIntervalMinutes: parseInt(e.target.value, 10) || 1 } } : s)}
+                onChange={(e) => setSettings((s) => s ? { ...s, cron: { ...s.cron, rssIntervalMinutes: Number.isNaN(parseInt(e.target.value, 10)) ? 1 : parseInt(e.target.value, 10) } } : s)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
               />
             </div>

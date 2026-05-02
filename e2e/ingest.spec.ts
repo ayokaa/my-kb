@@ -1,5 +1,4 @@
-import { test, expect } from './fixtures';
-import { resetTestData } from './fixtures';
+import { test, expect, resetTestData } from './fixtures';
 
 test.describe.serial('Ingest', () => {
   test.beforeEach(async () => {
@@ -88,5 +87,32 @@ test.describe.serial('Ingest', () => {
 
     await page.getByPlaceholder('输入文本内容...').fill('Some content');
     await expect(submitBtn).toBeEnabled();
+  });
+
+  test('Ctrl+Enter submits text ingest from content textarea', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByTestId('nav-ingest').click();
+    await page.getByTestId('ingest-tab-text').click();
+
+    await page.getByPlaceholder('标题（可选）').fill('Ctrl+Enter Test');
+    await page.getByPlaceholder('输入文本内容...').fill('Submitted via keyboard shortcut.');
+
+    await page.getByPlaceholder('输入文本内容...').press('Control+Enter');
+
+    await expect(page.locator('p').filter({ hasText: /已入库|已加入/ }).first()).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Ctrl+Enter submits link ingest from hint textarea', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByTestId('nav-ingest').click();
+
+    await page.getByPlaceholder('https://...').fill('https://example.com/article');
+    await page.getByPlaceholder('提示词（可选）——告诉 AI 重点关注什么').fill('Focus on key points');
+
+    await page.getByPlaceholder('提示词（可选）——告诉 AI 重点关注什么').press('Control+Enter');
+
+    await expect(page.locator('p').filter({ hasText: /已入库|已加入/ }).first()).toBeVisible({ timeout: 5000 });
   });
 });
