@@ -1,6 +1,7 @@
 import { readFile, writeFile, rename, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { logger } from './logger';
+import type { NoteStatus } from './types';
 
 // ── 类型 ────────────────────────────────────────────────────
 
@@ -231,10 +232,10 @@ export interface StatusChange {
 
 /** 纯函数：根据 noteKnowledge 计算笔记应转换到的状态。返回 null 表示不变。 */
 export function computeNoteStatus(
-  currentStatus: string,
+  currentStatus: NoteStatus,
   nk: NoteKnowledge | undefined,
   now: number
-): string | null {
+): NoteStatus | null {
   if (currentStatus === 'archived') return null;
 
   switch (currentStatus) {
@@ -274,7 +275,7 @@ export async function evolveNoteStatuses(memory: UserMemory): Promise<StatusChan
 
     if (newStatus && newStatus !== note.status) {
       changes.push({ noteId: note.id, from: note.status, to: newStatus });
-      note.status = newStatus as any;
+      note.status = newStatus;
       await storage.saveNote(note, { skipBacklinkRebuild: true });
     }
   }

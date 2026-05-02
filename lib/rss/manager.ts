@@ -33,7 +33,7 @@ async function loadSources(): Promise<RSSSubscription[]> {
 
 async function saveSources(sources: RSSSubscription[]) {
   await ensureMetaDir();
-  await writeFile(SOURCES_PATH, yaml.dump(sources, { allowUnicode: true } as any), 'utf-8');
+  await writeFile(SOURCES_PATH, yaml.dump(sources, { allowUnicode: true } as import('@/lib/types').YamlDumpOptions), 'utf-8');
 }
 
 // Prevent concurrent ingest for the same feed URL

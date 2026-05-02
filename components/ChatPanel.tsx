@@ -112,7 +112,7 @@ function ChatArea({ conversationId, initialMessages, onSources, onSave, onNewCon
     if (isLoading) {
       pendingQueueRef.current.push(input);
       setQueuedMessages((prev) => [...prev, input]);
-      handleInputChange({ target: { value: '' } } as any);
+      handleInputChange({ target: { value: '' } } as React.ChangeEvent<HTMLTextAreaElement>);
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
       return;
     }

@@ -44,8 +44,9 @@ function validateMessages(messages: unknown): Array<{ role: string; content: str
     if (!msg || typeof msg !== 'object') {
       throw new Error('Each message must be an object');
     }
-    const role = (msg as any).role;
-    const content = (msg as any).content;
+    const record = msg as Record<string, unknown>;
+    const role = record.role;
+    const content = record.content;
     if (!['system', 'user', 'assistant'].includes(String(role))) {
       throw new Error('Invalid message role');
     }

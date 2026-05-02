@@ -17,6 +17,10 @@ import { logger } from './logger';
 
 export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
 export interface IngestPayload {
   fileName?: string;
   title?: string;
@@ -261,19 +265,24 @@ async function startWorker(type: TaskType) {
         const result = await runIngestTask(task.payload as IngestPayload);
         task.status = 'done';
         task.result = result || { ok: true };
-        logger.info('Queue', `Task ${id} completed ${(result as any)?.skipped ? '(skipped)' : ''}`);
+        const ingestResult = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+        logger.info('Queue', `Task ${id} completed ${ingestResult?.skipped === true ? '(skipped)' : ''}`);
         emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'rss_fetch') {
         const result = await runRSSFetchTask(task.payload as RSSFetchPayload);
         task.status = 'done';
         task.result = result;
-        logger.info('Queue', `Task ${id} RSS fetch completed ${(result as any).newItems !== undefined ? `(${(result as any).newItems} new items)` : ''}`);
+        const rssResult = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+        const rssNewItems = rssResult && typeof rssResult.newItems === 'number' ? rssResult.newItems : undefined;
+        logger.info('Queue', `Task ${id} RSS fetch completed ${rssNewItems !== undefined ? `(${rssNewItems} new items)` : ''}`);
         emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'web_fetch') {
         const result = await runWebFetchTask(task.payload as WebFetchPayload, task);
         task.status = 'done';
         task.result = result;
-        logger.info('Queue', `Task ${id} web fetch completed ${(result as any).title || ''}`);
+        const webResult = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+        const webTitle = webResult && typeof webResult.title === 'string' ? webResult.title : '';
+        logger.info('Queue', `Task ${id} web fetch completed ${webTitle}`);
         emitTaskEvent('completed', id, type, undefined, result);
       } else if (task.type === 'relink') {
         const result = await runRelinkTask();

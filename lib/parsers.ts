@@ -209,7 +209,7 @@ export function stringifyNote(note: Note): string {
     sources: note.sources,
   };
 
-  const lines: string[] = ['---', yaml.dump(fm, { allowUnicode: true } as any).trim(), '---', ''];
+  const lines: string[] = ['---', yaml.dump(fm, { allowUnicode: true } as import('./types').YamlDumpOptions).trim(), '---', ''];
 
   lines.push(`# ${note.title}`, '');
 

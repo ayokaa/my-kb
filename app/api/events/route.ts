@@ -29,8 +29,9 @@ export async function GET() {
       }, HEARTBEAT_INTERVAL_MS);
 
       // Handle abort signal (Next.js may use AbortSignal on the request)
-      if ('signal' in controller && (controller as any).signal) {
-        (controller as any).signal.addEventListener('abort', cleanup);
+      const ctrl = controller as unknown as { signal?: AbortSignal };
+      if ('signal' in controller && ctrl.signal) {
+        ctrl.signal.addEventListener('abort', cleanup);
       }
     },
     cancel(controller) {

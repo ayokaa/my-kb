@@ -28,7 +28,7 @@ export default function IngestPanel() {
         {
           method: 'POST',
           headers: type === 'file' ? undefined : { 'Content-Type': 'application/json' },
-          body: type === 'file' ? (body as any) : JSON.stringify(body),
+          body: type === 'file' ? (body as FormData) : JSON.stringify(body),
         }
       );
       const data = await res.json();

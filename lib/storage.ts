@@ -353,7 +353,7 @@ export class FileSystemStorage implements Storage {
   async saveAliases(aliases: AliasMapping[]): Promise<void> {
     const path = join(this.root, 'meta', 'aliases.yml');
     const data = Object.fromEntries(aliases.map(a => [a.canonical, a.aliases]));
-    await this.atomicWrite(path, yaml.dump(data, { allowUnicode: true } as any as any));
+    await this.atomicWrite(path, yaml.dump(data, { allowUnicode: true } as import('./types').YamlDumpOptions));
   }
 
   // ===== Inbox =====
@@ -437,7 +437,7 @@ export class FileSystemStorage implements Storage {
         ...entry.rawMetadata,
       };
 
-      const content = `---\n${yaml.dump(fm, { allowUnicode: true } as any)}---\n\n${entry.content}`;
+      const content = `---\n${yaml.dump(fm, { allowUnicode: true } as import('./types').YamlDumpOptions)}---\n\n${entry.content}`;
       await this.atomicWrite(path, content);
       entry.filePath = path;
       // 通知客户端收件箱有新内容
@@ -626,7 +626,7 @@ export class FileSystemStorage implements Storage {
 
     const lines: string[] = [
       '---',
-      yaml.dump(fm, { allowUnicode: true } as any).trim(),
+      yaml.dump(fm, { allowUnicode: true } as import('./types').YamlDumpOptions).trim(),
       '---',
       '',
     ];

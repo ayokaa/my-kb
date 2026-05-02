@@ -1,4 +1,11 @@
+import type { DumpOptions } from 'js-yaml';
+
 export type NoteStatus = 'seed' | 'growing' | 'evergreen' | 'stale' | 'archived';
+
+/** js-yaml dump 的扩展选项（@types/js-yaml 缺少 allowUnicode） */
+export interface YamlDumpOptions extends DumpOptions {
+  allowUnicode?: boolean;
+}
 export type LinkWeight = 'strong' | 'weak' | 'context';
 export type SourceType = 'text' | 'web' | 'image' | 'audio' | 'pdf';
 

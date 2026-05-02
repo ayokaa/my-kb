@@ -303,10 +303,13 @@ async function generateQA(step1: ExtractResult): Promise<QAEntry[]> {
   validateQAOutput(parsed);
 
   return Array.isArray(parsed.qas)
-    ? parsed.qas.map((q: any) => ({
-        question: String(q.question || ''),
-        answer: String(q.answer || ''),
-      }))
+    ? (parsed.qas as unknown[]).map((q) => {
+        const item = q as Record<string, unknown>;
+        return {
+          question: String(item.question || ''),
+          answer: String(item.answer || ''),
+        };
+      })
     : [];
 }
 
@@ -334,17 +337,21 @@ async function generateLinks(step1: ExtractResult, existingNotes: Note[]): Promi
   const allTitles = existingNotes.map((n) => n.title);
   const normalizedTitles = new Set(allTitles.map((t) => t.toLowerCase()));
   const validLinks = Array.isArray(parsed.links)
-    ? (parsed.links as any[]).filter((l: any) => {
-        const target = String(l.target || '').toLowerCase();
+    ? (parsed.links as unknown[]).filter((l) => {
+        const item = l as Record<string, unknown>;
+        const target = String(item.target || '').toLowerCase();
         if (!target) return false;
         return Array.from(normalizedTitles).some(
-          (t: string) => t.includes(target) || target.includes(t)
+          (t) => t.includes(target) || target.includes(t)
         );
-      }).map((l: any) => ({
-        target: String(l.target || ''),
-        weight: ['strong', 'weak', 'context'].includes(l.weight) ? l.weight : 'weak',
-        context: l.context ? String(l.context) : undefined,
-      }))
+      }).map((l) => {
+        const item = l as Record<string, unknown>;
+        return {
+          target: String(item.target || ''),
+          weight: ['strong', 'weak', 'context'].includes(String(item.weight)) ? (String(item.weight) as import('@/lib/types').LinkWeight) : 'weak',
+          context: item.context ? String(item.context) : undefined,
+        };
+      })
     : [];
 
   if (Array.isArray(parsed.links) && parsed.links.length > validLinks.length) {
