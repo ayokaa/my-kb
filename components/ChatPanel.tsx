@@ -280,8 +280,29 @@ export default function ChatPanel() {
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 
+  const pendingMemoryRef = useRef<Set<string>>(new Set());
+  const lastMessagesRef = useRef<Record<string, Array<{ role: string; content: string; createdAt?: string }>>>({});
+
+  const flushMemoryUpdate = useCallback((id: string | null) => {
+    if (!id) return;
+    if (pendingMemoryRef.current.has(id)) {
+      const messages = lastMessagesRef.current[id];
+      if (messages && messages.length >= 2) {
+        fetch('/api/memory/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: id, messages }),
+        }).catch(() => {});
+      }
+      pendingMemoryRef.current.delete(id);
+      delete lastMessagesRef.current[id];
+    }
+  }, []);
+
   const handleNewConversation = useCallback(async () => {
     if (isCreatingRef.current) return;
+    // 结束当前会话后再创建新对话
+    flushMemoryUpdate(activeIdRef.current);
     isCreatingRef.current = true;
     try {
       const res = await fetch('/api/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '新对话' }) });
@@ -297,7 +318,7 @@ export default function ChatPanel() {
     } finally {
       isCreatingRef.current = false;
     }
-  }, []);
+  }, [flushMemoryUpdate, show]);
 
   const initializedRef = useRef(false);
 
@@ -320,6 +341,13 @@ export default function ChatPanel() {
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
+  useEffect(() => {
+    return () => {
+      // 组件卸载时 flush 当前会话的记忆
+      flushMemoryUpdate(activeIdRef.current);
+    };
+  }, [flushMemoryUpdate]);
+
   const loadMessages = useCallback(async (id: string) => {
     if (!id) return;
     setLoadingConv(true);
@@ -337,10 +365,12 @@ export default function ChatPanel() {
   }, []);
 
   const handleSelectConversation = useCallback(async (id: string) => {
+    // 离开当前会话前触发记忆更新
+    flushMemoryUpdate(activeIdRef.current);
     setActiveId(id);
     setCurrentSources([]);
     await loadMessages(id);
-  }, [loadMessages]);
+  }, [loadMessages, flushMemoryUpdate]);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     if (confirmingDeleteId !== id) {
@@ -349,6 +379,10 @@ export default function ChatPanel() {
       return;
     }
     setConfirmingDeleteId(null);
+    // 删除前若当前会话有未更新的记忆，先 flush
+    if (activeId === id) {
+      flushMemoryUpdate(activeId);
+    }
     try {
       const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -365,18 +399,15 @@ export default function ChatPanel() {
     } catch {
       show('删除对话失败', 'error');
     }
-  }, [activeId, confirmingDeleteId, handleSelectConversation]);
+  }, [activeId, confirmingDeleteId, handleSelectConversation, flushMemoryUpdate]);
 
   const handleSave = useCallback(async (id: string, messages: Array<{ role: string; content: string; createdAt?: string }>) => {
+    // 缓存最新消息，等会话结束时统一更新记忆
+    pendingMemoryRef.current.add(id);
+    lastMessagesRef.current[id] = messages;
     try {
       await fetch(`/api/conversations/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) });
       loadConversations();
-      // 异步更新用户记忆（fire-and-forget）
-      fetch('/api/memory/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: id, messages }),
-      }).catch(() => {});
     } catch {
       show('保存对话失败', 'error');
     }

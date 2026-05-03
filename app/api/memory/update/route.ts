@@ -3,7 +3,7 @@ import { getLLMClient, getLLMModel } from '@/lib/llm';
 import { loadMemory, saveMemory, mergeMemory, evolveNoteStatuses, type MemoryExtractResult } from '@/lib/memory';
 import { logger } from '@/lib/logger';
 
-const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 AI 助手的对话，提取以下信息。只基于对话内容，不要编造。
+const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 AI 助手的一次完整会话，提取以下信息。只基于对话内容，不要编造。
 
 输出严格 JSON，不要 markdown 代码块：
 
@@ -22,7 +22,7 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
     }
   ],
   "conversationDigest": {
-    "summary": "本轮对话的核心主题（1-2句话）",
+    "summary": "本次会话的核心主题（1-2句话）",
     "topics": ["3-5个话题关键词"]
   },
   "preferenceSignals": {
@@ -64,7 +64,7 @@ async function processMemoryUpdate(convId: string, messages: Array<{ role: strin
       '',
       recentTopics ? `最近话题：${recentTopics}` : '',
       '',
-      '【本轮对话】',
+      '【本次会话】',
       conversationText.slice(0, 8000),
     ].join('\n');
 

@@ -29,6 +29,7 @@ All notable changes to this project are documented in this file.
 - **手动操作记忆后触发状态演进**：`app/api/memory/route.ts` 的 DELETE 操作中，删除 `noteKnowledge` 或 `clearAll` 后自动调用 `evolveNoteStatuses()`，确保手动删除认知后笔记状态同步更新。
 - **运行日志默认保留量**：`lib/logger.ts` 的 `query()` 默认 limit 从 100 改为 1000；`components/LogsPanel.tsx` 的前端请求 limit 同步改为 1000。
 - **LLM 查询重写**：多轮对话时，在检索前调用独立 LLM 将对话历史重写为检索查询。解决指代消解（"那"→"RAG"）和上下文断裂问题。单轮对话跳过重写以节省成本。重写失败时自动 fallback 到用户原消息。与 `loadOrBuildIndex()` 并行执行以压缩延迟。
+- **会话级记忆更新**：记忆提取从"每轮 AI 回复后触发"改为"会话结束时批量触发"。判定会话结束的时机：创建新对话、切换对话、删除当前对话、组件卸载。减少简单寒暄轮次对 `conversationDigest` 的噪音污染，使摘要更凝练。
 
 ## 2026-05-02
 
