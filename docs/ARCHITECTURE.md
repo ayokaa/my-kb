@@ -341,9 +341,22 @@ A lightweight user memory model (`lib/memory.ts`) that is updated automatically 
 6. **Status evolution** (`evolveNoteStatuses()`) scans all notes and transitions status based on `noteKnowledge`:
    - `seed` → `growing` when `level !== 'aware'`
    - `growing` → `evergreen` when `level === 'discussed'`
-   - `evergreen` → `stale` after 30 days without reference
+   - `evergreen` → `stale` after 30 days without reference (while knowledge still exists)
    - `stale` → `growing` when referenced again
+   - Any non-archived status → `seed` when knowledge is removed (via manual deletion or clear)
    - `archived` is never changed
+
+**Manual memory management** (`GET/POST/DELETE /api/memory`):
+
+A dedicated memory panel allows users to view and edit their memory directly. Supported operations:
+- View full memory (profile, note knowledge, conversation digest, preferences)
+- Edit profile (role, background, techStack, interests)
+- Edit/delete preferences
+- Delete individual note knowledge entries
+- Delete individual conversation digest entries
+- Clear all memory (with confirmation)
+
+Any operation that removes `noteKnowledge` triggers `evolveNoteStatuses()` to keep note statuses in sync.
 
 **Chat Integration** (`getChatContext()`):
 

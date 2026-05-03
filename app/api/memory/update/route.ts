@@ -16,7 +16,7 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
   },
   "noteFamiliarity": [
     {
-      "noteId": "笔记 ID",
+      "noteId": "笔记 ID（对话中笔记标注的 ID: xxx 值，如 rag-overview）",
       "level": "referenced 或 discussed",
       "notes": "用户对该笔记话题的认知水平观察（1句话）"
     }

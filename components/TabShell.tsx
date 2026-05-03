@@ -10,6 +10,7 @@ import RSSPanel from './RSSPanel';
 import TasksPanel from './TasksPanel';
 import SettingsPanel from './SettingsPanel';
 import LogsPanel from './LogsPanel';
+import MemoryPanel from './MemoryPanel';
 import type { InboxEvent } from '@/lib/events';
 
 interface TabShellProps {
@@ -86,6 +87,9 @@ export default function TabShell({ notesPanel }: TabShellProps) {
         </div>
         <div data-testid="panel-logs" className={tab === 'logs' ? 'h-full' : 'hidden'}>
           <LogsPanel isActive={tab === 'logs'} />
+        </div>
+        <div data-testid="panel-memory" className={tab === 'memory' ? 'h-full' : 'hidden'}>
+          <MemoryPanel isActive={tab === 'memory'} />
         </div>
       </main>
     </>

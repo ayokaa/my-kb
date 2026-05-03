@@ -60,7 +60,7 @@ export default function LogsPanel({ isActive }: LogsPanelProps) {
       if (filterLevel !== 'all') params.set('level', filterLevel);
       if (filterModule !== 'all') params.set('module', filterModule);
       if (search) params.set('search', search);
-      params.set('limit', '100');
+      params.set('limit', '1000');
 
       const res = await fetch(`/api/logs?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();

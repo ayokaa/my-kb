@@ -1,9 +1,9 @@
 'use client';
 
-import { MessageSquare, Inbox, BookOpen, Sparkles, Rss, ListChecks, PlusCircle, Settings, Sun, Moon, FileText } from 'lucide-react';
+import { MessageSquare, Inbox, BookOpen, Sparkles, Rss, ListChecks, PlusCircle, Settings, Sun, Moon, FileText, Brain } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 
-export type Tab = 'chat' | 'inbox' | 'tasks' | 'notes' | 'rss' | 'ingest' | 'settings' | 'logs';
+export type Tab = 'chat' | 'inbox' | 'tasks' | 'notes' | 'rss' | 'ingest' | 'settings' | 'logs' | 'memory';
 
 interface SidebarProps {
   active: Tab;
@@ -19,6 +19,7 @@ const items: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'tasks', label: '任务', icon: ListChecks },
   { id: 'rss', label: '订阅', icon: Rss },
   { id: 'notes', label: '笔记', icon: BookOpen },
+  { id: 'memory', label: '记忆', icon: Brain },
   { id: 'logs', label: '日志', icon: FileText },
   { id: 'settings', label: '设置', icon: Settings },
 ];

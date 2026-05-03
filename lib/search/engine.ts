@@ -254,12 +254,12 @@ export function assembleContext(
     let chunk: string;
     if (isLinkDiffusion) {
       chunk =
-        `【相关笔记: ${note.title}】\n` +
+        `【相关笔记: ${note.title}】(ID: ${note.id})\n` +
         `摘要: ${note.summary}\n` +
         `关联原因: 被其他笔记引用\n`;
     } else {
       const lines = [
-        `【笔记: ${note.title}】`,
+        `【笔记: ${note.title}】(ID: ${note.id})`,
         `标签: ${note.tags.join(', ')}`,
         `来源: ${note.sources.join(', ')}`,
         `摘要: ${note.summary}`,

@@ -243,15 +243,17 @@ export function computeNoteStatus(
       if (nk && nk.level !== 'aware') return 'growing';
       break;
     case 'growing':
-      if (nk && nk.level === 'discussed') return 'evergreen';
+      if (!nk) return 'seed';
+      if (nk.level === 'discussed') return 'evergreen';
       break;
     case 'evergreen':
-      if (!nk || (now - new Date(nk.lastReferencedAt).getTime()) > 30 * 86400000)
+      if (!nk) return 'seed';
+      if ((now - new Date(nk.lastReferencedAt).getTime()) > 30 * 86400000)
         return 'stale';
       break;
     case 'stale':
-      if (nk) return 'growing';
-      break;
+      if (!nk) return 'seed';
+      return 'growing';
   }
   return null;
 }

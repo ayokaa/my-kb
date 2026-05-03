@@ -204,6 +204,108 @@ For `type: "link"`, the server enqueues a `web_fetch` task that uses Camoufox + 
 
 ## Memory
 
+### `GET /api/memory`
+
+Return the current user memory model.
+
+**Response:**
+```json
+{
+  "profile": {
+    "role": "...",
+    "techStack": ["..."],
+    "interests": ["..."],
+    "background": "...",
+    "updatedAt": "2026-05-03T00:00:00.000Z"
+  },
+  "noteKnowledge": {
+    "rag-overview": {
+      "level": "discussed",
+      "firstSeenAt": "...",
+      "lastReferencedAt": "...",
+      "notes": "..."
+    }
+  },
+  "conversationDigest": [
+    {
+      "conversationId": "conv-...",
+      "summary": "...",
+      "topics": ["..."],
+      "timestamp": "..."
+    }
+  ],
+  "preferences": {
+    "detailLevel": "concise"
+  },
+  "updatedAt": "2026-05-03T00:00:00.000Z"
+}
+```
+
+---
+
+### `POST /api/memory`
+
+Update the user memory model.
+
+**Request body:**
+```json
+{
+  "action": "updateProfile",
+  "profile": {
+    "role": "...",
+    "background": "...",
+    "techStack": ["..."],
+    "interests": ["..."]
+  }
+}
+```
+
+**Actions:**
+
+| Action | Required fields | Description |
+|--------|-----------------|-------------|
+| `updateProfile` | `profile` | Overwrites profile fields. Empty strings clear `role`/`background`. |
+| `updatePreference` | `key`, `value` | Sets or updates a preference key. |
+
+**Response:**
+```json
+{ "ok": true }
+```
+
+**Error:** `400` for unknown action or missing required fields.
+
+---
+
+### `DELETE /api/memory`
+
+Delete parts of the user memory model.
+
+**Request body:**
+```json
+{
+  "action": "deleteNoteKnowledge",
+  "noteId": "rag-overview"
+}
+```
+
+**Actions:**
+
+| Action | Required fields | Description |
+|--------|-----------------|-------------|
+| `deleteNoteKnowledge` | `noteId` | Removes a single note knowledge entry. Triggers `evolveNoteStatuses()` — if the note was `evergreen`/`growing`/`stale`, it reverts to `seed`. |
+| `deleteConversationDigest` | `conversationId`, `timestamp` | Removes a single digest entry matched by both fields. |
+| `deletePreference` | `key` | Removes a preference key. |
+| `clearAll` | — | Resets the entire memory to empty. Triggers `evolveNoteStatuses()` — all notes with knowledge revert to `seed`. |
+
+**Response:**
+```json
+{ "ok": true }
+```
+
+**Error:** `400` for unknown action or missing required fields.
+
+---
+
 ### `POST /api/memory/update`
 
 Analyze a conversation and update the user memory model. Called automatically by the chat system after each completed conversation turn.
@@ -224,16 +326,17 @@ Analyze a conversation and update the user memory model. Called automatically by
 2. Sends the conversation + existing profile to the LLM with a structured extraction prompt.
 3. The LLM returns JSON containing:
    - `profileChanges` — incremental updates to role, techStack, interests, background
-   - `noteFamiliarity` — observed familiarity level (`aware`/`referenced`/`discussed`) for relevant notes
+   - `noteFamiliarity` — observed familiarity level (`aware`/`referenced`/`discussed`) for relevant notes. The LLM uses the `ID: xxx` annotation exposed in the chat context (`assembleContext`) to output the correct slug ID.
    - `conversationDigest` — summary and topics of this conversation
    - `preferenceSignals` — observed preferences (detail level, code examples, etc.)
 4. Merges extracted data into existing memory using field-specific strategies (dedup append for arrays, overwrite for scalars, insert-at-front for digest with 20-entry cap).
 5. Persists merged memory atomically (tmp+rename).
 6. Triggers `evolveNoteStatuses()` which automatically transitions note statuses based on `noteKnowledge`:
-   - `seed` → `growing` when user has referenced the note
-   - `growing` → `evergreen` when user has discussed it in depth
-   - `evergreen` → `stale` after 30 days without mention
+   - `seed` → `growing` when user has referenced the note (`level !== 'aware'`)
+   - `growing` → `evergreen` when user has discussed it in depth (`level === 'discussed'`)
+   - `evergreen` → `stale` after 30 days without mention (while knowledge still exists)
    - `stale` → `growing` when mentioned again
+   - Any status → `seed` when knowledge is removed (via manual deletion or clear)
 
 **Response:**
 ```json

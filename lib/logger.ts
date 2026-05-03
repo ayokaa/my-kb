@@ -276,7 +276,7 @@ export class Logger {
   }
 
   query(options: LogQuery = {}): LogQueryResult {
-    const { level, module, search, limit = 100, offset = 0, from } = options;
+    const { level, module, search, limit = 1000, offset = 0, from } = options;
 
     const filtered: LogEntry[] = [];
     for (let i = this.buffer.length - 1; i >= 0; i--) {

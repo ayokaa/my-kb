@@ -199,6 +199,14 @@ describe('assembleContext', () => {
     expect(context).toContain('摘要');
   });
 
+  test('上下文中包含笔记 ID', () => {
+    const index = buildIndex(ALL_TEST_NOTES);
+    const results = search('RAG', ALL_TEST_NOTES, index, { enableDiffusion: false });
+    const context = assembleContext(results);
+    expect(context).toContain('(ID: rag-overview)');
+    expect(context).toContain('(ID: vector-db)');
+  });
+
   test('扩散笔记只包含摘要', () => {
     const index = buildIndex(ALL_TEST_NOTES);
     const results = search('RAG', ALL_TEST_NOTES, index, { enableDiffusion: true });
@@ -207,6 +215,16 @@ describe('assembleContext', () => {
       const context = assembleContext([diffused]);
       expect(context).toContain('相关笔记');
       expect(context).toContain('关联原因');
+    }
+  });
+
+  test('扩散笔记上下文中也包含笔记 ID', () => {
+    const index = buildIndex(ALL_TEST_NOTES);
+    const results = search('RAG', ALL_TEST_NOTES, index, { enableDiffusion: true });
+    const diffused = results.find(r => r.isLinkDiffusion);
+    if (diffused) {
+      const context = assembleContext([diffused]);
+      expect(context).toContain(`(ID: ${diffused.note.id})`);
     }
   });
 });

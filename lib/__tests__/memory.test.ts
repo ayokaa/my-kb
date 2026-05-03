@@ -235,6 +235,10 @@ describe('memory module', () => {
       expect(computeNoteStatus('growing', nk('referenced'), Date.now())).toBeNull();
     });
 
+    it('growing → seed when knowledge is removed', () => {
+      expect(computeNoteStatus('growing', undefined, Date.now())).toBe('seed');
+    });
+
     it('evergreen → stale after 30 days without reference', () => {
       expect(computeNoteStatus('evergreen', nk('discussed', 31), Date.now())).toBe('stale');
     });
@@ -243,16 +247,16 @@ describe('memory module', () => {
       expect(computeNoteStatus('evergreen', nk('discussed', 29), Date.now())).toBeNull();
     });
 
-    it('evergreen → stale when no knowledge at all', () => {
-      expect(computeNoteStatus('evergreen', undefined, Date.now())).toBe('stale');
+    it('evergreen → seed when knowledge is removed', () => {
+      expect(computeNoteStatus('evergreen', undefined, Date.now())).toBe('seed');
     });
 
     it('stale → growing when user references again', () => {
       expect(computeNoteStatus('stale', nk('referenced'), Date.now())).toBe('growing');
     });
 
-    it('stale stays stale when no knowledge', () => {
-      expect(computeNoteStatus('stale', undefined, Date.now())).toBeNull();
+    it('stale → seed when knowledge is removed', () => {
+      expect(computeNoteStatus('stale', undefined, Date.now())).toBe('seed');
     });
 
     it('archived never changes', () => {

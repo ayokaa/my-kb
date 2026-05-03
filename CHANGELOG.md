@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-03
+
+### Added
+
+- **记忆管理面板**：新增「记忆」导航页，用户可查看 AI 积累的所有记忆数据，包括用户档案、偏好设置、笔记认知和对话摘要。
+- **记忆编辑与删除**：记忆面板支持前端交互操作：
+  - 用户档案：编辑角色、背景，添加/删除技术栈和兴趣标签
+  - 偏好设置：编辑值、删除条目
+  - 笔记认知：逐条删除
+  - 对话摘要：逐条删除
+  - 一键清除：带确认对话框，清空全部记忆
+- **`/api/memory` REST API**：新增 `GET /api/memory`（读取记忆）、`POST /api/memory`（更新档案/偏好）、`DELETE /api/memory`（删除笔记认知/对话摘要/偏好/一键清空）。
+- **记忆相关测试**：新增 `app/api/memory/__tests__/route.test.ts`（15 个用例）、`components/__tests__/MemoryPanel.test.tsx`、补充 `lib/search/__tests__/engine.test.ts`（2 个用例）。
+
+### Changed
+
+- **笔记认知与状态关联修复**：修复对话后笔记状态未更新的问题。根因是 LLM 在对话中看不到笔记的 slug ID，导致 `noteKnowledge` 中的 key 与 `note.id` 不匹配，`evolveNoteStatuses()` 永远找不到对应笔记。
+  - `lib/search/engine.ts` 的 `assembleContext()` 在注入对话上下文的笔记信息中显式标注 `ID: ${note.id}`
+  - `app/api/memory/update/route.ts` 的 prompt 明确要求 LLM 使用"对话中笔记标注的 ID: xxx 值"作为 `noteId`
+- **笔记状态演进规则调整**：`lib/memory.ts` 的 `computeNoteStatus()` 修改删除认知后的行为——认知记录被删除（`nk = undefined`）时，笔记状态统一退回 `seed`（而非保持原状态或变为 `stale`）。
+  - `growing` → `seed`
+  - `evergreen` → `seed`
+  - `stale` → `seed`
+  - `evergreen` 的超时逻辑保持不变：仍有认知但 30 天未引用时降级为 `stale`
+- **手动操作记忆后触发状态演进**：`app/api/memory/route.ts` 的 DELETE 操作中，删除 `noteKnowledge` 或 `clearAll` 后自动调用 `evolveNoteStatuses()`，确保手动删除认知后笔记状态同步更新。
+- **运行日志默认保留量**：`lib/logger.ts` 的 `query()` 默认 limit 从 100 改为 1000；`components/LogsPanel.tsx` 的前端请求 limit 同步改为 1000。
+
 ## 2026-05-02
 
 ### Added
