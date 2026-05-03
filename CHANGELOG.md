@@ -28,6 +28,12 @@ All notable changes to this project are documented in this file.
   - `evergreen` 的超时逻辑保持不变：仍有认知但 30 天未引用时降级为 `stale`
 - **手动操作记忆后触发状态演进**：`app/api/memory/route.ts` 的 DELETE 操作中，删除 `noteKnowledge` 或 `clearAll` 后自动调用 `evolveNoteStatuses()`，确保手动删除认知后笔记状态同步更新。
 - **运行日志默认保留量**：`lib/logger.ts` 的 `query()` 默认 limit 从 100 改为 1000；`components/LogsPanel.tsx` 的前端请求 limit 同步改为 1000。
+- **记忆触发时机补充测试与日志**：
+  - 提取 `hooks/useMemoryFlush.ts` 自定义 Hook，封装记忆缓存与刷新逻辑
+  - `ChatPanel.tsx` 迁移至新 Hook，`handleSave` 中使用 `stageMemoryUpdate`，四个触发点（新建/切换/删除对话、组件卸载）继续使用 `flushMemoryUpdate`
+  - 新增 `hooks/__tests__/useMemoryFlush.test.ts`（9 个用例），覆盖：stage、null id 跳过、无 pending 跳过、消息不足跳过、正常 flush、重复 flush 只发一次、fetch 成功/失败日志、多对话独立处理
+  - 补全前端 `console.log`/`console.error` 日志：stage、skip、flushing、success、failed 五个环节均有输出
+  - 补全后端 `app/api/memory/update/route.ts` 日志：接收请求时记录 `conversationId` 和消息数，消息不足拒绝时也记录
 - **LLM 查询重写**：多轮对话时，在检索前调用独立 LLM 将对话历史重写为检索查询。解决指代消解（"那"→"RAG"）和上下文断裂问题。单轮对话跳过重写以节省成本。重写失败时自动 fallback 到用户原消息。与 `loadOrBuildIndex()` 并行执行以压缩延迟。
 - **会话级记忆更新**：记忆提取从"每轮 AI 回复后触发"改为"会话结束时批量触发"。判定会话结束的时机：创建新对话、切换对话、删除当前对话、组件卸载。减少简单寒暄轮次对 `conversationDigest` 的噪音污染，使摘要更凝练。
 - **记忆提取 Prompt 偏好示例扩展**：`preferenceSignals` 增加 `_description` 说明示例不限于所列键名，并新增 `language`、`responseFormat`、`expertiseLevel` 等示例，避免 LLM 将偏好提取局限于 `detailLevel` 和 `preferCodeExamples` 两个维度。

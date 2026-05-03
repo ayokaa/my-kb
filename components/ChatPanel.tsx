@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { Send, Loader2, Bot, User, Plus, MessageSquare, Trash2, BookOpen, Sparkles, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/ToastContext';
 import { onCtrlEnter } from '@/hooks/useKeyboardShortcuts';
+import { useMemoryFlush } from '@/hooks/useMemoryFlush';
 
 interface ConversationItem {
   id: string;
@@ -280,24 +281,7 @@ export default function ChatPanel() {
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 
-  const pendingMemoryRef = useRef<Set<string>>(new Set());
-  const lastMessagesRef = useRef<Record<string, Array<{ role: string; content: string; createdAt?: string }>>>({});
-
-  const flushMemoryUpdate = useCallback((id: string | null) => {
-    if (!id) return;
-    if (pendingMemoryRef.current.has(id)) {
-      const messages = lastMessagesRef.current[id];
-      if (messages && messages.length >= 2) {
-        fetch('/api/memory/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conversationId: id, messages }),
-        }).catch((err) => console.error('[MemoryUpdate]', err));
-      }
-      pendingMemoryRef.current.delete(id);
-      delete lastMessagesRef.current[id];
-    }
-  }, []);
+  const { stageMemoryUpdate, flushMemoryUpdate } = useMemoryFlush();
 
   const handleNewConversation = useCallback(async () => {
     if (isCreatingRef.current) return;
@@ -403,15 +387,14 @@ export default function ChatPanel() {
 
   const handleSave = useCallback(async (id: string, messages: Array<{ role: string; content: string; createdAt?: string }>) => {
     // 缓存最新消息，等会话结束时统一更新记忆
-    pendingMemoryRef.current.add(id);
-    lastMessagesRef.current[id] = messages;
+    stageMemoryUpdate(id, messages);
     try {
       await fetch(`/api/conversations/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) });
       loadConversations();
     } catch {
       show('保存对话失败', 'error');
     }
-  }, [loadConversations, show]);
+  }, [loadConversations, show, stageMemoryUpdate]);
 
 
 

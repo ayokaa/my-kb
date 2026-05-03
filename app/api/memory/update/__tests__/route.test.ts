@@ -33,10 +33,10 @@ import { POST } from '../route';
 
 /** 等待 queueMicrotask 中的后台处理完成 */
 async function flushMicrotasks() {
-  await new Promise((resolve) => queueMicrotask(resolve));
+  await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
   // 再等待多个 tick，确保 async/await 链（loadMemory → getLLMClient → messages.create）全部完成
   // 在完整测试套件中 CPU 可能被其他测试占用，需要更长的等待时间
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 50));
 }
 
 describe('POST /api/memory/update', () => {

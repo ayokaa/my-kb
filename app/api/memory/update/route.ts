@@ -124,10 +124,12 @@ export async function POST(req: Request) {
 
   const { conversationId, messages } = body;
   if (!Array.isArray(messages) || messages.length < 2) {
+    logger.info('Memory', `Update request rejected: not enough messages (got ${Array.isArray(messages) ? messages.length : 'none'})`);
     return Response.json({ ok: false, reason: 'not enough messages' });
   }
 
   const convId = typeof conversationId === 'string' ? conversationId : 'unknown';
+  logger.info('Memory', `Received update request for conversation=${convId}, messages=${messages.length}`);
 
   // 立即返回，后台异步执行 LLM 分析，避免阻塞 HTTP 连接
   queueMicrotask(() => {
