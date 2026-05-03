@@ -225,4 +225,116 @@ describe('/api/chat', () => {
     // fetchWebContent should be called at most 3 times, not 5
     expect(mockFetchWebContent).toHaveBeenCalledTimes(3);
   });
+
+  it('triggers query rewrite on multi-turn conversation', async () => {
+    // Round 0: query rewrite (non-streaming)
+    const rewriteResponse = {
+      content: [{ type: 'text', text: 'RAG 检索增强生成 微调 区别' }],
+    };
+
+    // Round 1: main LLM response (streaming)
+    async function* mockStream() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(rewriteResponse);
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: '什么是 RAG？' },
+          { role: 'assistant', content: 'RAG 是检索增强生成...' },
+          { role: 'user', content: '那和微调有什么区别？' },
+        ],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    // Rewrite + main LLM = 2 calls
+    expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
+    // First call should be rewrite (has system prompt and low max_tokens)
+    const firstCall = mockMessagesCreate.mock.calls[0][0];
+    expect(firstCall.max_tokens).toBe(256);
+    expect(firstCall.temperature).toBe(0.1);
+    expect(firstCall.system).toContain('查询重写');
+    // Second call should be main LLM (streaming)
+    const secondCall = mockMessagesCreate.mock.calls[1][0];
+    expect(secondCall.stream).toBe(true);
+    expect(secondCall.max_tokens).toBe(4096);
+  });
+
+  it('falls back to original query when rewrite fails', async () => {
+    // Round 0: query rewrite fails
+    mockMessagesCreate.mockRejectedValueOnce(new Error('API timeout'));
+
+    // Round 1: main LLM response (streaming)
+    async function* mockStream() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Fallback works' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: '什么是 RAG？' },
+          { role: 'assistant', content: 'RAG 是...' },
+          { role: 'user', content: '那和微调的区别' },
+        ],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain('Fallback works');
+  });
+
+  it('skips rewrite on single-turn conversation', async () => {
+    async function* mockStream() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Single turn' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: '什么是 RAG？' }],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    // Single turn: no rewrite, only 1 LLM call
+    expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+  });
 });

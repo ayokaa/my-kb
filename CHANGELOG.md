@@ -28,6 +28,7 @@ All notable changes to this project are documented in this file.
   - `evergreen` 的超时逻辑保持不变：仍有认知但 30 天未引用时降级为 `stale`
 - **手动操作记忆后触发状态演进**：`app/api/memory/route.ts` 的 DELETE 操作中，删除 `noteKnowledge` 或 `clearAll` 后自动调用 `evolveNoteStatuses()`，确保手动删除认知后笔记状态同步更新。
 - **运行日志默认保留量**：`lib/logger.ts` 的 `query()` 默认 limit 从 100 改为 1000；`components/LogsPanel.tsx` 的前端请求 limit 同步改为 1000。
+- **LLM 查询重写**：多轮对话时，在检索前调用独立 LLM 将对话历史重写为检索查询。解决指代消解（"那"→"RAG"）和上下文断裂问题。单轮对话跳过重写以节省成本。重写失败时自动 fallback 到用户原消息。与 `loadOrBuildIndex()` 并行执行以压缩延迟。
 
 ## 2026-05-02
 

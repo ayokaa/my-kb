@@ -5,7 +5,7 @@ import { search, assembleContext, contentFallback } from '@/lib/search/engine';
 import { loadOrBuildIndex } from '@/lib/search/cache';
 import { fetchWebContent } from '@/lib/ingestion/web';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
-import { getLLMClient, getLLMModel } from '@/lib/llm';
+import { getLLMClient, getLLMModel, getLLM } from '@/lib/llm';
 import { loadMemory, getChatContext } from '@/lib/memory';
 import { logger } from '@/lib/logger';
 
@@ -136,6 +136,59 @@ function toAnthropicParams(openaiMessages: any[]): {
   }
 
   return { system, messages: anthropicMessages };
+}
+
+// ── LLM Query Rewriter ──────────────────────────────────────
+
+const REWRITE_SYSTEM_PROMPT = `你是一个查询重写助手。你的任务是将多轮对话历史转换为一个简洁的搜索查询，用于从知识库中检索相关笔记。
+
+规则：
+1. 必须包含用户当前问题的核心意图
+2. 将对话中的指代词（"那"、"这个"、"它"、"前者"）替换为具体指代的对象
+3. 包含对话中累积的所有关键主题和概念
+4. 使用名词和关键词，不要保留疑问句式
+5. 如果对话涉及多个主题，优先保留当前轮次的主题，同时保留必要的上下文主题
+6. 查询语言与用户问题保持一致
+7. 只输出查询字符串，不要解释、不要加引号、不要有多余内容`;
+
+function buildRewritePrompt(messages: Array<{ role: string; content: string }>): string {
+  const history = messages
+    .map((m) => `${m.role === 'user' ? '用户' : '助手'}：${m.content}`)
+    .join('\n\n');
+
+  return `请基于以下对话历史，生成一个用于知识库检索的查询。\n\n对话历史：\n\n${history}\n\n检索查询：`;
+}
+
+async function rewriteQuery(
+  client: Anthropic,
+  model: string,
+  messages: Array<{ role: string; content: string }>
+): Promise<string> {
+  const original = messages.at(-1)?.content || '';
+
+  try {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 256,
+      temperature: 0.1,
+      system: REWRITE_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: buildRewritePrompt(messages) }],
+    });
+
+    const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
+    const raw = textBlocks.map((b) => b.text).join('').trim();
+    const rewritten = raw.slice(0, 200);
+
+    if (!rewritten) {
+      throw new Error('Empty rewrite result');
+    }
+
+    logger.info('Chat', `Query rewritten: "${original.slice(0, 50)}" → "${rewritten.slice(0, 100)}"`);
+    return rewritten;
+  } catch (err) {
+    logger.warn('Chat', `Query rewrite failed, fallback to original: ${(err as Error).message}`);
+    return original;
+  }
 }
 
 /**
@@ -303,24 +356,26 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid messages' }, { status: 400 });
   }
 
-  // 构建查询：取最近 3 轮用户消息拼接，让检索能利用对话上下文
-  const recentUserMessages = messages
-    .filter((m) => m.role === 'user')
-    .slice(-3)
-    .map((m) => m.content);
-  const query = recentUserMessages.join(' ');
+  // 判断是否需要查询重写（多轮对话时触发）
+  const userMessageCount = messages.filter((m) => m.role === 'user').length;
 
-  // 加载笔记和索引
+  // 加载笔记和索引，与查询重写并行执行
   const storage = new FileSystemStorage();
   const notes = await storage.listNotes();
-  const index = await loadOrBuildIndex(storage, notes);
+
+  const [searchQuery, index] = await Promise.all([
+    userMessageCount >= 2
+      ? getLLM().then(({ client, model }) => rewriteQuery(client, model, messages))
+      : Promise.resolve(messages.at(-1)?.content || ''),
+    loadOrBuildIndex(storage, notes),
+  ]);
 
   // 执行检索
   let contextText = '';
   let searchResults: Array<{ id: string; title: string; score: number }> = [];
 
-  if (notes.length > 0 && query.length > 0) {
-    let results = search(query, notes, index, {
+  if (notes.length > 0 && searchQuery.length > 0) {
+    let results = search(searchQuery, notes, index, {
       statusFilter: ['seed', 'growing', 'evergreen', 'stale'],
       enableDiffusion: true,
       diffusionDepth: 1,
@@ -330,7 +385,7 @@ export async function POST(req: Request) {
     // rg content fallback: 结构化搜索结果太少时，用 rg 扫正文兜底
     if (results.length < 3) {
       const hitIds = new Set(results.map((r) => r.note.id));
-      const fallbackIds = await contentFallback(query, storage.getRoot(), hitIds);
+      const fallbackIds = await contentFallback(searchQuery, storage.getRoot(), hitIds);
       for (const id of fallbackIds) {
         try {
           const note = await storage.loadNote(id);
@@ -359,12 +414,12 @@ export async function POST(req: Request) {
         .slice(0, 5)
         .map((r) => `${r.note.title}(${r.score.toFixed(2)})`)
         .join(', ');
-      logger.info('Chat', `Retrieved ${results.length} notes for query: "${query.slice(0, 50)}" — top: ${topScores}`);
+      logger.info('Chat', `Retrieved ${results.length} notes for query: "${searchQuery.slice(0, 50)}" — top: ${topScores}`);
     } else {
-      logger.info('Chat', `No relevant notes found for query: "${query.slice(0, 50)}"`);
+      logger.info('Chat', `No relevant notes found for query: "${searchQuery.slice(0, 50)}"`);
     }
   } else {
-    logger.info('Chat', `Skipping search: ${notes.length} notes, query length ${query.length}`);
+    logger.info('Chat', `Skipping search: ${notes.length} notes, query length ${searchQuery.length}`);
   }
 
   // 拆分 system prompt：固定部分 + 动态检索部分
