@@ -26,8 +26,12 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
     "topics": ["3-5个话题关键词"]
   },
   "preferenceSignals": {
+    "_description": "以下为示例，键名不限于这些。任何从对话中观察到的用户偏好都可以记录",
     "detailLevel": "concise 或 normal 或 detailed（如果观察到）",
-    "preferCodeExamples": true
+    "preferCodeExamples": true,
+    "language": "用户偏好的语言（如 zh, en 等）",
+    "responseFormat": "用户偏好的回答格式（如 markdown, 列表, 表格）",
+    "expertiseLevel": "用户表现出的专业水平（beginner, intermediate, expert）"
   }
 }
 
