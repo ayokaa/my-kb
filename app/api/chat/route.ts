@@ -365,7 +365,9 @@ export async function POST(req: Request) {
 
   const [searchQuery, index] = await Promise.all([
     userMessageCount >= 2
-      ? getLLM().then(({ client, model }) => rewriteQuery(client, model, messages))
+      ? getLLM()
+          .then(({ client, model }) => rewriteQuery(client, model, messages))
+          .catch(() => messages.at(-1)?.content || '')
       : Promise.resolve(messages.at(-1)?.content || ''),
     loadOrBuildIndex(storage, notes),
   ]);

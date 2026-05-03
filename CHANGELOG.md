@@ -32,6 +32,14 @@ All notable changes to this project are documented in this file.
 - **会话级记忆更新**：记忆提取从"每轮 AI 回复后触发"改为"会话结束时批量触发"。判定会话结束的时机：创建新对话、切换对话、删除当前对话、组件卸载。减少简单寒暄轮次对 `conversationDigest` 的噪音污染，使摘要更凝练。
 - **记忆提取 Prompt 偏好示例扩展**：`preferenceSignals` 增加 `_description` 说明示例不限于所列键名，并新增 `language`、`responseFormat`、`expertiseLevel` 等示例，避免 LLM 将偏好提取局限于 `detailLevel` 和 `preferCodeExamples` 两个维度。
 
+### Fixed
+
+- **偏好值后端类型校验**：`POST /api/memory` 的 `updatePreference` action 新增 value 类型检查，仅允许 `string | number | boolean`，拒绝 `object | array | null` 注入。
+- **查询重写 getLLM 异常降级**：`rewriteQuery` 链新增 `.catch()` 兜底，`getLLM()` 拒绝时降级到用户原消息而非返回 500。
+- **会话记忆更新错误静默**：`flushMemoryUpdate` 的 fetch 失败从静默吞错改为 `console.error` 输出。
+- **摘要列表 React key**：对话摘要列表 key 从数组索引改为 `conversationId`，避免删除时渲染错位。
+- **图标重命名**：`AlertTriangle` → `TriangleAlert`，对齐 lucide-react 新版本 API。
+
 ## 2026-05-02
 
 ### Added

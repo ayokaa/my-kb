@@ -5,7 +5,7 @@ describe('MemoryPanel icon imports', () => {
   it('uses only icons that exist in lucide-react', () => {
     const usedIcons = [
       'Brain', 'Loader2', 'RefreshCw', 'User', 'BookOpen', 'MessageSquare',
-      'Heart', 'Pencil', 'Trash2', 'Plus', 'X', 'Check', 'Save',
+      'Heart', 'Pencil', 'Trash2', 'Plus', 'X', 'Check', 'Save', 'TriangleAlert',
     ];
     for (const name of usedIcons) {
       const icon = (lucide as any)[name];

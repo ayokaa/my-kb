@@ -30,6 +30,9 @@ export async function POST(req: Request) {
         if (typeof key !== 'string') {
           return Response.json({ error: 'key is required' }, { status: 400 });
         }
+        if (value !== undefined && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+          return Response.json({ error: 'value must be string, number, or boolean' }, { status: 400 });
+        }
         memory.preferences[key] = value;
         break;
       }

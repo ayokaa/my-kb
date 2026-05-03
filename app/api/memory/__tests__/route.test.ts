@@ -141,6 +141,69 @@ describe('/api/memory', () => {
       expect(res.status).toBe(400);
       expect(data.error).toContain('key is required');
     });
+
+    it('rejects object value', async () => {
+      const req = new Request('http://localhost/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePreference', key: 'theme', value: { injected: true } }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects array value', async () => {
+      const req = new Request('http://localhost/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePreference', key: 'tags', value: [1, 2, 3] }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects null value', async () => {
+      const req = new Request('http://localhost/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePreference', key: 'theme', value: null }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+    });
+
+    it('accepts boolean value', async () => {
+      const req = new Request('http://localhost/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePreference', key: 'darkMode', value: true }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const getRes = await GET();
+      const getData = await getRes.json();
+      expect(getData.preferences.darkMode).toBe(true);
+    });
+
+    it('accepts number value', async () => {
+      const req = new Request('http://localhost/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'updatePreference', key: 'fontSize', value: 14 }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const getRes = await GET();
+      const getData = await getRes.json();
+      expect(getData.preferences.fontSize).toBe(14);
+    });
   });
 
   describe('DELETE deleteNoteKnowledge', () => {

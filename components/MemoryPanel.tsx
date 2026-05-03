@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Brain, Loader2, RefreshCw, User, BookOpen, MessageSquare, Heart,
-  Pencil, Trash2, Plus, X, Check, Save, AlertTriangle,
+  Pencil, Trash2, Plus, X, Check, Save, TriangleAlert,
 } from 'lucide-react';
 import { useToast } from '@/hooks/ToastContext';
 
@@ -685,7 +685,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
                 <div className="space-y-2">
                   {recentDigest.map((d, i) => (
                     <div
-                      key={`digest-${i}`}
+                      key={d.conversationId}
                       className="group relative rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 transition-colors hover:border-[var(--border-hover)]"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -737,7 +737,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
           <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-6 shadow-xl">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/10">
-                <AlertTriangle className="h-5 w-5 text-[var(--error)]" />
+                <TriangleAlert className="h-5 w-5 text-[var(--error)]" />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">确认清空全部记忆？</h3>

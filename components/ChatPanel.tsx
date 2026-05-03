@@ -292,7 +292,7 @@ export default function ChatPanel() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversationId: id, messages }),
-        }).catch(() => {});
+        }).catch((err) => console.error('[MemoryUpdate]', err));
       }
       pendingMemoryRef.current.delete(id);
       delete lastMessagesRef.current[id];

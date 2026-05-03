@@ -313,6 +313,54 @@ describe('/api/chat', () => {
     expect(text).toContain('Fallback works');
   });
 
+  it('degrades gracefully when getLLM rejects during query rewrite', async () => {
+    vi.resetModules();
+
+    vi.doMock('@/lib/llm', () => ({
+      getLLM: vi.fn().mockRejectedValue(new Error('LLM unavailable')),
+      getLLMClient: vi.fn().mockResolvedValue({
+        messages: { create: mockMessagesCreate },
+      }),
+      getLLMModel: vi.fn().mockResolvedValue('model'),
+    }));
+
+    async function* mockStream() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Graceful degradation' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: '什么是 RAG？' },
+          { role: 'assistant', content: 'RAG 是...' },
+          { role: 'user', content: '那和微调的区别' },
+        ],
+      }),
+    });
+
+    const res = await POST(req);
+    // Before fix: 500; After fix: 200 with graceful degradation
+    expect(res.status).toBe(200);
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain('Graceful degradation');
+  });
+
   it('skips rewrite on single-turn conversation', async () => {
     async function* mockStream() {
       yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
