@@ -265,13 +265,45 @@ export function assembleContext(
         `摘要: ${note.summary}`,
       ];
 
+      if (note.personalContext) {
+        lines.push(`与我相关: ${note.personalContext}`);
+      }
+
       if (note.keyFacts.length > 0) {
         lines.push(`关键事实:\n${note.keyFacts.map(f => `- ${f}`).join('\n')}`);
+      }
+
+      if (note.timeline.length > 0) {
+        lines.push(
+          `时间线:\n${note.timeline.map(t => `- ${t.date} | ${t.event}`).join('\n')}`
+        );
       }
 
       if (note.qas.length > 0) {
         const qaLines = note.qas.map(qa => `Q: ${qa.question}\nA: ${qa.answer}`).join('\n');
         lines.push(`问答:\n${qaLines}`);
+      }
+
+      if (note.links.length > 0) {
+        const linkLines = note.links
+          .map(l => {
+            const w = l.weight !== 'weak' ? ` #${l.weight}` : '';
+            const c = l.context ? ` — ${l.context}` : '';
+            return `- [[${l.target}]]${w}${c}`;
+          })
+          .join('\n');
+        lines.push(`关联:\n${linkLines}`);
+      }
+
+      if (note.backlinks.length > 0) {
+        const backlinkLines = note.backlinks
+          .map(l => {
+            const w = l.weight !== 'weak' ? ` #${l.weight}` : '';
+            const c = l.context ? ` — ${l.context}` : '';
+            return `- [[${l.target}]]${w}${c}`;
+          })
+          .join('\n');
+        lines.push(`反向链接:\n${backlinkLines}`);
       }
 
       const contentPreview = note.content.slice(0, contentChars);

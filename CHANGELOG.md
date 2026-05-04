@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-04
+
+### Changed
+
+- **聊天系统提示词重构**：全面重写 `app/api/chat/route.ts` 的 `baseSystem`，从简单的"优先基于知识库作答"升级为结构化格式说明 + 精细化回答原则：
+  - 新增【检索结果格式说明】：逐字段解释笔记结构化格式（标签、来源、摘要、与我相关、关键事实、时间线、问答、关联/反向链接、正文）的语义和引用策略
+  - 新增【回答原则】：明确"按需取材，拒绝堆砌""深度整合，拒绝粘贴"，禁止复制笔记原文
+  - 新增【引用规范】：要求行内标注 `[^笔记标题]`，回答末尾必须列出"参考来源"并注明引用的字段
+- **上下文组装补全缺失字段**：`lib/search/engine.ts` 的 `assembleContext()` 补齐了此前丢失的四个结构化字段：
+  - `与我相关`（personalContext）
+  - `时间线`（timeline）
+  - `关联`（links，含权重和关联原因）
+  - `反向链接`（backlinks，含权重和关联原因）
+- **提示词文档同步更新**：运行 `npm run extract-prompts` 重新生成 `docs/PROMPTS.md`，提示词总数从 14 更新为 18。
+
 ## 2026-05-03
 
 ### Added
