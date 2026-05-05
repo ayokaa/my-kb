@@ -13,9 +13,14 @@ export interface CronSettings {
   relinkCronExpression: string;
 }
 
+export interface MemorySettings {
+  taskIntervalMs: number;
+}
+
 export interface RuntimeSettings {
   llm: LLMSettings;
   cron: CronSettings;
+  memory: MemorySettings;
 }
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
@@ -28,9 +33,12 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
     rssIntervalMinutes: 60,
     relinkCronExpression: '0 3 * * *',
   },
+  memory: {
+    taskIntervalMs: 30_000,
+  },
 };
 
-function getSettingsPath(): string {
+export function getSettingsPath(): string {
   return join(process.cwd(), process.env.KNOWLEDGE_ROOT || 'knowledge', 'meta', 'settings.yml');
 }
 
@@ -44,6 +52,9 @@ function envOverride(settings: RuntimeSettings): RuntimeSettings {
     cron: {
       rssIntervalMinutes: parseInt(process.env.RSS_CHECK_INTERVAL_MINUTES || String(settings.cron.rssIntervalMinutes), 10),
       relinkCronExpression: process.env.RELINK_CRON_EXPRESSION || settings.cron.relinkCronExpression,
+    },
+    memory: {
+      taskIntervalMs: settings.memory?.taskIntervalMs ?? DEFAULT_SETTINGS.memory.taskIntervalMs,
     },
   };
 }
@@ -64,6 +75,9 @@ export async function loadSettings(): Promise<RuntimeSettings> {
       cron: {
         rssIntervalMinutes: parsed.cron?.rssIntervalMinutes || DEFAULT_SETTINGS.cron.rssIntervalMinutes,
         relinkCronExpression: parsed.cron?.relinkCronExpression || DEFAULT_SETTINGS.cron.relinkCronExpression,
+      },
+      memory: {
+        taskIntervalMs: parsed.memory?.taskIntervalMs || DEFAULT_SETTINGS.memory.taskIntervalMs,
       },
     };
     return envOverride(merged);

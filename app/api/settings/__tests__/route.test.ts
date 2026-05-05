@@ -45,12 +45,14 @@ describe('/api/settings', () => {
     expect(data.llm.model).toBe('MiniMax-M2.7');
     expect(data.llm.apiKey).toBe('');
     expect(data.cron.rssIntervalMinutes).toBe(60);
+    expect(data.memory.taskIntervalMs).toBe(30_000);
   });
 
   it('POST persists settings and returns success', async () => {
     const body = {
       llm: { model: 'gpt-4', apiKey: 'sk-testkey1234567890', baseUrl: 'https://api.openai.com/v1' },
       cron: { rssIntervalMinutes: 30, relinkCronExpression: '0 0 * * *' },
+      memory: { taskIntervalMs: 60_000 },
     };
 
     const req = new Request('http://localhost/api/settings', {
@@ -70,6 +72,7 @@ describe('/api/settings', () => {
     const getData = await getRes.json();
     expect(getData.llm.model).toBe('gpt-4');
     expect(getData.llm.apiKey).toBe('sk-...7890');
+    expect(getData.memory.taskIntervalMs).toBe(60_000);
   });
 
   it('POST rejects invalid cron expression', async () => {

@@ -29,6 +29,9 @@ export async function POST(req: Request) {
         rssIntervalMinutes: body.cron?.rssIntervalMinutes ?? current.cron.rssIntervalMinutes,
         relinkCronExpression: body.cron?.relinkCronExpression ?? current.cron.relinkCronExpression,
       },
+      memory: {
+        taskIntervalMs: body.memory?.taskIntervalMs ?? current.memory.taskIntervalMs,
+      },
     };
 
     // Validate cron expression
