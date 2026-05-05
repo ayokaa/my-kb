@@ -17,6 +17,18 @@ All notable changes to this project are documented in this file.
 - **面板清理**：所有面板统一使用共享的 `formatDate`/`serializeMessages`；`NotesPanelClient` 内联 markdown components 提取为 `noteDetailComponents` 常量；`TasksPanel` 移除未使用的 `typeLabel`；`SettingsPanel` placeholder 改为 Anthropic 默认值。
 - **ENV 迁移**：`MINIMAX_API_KEY` → `ANTHROPIC_API_KEY`，`MINIMAX_BASE_URL` → `ANTHROPIC_BASE_URL`。
 - **Logger 健壮性**：`close()` 等待循环加 5 秒超时保护，防止进程无法退出。
+- **Memory 数据模型重构**：`lib/memory.ts` 全面调整用户记忆结构：
+  - `UserProfile` 移除 `techStack` 字段，简化为 `role`/`interests`/`background`
+  - `UserMemory` 新增 `recentDigests: string[]`（带日期前缀的滚动摘要，7 天 TTL）
+  - `MemoryExtractResult` 用 `newDigest` + `recentDiscussion` 替代旧的 `conversationDigest` 直接提取
+  - `mergeMemory()` 追加日期前缀到 `recentDigests`，过滤超过 7 天的条目
+  - `getChatContext()` 只注入 LLM 综合生成的 `conversationDigest`，原始摘要不直接暴露给 Chat
+- **Memory Update API 任务拆分**：`app/api/memory/update/route.ts` 从单任务 prompt 拆为 5 个独立 LLM 任务：
+  - 4 个即时任务串行执行（profile → noteFamiliarity → digest → preference），间隔可配置
+  - 1 个延迟任务 `regenerateRecentDiscussion`（10 分钟 debounce），基于全部 `recentDigests` 合成综合文本
+  - 每个即时任务接收完整的用户画像 + 已知偏好作为 prompt header
+  - `safeCallLLM` 统一包装：JSON 解析 fallback + 单任务错误隔离
+- **Memory Panel UI 简化**：`components/MemoryPanel.tsx` 移除 `techStack` 编辑/展示，适配新数据模型
 
 ### Fixed
 
@@ -26,17 +38,22 @@ All notable changes to this project are documented in this file.
 - **多 stream 并发卡顿**：移除 Phase 2 预加载（`Promise.all` 全部会话消息）——300ms 窗口内 16 个请求占满连接池，正常操作请求受阻。
 - **E2E 测试间歇性失败**：根因是 hydration 时序——服务端渲染的文本在 React 接管前就被 `waitForFunction` 检测到。修复：`loadConversations` 完成后设 `data-ready="true"`，测试等确切信号。
 - **非活跃 keep-alive 会话抢占布局空间**：`hidden` class 被误删导致 `flex-1` 均分高度。修复：非活跃会话外层 div 加回 `hidden`。
+- **`settings` API 遗漏 `memory` 配置**：`POST /api/settings` 只保存 `llm` 和 `cron`，忽略 `memory.taskIntervalMs`。修复：合并请求体中的 `memory` 字段后持久化。
 
 ### Added
 
 - **E2E 测试**：14 个 Playwright 测试覆盖创建/切换/删除/输入/主题/持久化，确定性等待（`waitForResponse`、`waitForSelector`）替代盲等 timeout。
+- **Memory E2E 测试**：`e2e/memory.spec.ts` 新增 6 个测试（空状态、profile 展示、偏好/摘要展示、编辑保存、删除摘要、一键清空）。
 - **单元测试**：`parseMessages`（5 例）、`ThemeProvider`（8 例）、`ChatPanel`（10 例）、`utils.test.ts`。
+- **Memory 集成测试**：`app/api/memory/__tests__/route.test.ts` 补充 `recentDigests`/`conversationDigest` GET 返回验证；`app/api/settings/__tests__/route.test.ts` 补充 `memory.taskIntervalMs` 读写验证。
 - **`data-ready` 就绪标记**：`useConversationManager` 在 `loadConversations` 完成后设 `ready=true`，E2E 测试和后续逻辑可依赖。
+- **Settings memory 配置**：`lib/settings.ts` 新增 `MemorySettings`（`taskIntervalMs` 默认 30000ms），YAML 持久化，向后兼容旧配置文件。
 
 ### Removed
 
 - **ToastContext + Providers**：死代码，所有调用早已替换为 `console.error`。
 - **Phase 2 全量消息预加载**：切换时按需加载替代。
+- **`techStack` 字段**：从 `UserProfile` 和 `MemoryPanel` 中完全移除。
 
 ## 2026-05-04
 

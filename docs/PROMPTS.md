@@ -7,9 +7,9 @@
 
 | 类型 | 数量 |
 |------|------|
-| system | 15 |
+| system | 18 |
 | tool-definition | 3 |
-| **总计** | **18** |
+| **总计** | **21** |
 
 ## app/api/chat/route.ts
 
@@ -45,7 +45,7 @@
 
 ### REWRITE_SYSTEM_PROMPT `{p-004}`
 
-- **位置**：app/api/chat/route.ts:143
+- **位置**：app/api/chat/route.ts:79
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 
@@ -64,7 +64,7 @@
 
 ### buildRewritePrompt `{p-005}`
 
-- **位置**：app/api/chat/route.ts:159
+- **位置**：app/api/chat/route.ts:95
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 - **动态插值**：是（提示词模板中包含运行时变量）
@@ -81,7 +81,7 @@
 
 ### baseSystem `{p-006}`
 
-- **位置**：app/api/chat/route.ts:428
+- **位置**：app/api/chat/route.ts:368
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 
@@ -121,7 +121,7 @@
 
 ### toolsSection `{p-007}`
 
-- **位置**：app/api/chat/route.ts:461
+- **位置**：app/api/chat/route.ts:401
 - **类型**：system
 - **触发时机**：聊天时，LLM 工具调用
 
@@ -133,76 +133,123 @@
 调用规则：仅在知识库内容明显不足时调用工具。如果知识库内容已足够，直接回答，不要调用工具。
 ```
 
-### contextSection `{p-008}`
-
-- **位置**：app/api/chat/route.ts:476
-- **类型**：system
-- **触发时机**：`POST /api/chat` → 流式 AI 对话
-- **动态插值**：是（提示词模板中包含运行时变量）
-
-```
-【条件为真时】
-【知识库检索结果】以下是从用户知识库中检索到的相关信息，请按上述【回答原则】处理。
-
----
-{contextText}
----
-
-【条件为假时】
-【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。
-```
-
 ## app/api/memory/update/route.ts
 
-### MEMORY_SYSTEM_PROMPT `{p-009}`
+### PROFILE_SYSTEM_PROMPT `{p-008}`
 
-- **位置**：app/api/memory/update/route.ts:6
+- **位置**：app/api/memory/update/route.ts:9
 - **类型**：system
 - **触发时机**：`POST /api/memory/update` → 对话结束后异步更新用户记忆
 
 ```
-你是一个用户建模助手。分析用户和 AI 助手的一次完整会话，提取以下信息。只基于对话内容，不要编造。
+你是一个用户画像提取助手。分析用户和 AI 的对话，只提取用户**明确陈述**的画像信息。
 
-输出严格 JSON，不要 markdown 代码块：
-
+输出严格 JSON，不要 markdown：
 {
-  "profileChanges": {
-    "role": "用户的职业角色（如有新信息，不填则省略此字段）",
-    "techStack": ["技术栈新增项（不填则省略此字段）"],
-    "interests": ["新发现的兴趣领域（不填则省略此字段）"],
-    "background": "补充的背景信息（如有，不填则省略此字段）"
-  },
+  "role": "用户明确陈述的职业身份（没有则省略）",
+  "interests": ["用户明确表达的长期关注领域（临时好奇不要填）"],
+  "background": "用户明确陈述的补充背景（没有则省略）"
+}
+
+【边界示例】
+✅ user: "我是前端开发者" → { "role": "前端开发者" }
+❌ user: "Rust 和 Go 哪个好？" → {} （临时询问）
+❌ user: "AI 绘画很火" → {} （随口提及）
+
+没有变化时返回 {} 或只输出空 JSON。
+```
+
+### NOTE_FAMILIARITY_SYSTEM_PROMPT `{p-009}`
+
+- **位置**：app/api/memory/update/route.ts:25
+- **类型**：system
+- **触发时机**：`POST /api/memory/update` → 对话结束后异步更新用户记忆
+
+```
+你是一个笔记认知评估助手。分析对话中涉及的知识库笔记，评估用户对这些笔记的认知水平。
+
+对话中笔记会以 "ID: xxx" 的形式标注。输出严格 JSON：
+{
   "noteFamiliarity": [
     {
-      "noteId": "笔记 ID（对话中笔记标注的 ID: xxx 值，如 rag-overview）",
-      "level": "referenced 或 discussed",
-      "notes": "用户对该笔记话题的认知水平观察（1句话）"
+      "noteId": "笔记 ID",
+      "level": "referenced | discussed",
+      "notes": "用户对该笔记的认知水平观察（1句话）"
     }
-  ],
-  "conversationDigest": {
-    "summary": "本次会话的核心主题（1-2句话）",
-    "topics": ["3-5个话题关键词"]
-  },
+  ]
+}
+
+对话未涉及任何笔记时返回 {}。
+```
+
+### DIGEST_SYSTEM_PROMPT `{p-010}`
+
+- **位置**：app/api/memory/update/route.ts:40
+- **类型**：system
+- **触发时机**：`POST /api/memory/update` → 对话结束后异步更新用户记忆
+
+```
+你是一个会话摘要助手。分析本次对话，生成 1-2 句核心摘要。
+
+输出严格 JSON：
+{
+  "newDigest": "本轮对话的 1-2 句核心摘要，提炼用户本次最关心的主题和意图"
+}
+
+只关注本轮对话本身，不需要关联历史。
+```
+
+### PREFERENCE_SYSTEM_PROMPT `{p-011}`
+
+- **位置**：app/api/memory/update/route.ts:49
+- **类型**：system
+- **触发时机**：`POST /api/memory/update` → 对话结束后异步更新用户记忆
+
+```
+你是一个用户偏好识别助手。分析对话，提取用户**明确表达**的偏好。
+
+输出严格 JSON：
+{
   "preferenceSignals": {
-    "_description": "以下为示例，键名不限于这些。任何从对话中观察到的用户偏好都可以记录",
-    "detailLevel": "concise 或 normal 或 detailed（如果观察到）",
+    "detailLevel": "concise | normal | detailed（仅当用户明确说时）",
     "preferCodeExamples": true,
-    "language": "用户偏好的语言（如 zh, en 等）",
-    "responseFormat": "用户偏好的回答格式（如 markdown, 列表, 表格）",
-    "expertiseLevel": "用户表现出的专业水平（beginner, intermediate, expert）"
+    "language": "用户明确偏好的语言",
+    "responseFormat": "用户明确要求的格式",
+    "expertiseLevel": "用户明确表现出的水平"
   }
 }
 
-规则：
-- 只填有变化的字段，没观察到的字段不填或省略
-- 不要重复已有信息，只提取新内容
-- noteFamiliarity 只在对话确实涉及某篇笔记时才填
-- conversationDigest.summary 用中文
+不要猜测。没有明确偏好时返回 {}。
+```
+
+### DISCUSSION_REGEN_SYSTEM_PROMPT `{p-012}`
+
+- **位置**：app/api/memory/update/route.ts:64
+- **类型**：system
+- **触发时机**：`POST /api/memory/update` → 对话结束后异步更新用户记忆
+
+```
+你是一个用户动态综合助手。基于用户最近的多轮会话摘要，生成一段综合的"最近讨论"文本。
+
+输入是多条按时间排列的会话摘要，你需要：
+1. 识别用户持续关注的主线主题
+2. 发现新的关注方向或变化
+3. 概括用户最近在做什么、关注什么
+
+输出严格 JSON：
+{
+  "recentDiscussion": "3-5 句综合文本，像一段自然的用户动态摘要"
+}
+
+要求：
+- 基于所有历史摘要综合，不要只写最新一条
+- 语言自然流畅，不是 bullet list
+- 中文
 ```
 
 ## lib/cognition/ingest.ts
 
-### buildExtractPrompt `{p-010}`
+### buildExtractPrompt `{p-013}`
 
 - **位置**：lib/cognition/ingest.ts:21
 - **类型**：system
@@ -232,7 +279,7 @@
 }
 ```
 
-### buildQAPrompt `{p-011}`
+### buildQAPrompt `{p-014}`
 
 - **位置**：lib/cognition/ingest.ts:45
 - **类型**：system
@@ -253,7 +300,7 @@
 }
 ```
 
-### buildLinkPrompt `{p-012}`
+### buildLinkPrompt `{p-015}`
 
 - **位置**：lib/cognition/ingest.ts:63
 - **类型**：system
@@ -265,7 +312,7 @@
 摘要：{n.summary}{facts}
 ```
 
-### buildLinkPrompt `{p-013}`
+### buildLinkPrompt `{p-016}`
 
 - **位置**：lib/cognition/ingest.ts:67
 - **类型**：system
@@ -289,7 +336,7 @@
 }
 ```
 
-### hintSection `{p-014}`
+### hintSection `{p-017}`
 
 - **位置**：lib/cognition/ingest.ts:267
 - **类型**：system
@@ -307,7 +354,7 @@
 
 ```
 
-### userPrompt `{p-015}`
+### userPrompt `{p-018}`
 
 - **位置**：lib/cognition/ingest.ts:271
 - **类型**：system
@@ -324,7 +371,7 @@
 
 ## lib/cognition/relink.ts
 
-### buildRelinkPrompt `{p-016}`
+### buildRelinkPrompt `{p-019}`
 
 - **位置**：lib/cognition/relink.ts:11
 - **类型**：system
@@ -336,7 +383,7 @@
 摘要：{n.summary}{facts}
 ```
 
-### buildRelinkPrompt `{p-017}`
+### buildRelinkPrompt `{p-020}`
 
 - **位置**：lib/cognition/relink.ts:15
 - **类型**：system
@@ -360,7 +407,7 @@ JSON 格式如下：
 }{candidateHint}
 ```
 
-### userPrompt `{p-018}`
+### userPrompt `{p-021}`
 
 - **位置**：lib/cognition/relink.ts:43
 - **类型**：system

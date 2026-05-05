@@ -383,25 +383,32 @@ A lightweight user memory model (`lib/memory.ts`) that is updated automatically 
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `profile` | `{ role?, techStack[], interests[], background? }` | User's professional identity and domain knowledge |
+| `profile` | `{ role?, interests[], background? }` | User's professional identity and domain knowledge |
 | `noteKnowledge` | `Record<noteId, { level, firstSeenAt, lastReferencedAt, notes }>` | Observed familiarity with specific notes (`aware` → `referenced` → `discussed`) |
-| `conversationDigest` | `{ conversationId, summary, topics[], timestamp }[]` | Rolling window of the last 20 conversation summaries |
+| `conversationDigest` | `string` | LLM-synthesized summary of recent discussions (3-5 sentences) |
+| `recentDigests` | `string[]` | Rolling window of per-conversation digests with date prefix (`YYYY-MM-DD | text`), 7-day TTL |
 | `preferences` | `Record<string, unknown>` | Observed signals (detail level, code example preference, etc.) |
 
 **Update Pipeline** (`POST /api/memory/update`):
 
 1. **Load existing memory** from `user-memory.json` (or empty memory if first time).
-2. **Build prompt** containing:
-   - Current user profile summary (if any)
-   - Recent 3 conversation summaries
-   - The full conversation to analyze
-3. **LLM extraction** with a structured JSON output prompt. The LLM returns only *changes* — fields with no new information are omitted.
-4. **Merge** (`mergeMemory()`) using field-specific strategies:
-   - Arrays (`techStack`, `interests`): dedup append
+2. **Load settings** to get `memory.taskIntervalMs` (default 30000ms).
+3. **Build unified user context** containing the full profile + known preferences.
+4. **Run 4 independent LLM extraction tasks serially** with `taskIntervalMs` sleep between each. Each task receives the unified context + conversation text:
+   - `profile` — extracts explicit role, interests, background statements
+   - `noteFamiliarity` — evaluates note cognition using `ID: xxx` annotations from chat context
+   - `digest` — generates `newDigest` (1-2 sentence summary of this conversation)
+   - `preference` — extracts explicit preference signals
+   The LLM returns only *changes* — fields with no new information are omitted.
+5. **Merge** (`mergeMemory()`) using field-specific strategies:
+   - Arrays (`interests`): dedup append
    - Scalars (`role`, `background`): overwrite
-   - `conversationDigest`: insert at front, cap at 20 entries
+   - `newDigest`: prepend `"YYYY-MM-DD | text"` to `recentDigests`, filter entries older than 7 days
    - `noteKnowledge`: per-note overwrite with `firstSeenAt` preservation
-5. **Atomic save** (tmp+rename) to `user-memory.json`.
+   - `preferenceSignals`: overwrite
+   - `recentDiscussion`: overwrites `conversationDigest`
+6. **Atomic save** (tmp+rename) to `user-memory.json`.
+7. **Schedule delayed regeneration** (if `newDigest` extracted): a 10-minute debounced task reads all `recentDigests` and calls the LLM to synthesize a comprehensive `recentDiscussion` text, overwriting `conversationDigest`.
 6. **Status evolution** (`evolveNoteStatuses()`) scans all notes and transitions status based on `noteKnowledge`:
    - `seed` → `growing` when `level !== 'aware'`
    - `growing` → `evergreen` when `level === 'discussed'`
@@ -413,11 +420,11 @@ A lightweight user memory model (`lib/memory.ts`) that is updated automatically 
 **Manual memory management** (`GET/POST/DELETE /api/memory`):
 
 A dedicated memory panel allows users to view and edit their memory directly. Supported operations:
-- View full memory (profile, note knowledge, conversation digest, preferences)
-- Edit profile (role, background, techStack, interests)
+- View full memory (profile, note knowledge, conversation digest, recent digests, preferences)
+- Edit profile (role, background, interests)
 - Edit/delete preferences
 - Delete individual note knowledge entries
-- Delete individual conversation digest entries
+- Clear conversation digest
 - Clear all memory (with confirmation)
 
 Any operation that removes `noteKnowledge` triggers `evolveNoteStatuses()` to keep note statuses in sync.
@@ -425,9 +432,9 @@ Any operation that removes `noteKnowledge` triggers `evolveNoteStatuses()` to ke
 **Chat Integration** (`getChatContext()`):
 
 Before each chat completion, the system calls `getChatContext(memory, relevantNoteIds)` to produce a structured "user profile" block that is injected into the system prompt. This block includes:
-- Profile lines (role, tech stack, interests, background)
+- Profile lines (role, interests, background)
 - Preference signals
-- Recent 3 conversation summaries
+- Synthesized recent discussion (`conversationDigest`)
 - Familiarity notes for relevant knowledge base entries
 
 If no memory exists, the block is omitted entirely — zero overhead for new users.

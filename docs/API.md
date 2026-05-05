@@ -213,7 +213,6 @@ Return the current user memory model.
 {
   "profile": {
     "role": "...",
-    "techStack": ["..."],
     "interests": ["..."],
     "background": "...",
     "updatedAt": "2026-05-03T00:00:00.000Z"
@@ -226,13 +225,10 @@ Return the current user memory model.
       "notes": "..."
     }
   },
-  "conversationDigest": [
-    {
-      "conversationId": "conv-...",
-      "summary": "...",
-      "topics": ["..."],
-      "timestamp": "..."
-    }
+  "conversationDigest": "LLM-synthesized summary of recent discussions",
+  "recentDigests": [
+    "2026-05-05 | Discussed React 19 features",
+    "2026-05-04 | Explored RAG optimization techniques"
   ],
   "preferences": {
     "detailLevel": "concise"
@@ -254,7 +250,6 @@ Update the user memory model.
   "profile": {
     "role": "...",
     "background": "...",
-    "techStack": ["..."],
     "interests": ["..."]
   }
 }
@@ -293,7 +288,7 @@ Delete parts of the user memory model.
 | Action | Required fields | Description |
 |--------|-----------------|-------------|
 | `deleteNoteKnowledge` | `noteId` | Removes a single note knowledge entry. Triggers `evolveNoteStatuses()` — if the note was `evergreen`/`growing`/`stale`, it reverts to `seed`. |
-| `deleteConversationDigest` | `conversationId`, `timestamp` | Removes a single digest entry matched by both fields. |
+| `deleteConversationDigest` | — | Clears the entire `conversationDigest` string. |
 | `deletePreference` | `key` | Removes a preference key. |
 | `clearAll` | — | Resets the entire memory to empty. Triggers `evolveNoteStatuses()` — all notes with knowledge revert to `seed`. |
 
@@ -323,13 +318,20 @@ Analyze a conversation and update the user memory model. Called automatically by
 
 **Behavior:**
 1. Loads existing memory from `knowledge/meta/user-memory.json` (or empty memory if not exists).
-2. Sends the conversation + existing profile to the LLM with a structured extraction prompt.
-3. The LLM returns JSON containing:
-   - `profileChanges` — incremental updates to role, techStack, interests, background
-   - `noteFamiliarity` — observed familiarity level (`aware`/`referenced`/`discussed`) for relevant notes. The LLM uses the `ID: xxx` annotation exposed in the chat context (`assembleContext`) to output the correct slug ID.
-   - `conversationDigest` — summary and topics of this conversation
-   - `preferenceSignals` — observed preferences (detail level, code examples, etc.)
-4. Merges extracted data into existing memory using field-specific strategies (dedup append for arrays, overwrite for scalars, insert-at-front for digest with 20-entry cap).
+2. Loads settings to get `memory.taskIntervalMs` (default 30000ms).
+3. Runs 4 independent LLM extraction tasks **serially** with `taskIntervalMs` sleep between each:
+   - `profile` — extracts `role`, `interests`, `background` (explicit statements only)
+   - `noteFamiliarity` — observed familiarity level (`aware`/`referenced`/`discussed`) for notes annotated as `ID: xxx` in chat context
+   - `digest` — generates `newDigest` (1-2 sentence summary of this conversation)
+   - `preference` — extracts explicit preference signals (detail level, code examples, etc.)
+   Each task receives the full user profile + known preferences in its prompt header.
+4. Merges extracted data into existing memory:
+   - `profileChanges`: overwrite scalars, dedup append arrays
+   - `noteFamiliarity`: per-note overwrite with `firstSeenAt` preservation
+   - `newDigest`: prepend `"YYYY-MM-DD | text"` to `recentDigests`, filter entries older than 7 days
+   - `preferenceSignals`: overwrite
+   - `recentDiscussion`: overwrites `conversationDigest`
+5. If `newDigest` was extracted, schedules a delayed `regenerateRecentDiscussion` task (10-minute debounce). This task reads all `recentDigests` and calls the LLM to synthesize a comprehensive `recentDiscussion` text, which overwrites `conversationDigest`.
 5. Persists merged memory atomically (tmp+rename).
 6. Triggers `evolveNoteStatuses()` which automatically transitions note statuses based on `noteKnowledge`:
    - `seed` → `growing` when user has referenced the note (`level !== 'aware'`)
