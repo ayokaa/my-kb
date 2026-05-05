@@ -48,6 +48,12 @@ export async function createTestNote(note: Partial<Note> & { id: string; title: 
   return fullNote;
 }
 
+export async function createTestMemory(memory: Record<string, unknown>) {
+  const root = join(process.cwd(), 'knowledge-test');
+  const path = join(root, 'meta', 'user-memory.json');
+  await writeFile(path, JSON.stringify(memory, null, 2));
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     // Intercept Google Fonts to prevent load event blocking in headless CI
