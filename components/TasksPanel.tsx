@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ListChecks, Loader2, CheckCircle2, XCircle, Clock, RefreshCw, RotateCcw } from 'lucide-react';
 import { useSSE } from '@/hooks/useSSE';
-import { useToast } from '@/hooks/ToastContext';
 import type { TaskEvent } from '@/lib/events';
+import { formatDate } from '@/lib/utils';
 
 interface Task {
   id: string;
@@ -29,21 +29,12 @@ const STATUS_CONFIG: Record<Task['status'], { label: string; icon: React.Element
   failed: { label: '失败', icon: XCircle, color: 'text-[var(--error)]', bg: 'bg-red-500/10' },
 };
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleString('zh-CN');
-  } catch {
-    return iso;
-  }
-}
-
 export default function TasksPanel({ isActive }: TasksPanelProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'pending' | 'running' | 'done' | 'failed'>('all');
 
-  const { show } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,10 +43,10 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
       const data = await res.json();
       setTasks(data.tasks || []);
     } catch {
-      show('加载任务列表失败', 'error');
+      console.error('加载任务列表失败');
     }
     setLoading(false);
-  }, [show]);
+  }, []);
 
   async function handleRetry(taskId: string) {
     setRetryingId(taskId);
@@ -66,11 +57,10 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
         body: JSON.stringify({ action: 'retry', taskId }),
       });
       if (res.ok) {
-        show('已重新加入队列', 'info');
         await load();
       }
     } catch {
-      show('重试失败', 'error');
+      console.error('重试失败');
     }
     setRetryingId(null);
   }
@@ -80,13 +70,12 @@ export default function TasksPanel({ isActive }: TasksPanelProps) {
     onTask: useCallback((e: TaskEvent) => {
       load();
       if (e.action === 'completed') {
-        const typeLabel = e.type === 'ingest' ? '入库' : e.type === 'relink' ? '重链' : e.type === 'web_fetch' ? '抓取' : 'RSS';
-        show(`${typeLabel} 任务完成`, 'success');
+        // completed: no-op, just refresh list above
       } else if (e.action === 'failed') {
         const typeLabel = e.type === 'ingest' ? '入库' : e.type === 'relink' ? '重链' : e.type === 'web_fetch' ? '抓取' : 'RSS';
-        show(`${typeLabel} 任务失败`, 'error');
+        console.error(`${typeLabel} 任务失败`);
       }
-    }, [load, show]),
+    }, [load]),
   });
 
   useEffect(() => {

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, X, Loader2, ExternalLink, Calendar, Tag, Inbox, RefreshCw, Rss } from 'lucide-react';
 import { useSSE } from '@/hooks/useSSE';
-import { useToast } from '@/hooks/ToastContext';
 import { onCtrlEnter } from '@/hooks/useKeyboardShortcuts';
 
 interface InboxEntry {
@@ -31,7 +30,6 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
   const [processedFiles, setProcessedFiles] = useState<Set<string>>(new Set());
   const [hint, setHint] = useState('');
 
-  const { show } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,10 +42,10 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
       }
       onChange?.();
     } catch {
-      show('加载收件箱失败', 'error');
+      console.error('加载收件箱失败');
     }
     setLoading(false);
-  }, [onChange, show]);
+  }, [onChange]);
 
   // SSE: 收件箱首次获得实时更新
   useSSE({
@@ -85,7 +83,6 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         });
         const data = await res.json();
         if (data.ok) {
-          show('已加入处理队列', 'success');
           setResult('已加入处理队列');
         } else {
           setResult(`失败 · ${data.error}`);
@@ -100,7 +97,6 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
         });
         const data = await res.json();
         if (data.ok) {
-          show('已忽略', 'info');
           setResult('已忽略');
         } else {
           setResult(`归档失败 · ${data.error}`);

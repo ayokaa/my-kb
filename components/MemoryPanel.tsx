@@ -5,7 +5,7 @@ import {
   Brain, Loader2, RefreshCw, User, BookOpen, MessageSquare, Heart,
   Pencil, Trash2, Plus, X, Check, Save, TriangleAlert,
 } from 'lucide-react';
-import { useToast } from '@/hooks/ToastContext';
+import { formatDate } from '@/lib/utils';
 
 interface UserProfile {
   role?: string;
@@ -22,27 +22,12 @@ interface NoteKnowledge {
   notes: string;
 }
 
-interface ConversationDigestEntry {
-  conversationId: string;
-  summary: string;
-  topics: string[];
-  timestamp: string;
-}
-
 interface UserMemory {
   profile: UserProfile;
   noteKnowledge: Record<string, NoteKnowledge>;
-  conversationDigest: ConversationDigestEntry[];
+  conversationDigest: string;
   preferences: Record<string, unknown>;
   updatedAt: string;
-}
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleString('zh-CN');
-  } catch {
-    return iso;
-  }
 }
 
 function formatRelative(iso: string) {
@@ -81,7 +66,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
   const [loading, setLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const { show } = useToast();
 
   // Profile edit state
   const [editingProfile, setEditingProfile] = useState(false);
@@ -94,7 +78,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
 
   // Deleting states
   const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
-  const [deletingDigest, setDeletingDigest] = useState<{ conversationId: string; timestamp: string } | null>(null);
+  const [deletingDigest, setDeletingDigest] = useState(false);
   const [deletingPrefKey, setDeletingPrefKey] = useState<string | null>(null);
 
   // Preference edit state
@@ -109,10 +93,10 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
       const data = await res.json();
       setMemory(data);
     } catch {
-      show('加载记忆失败', 'error');
+      console.error('加载记忆失败');
     }
     setLoading(false);
-  }, [show]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -157,11 +141,10 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('档案已更新', 'success');
       setEditingProfile(false);
       await load();
     } catch {
-      show('更新失败', 'error');
+      console.error('更新失败');
     }
   }
 
@@ -200,31 +183,29 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         body: JSON.stringify({ action: 'deleteNoteKnowledge', noteId }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('已删除', 'success');
       await load();
     } catch {
-      show('删除失败', 'error');
+      console.error('删除失败');
     }
     setDeletingNoteId(null);
   }
 
   // ── Delete conversation digest ──────────────────────────────
 
-  async function deleteConversationDigest(conversationId: string, timestamp: string) {
-    setDeletingDigest({ conversationId, timestamp });
+  async function deleteConversationDigest() {
+    setDeletingDigest(true);
     try {
       const res = await fetch('/api/memory', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteConversationDigest', conversationId, timestamp }),
+        body: JSON.stringify({ action: 'deleteConversationDigest' }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('已删除', 'success');
       await load();
     } catch {
-      show('删除失败', 'error');
+      console.error('删除失败');
     }
-    setDeletingDigest(null);
+    setDeletingDigest(false);
   }
 
   // ── Preference edit / delete ────────────────────────────────
@@ -252,11 +233,10 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         body: JSON.stringify({ action: 'updatePreference', key, value: parsed }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('偏好已更新', 'success');
       setEditingPrefKey(null);
       await load();
     } catch {
-      show('更新失败', 'error');
+      console.error('更新失败');
     }
   }
 
@@ -269,10 +249,9 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         body: JSON.stringify({ action: 'deletePreference', key }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('已删除', 'success');
       await load();
     } catch {
-      show('删除失败', 'error');
+      console.error('删除失败');
     }
     setDeletingPrefKey(null);
   }
@@ -288,11 +267,10 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         body: JSON.stringify({ action: 'clearAll' }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      show('记忆已清空', 'success');
       setShowClearConfirm(false);
       await load();
     } catch {
-      show('清空失败', 'error');
+      console.error('清空失败');
     }
     setClearing(false);
   }
@@ -312,7 +290,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
       )
     : [];
 
-  const recentDigest = memory?.conversationDigest.slice(0, 20) || [];
+  const hasDigest = !!memory?.conversationDigest;
 
   // ── Render helpers ──────────────────────────────────────────
 
@@ -379,7 +357,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
         )}
         <button
           onClick={() => setShowClearConfirm(true)}
-          disabled={loading || !memory || (!hasProfile && noteKnowledgeEntries.length === 0 && recentDigest.length === 0 && !hasPreferences)}
+          disabled={loading || !memory || (!hasProfile && noteKnowledgeEntries.length === 0 && !hasDigest && !hasPreferences)}
           className="ml-auto text-[var(--text-tertiary)] transition-colors hover:text-[var(--error)] disabled:opacity-30"
           title="一键清除"
         >
@@ -408,7 +386,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
             {/* Empty state */}
             {!hasProfile &&
               noteKnowledgeEntries.length === 0 &&
-              recentDigest.length === 0 &&
+              !hasDigest &&
               !hasPreferences && (
                 <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] py-20">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
@@ -674,57 +652,23 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
             )}
 
             {/* Conversation Digest */}
-            {recentDigest.length > 0 && (
+            {hasDigest && (
               <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-[var(--accent)]" />
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                    对话摘要 <span className="text-xs font-normal text-[var(--text-tertiary)]">(最近 {recentDigest.length} 条)</span>
-                  </h3>
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-[var(--accent)]" />
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)]">最近讨论</h3>
+                  </div>
+                  <button
+                    onClick={() => deleteConversationDigest()}
+                    disabled={deletingDigest}
+                    className="text-[var(--text-tertiary)] transition-colors hover:text-[var(--error)] disabled:opacity-50"
+                    title="删除"
+                  >
+                    {deletingDigest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  {recentDigest.map((d, i) => (
-                    <div
-                      key={d.conversationId}
-                      className="group relative rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 transition-colors hover:border-[var(--border-hover)]"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 flex-1 text-sm text-[var(--text-primary)]">{d.summary}</p>
-                        <button
-                          onClick={() => deleteConversationDigest(d.conversationId, d.timestamp)}
-                          disabled={
-                            deletingDigest?.conversationId === d.conversationId &&
-                            deletingDigest?.timestamp === d.timestamp
-                          }
-                          className="mt-0.5 shrink-0 text-[var(--text-tertiary)] opacity-0 transition-all hover:text-[var(--error)] group-hover:opacity-100 disabled:opacity-50"
-                          title="删除"
-                        >
-                          {deletingDigest?.conversationId === d.conversationId &&
-                          deletingDigest?.timestamp === d.timestamp ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                      {d.topics.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {d.topics.map((t) => (
-                            <span
-                              key={t}
-                              className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <span className="mt-2 block text-[10px] text-[var(--text-tertiary)]">
-                        {formatDate(d.timestamp)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{memory.conversationDigest}</p>
               </section>
             )}
           </div>

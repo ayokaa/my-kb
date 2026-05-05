@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, RefreshCw, Upload, Rss, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSSE } from '@/hooks/useSSE';
-import { useToast } from '@/hooks/ToastContext';
 
 interface Subscription {
   url: string;
@@ -29,7 +28,6 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
   const [checkResults, setCheckResults] = useState<CheckResult[]>([]);
   const [importing, setImporting] = useState(false);
 
-  const { show } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,10 +36,10 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
       const data = await res.json();
       setSubscriptions(data.subscriptions || []);
     } catch {
-      show('加载订阅源失败', 'error');
+      console.error('加载订阅源失败');
     }
     setLoading(false);
-  }, [show]);
+  }, []);
 
   // SSE: 收件箱新增时刷新（RSS 抓取结果进入收件箱）
   useSSE({
@@ -72,11 +70,10 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
       if (res.ok) {
         setNewUrl('');
         setNewName('');
-        show('已添加订阅源', 'success');
         load();
       }
     } catch {
-      show('添加订阅源失败', 'error');
+      console.error('添加订阅源失败');
     }
   }
 
@@ -88,11 +85,10 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
         body: JSON.stringify({ url }),
       });
       if (res.ok) {
-        show('已移除订阅源', 'info');
         load();
       }
     } catch {
-      show('移除订阅源失败', 'error');
+      console.error('移除订阅源失败');
     }
   }
 
@@ -104,10 +100,9 @@ export default function RSSPanel({ isActive }: { isActive?: boolean }) {
       const data = await res.json();
       setCheckResults(data.results || []);
       const total = (data.results || []).reduce((s: number, r: CheckResult) => s + r.newItems, 0);
-      if (total > 0) show(`找到 ${total} 篇新文章`, 'success');
       load();
     } catch {
-      show('检查更新失败', 'error');
+      console.error('检查更新失败');
     }
     setChecking(false);
   }

@@ -1,10 +1,34 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { formatDate } from '@/lib/utils';
 import { useSSE } from '@/hooks/useSSE';
-import { useToast } from '@/hooks/ToastContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
+
+/** 笔记详情用的 markdown components（更大字号、详细间距） */
+const noteDetailComponents: Components = {
+  a: ({ node: _node, ...props }) => (
+    <a {...props} target="_blank" rel="noopener noreferrer" className="break-all text-[var(--accent)] underline transition-opacity hover:opacity-80" />
+  ),
+  p: ({ node: _node, ...props }) => <p {...props} className="mb-3 text-sm leading-relaxed text-[var(--text-secondary)]" />,
+  h1: ({ node: _node, ...props }) => <h1 {...props} className="mb-3 mt-5 text-xl font-semibold text-[var(--text-primary)]" />,
+  h2: ({ node: _node, ...props }) => <h2 {...props} className="mb-2 mt-4 text-lg font-semibold text-[var(--text-primary)]" />,
+  h3: ({ node: _node, ...props }) => <h3 {...props} className="mb-2 mt-3 text-base font-semibold text-[var(--text-primary)]" />,
+  ul: ({ node: _node, ...props }) => <ul {...props} className="mb-3 ml-4 list-disc text-sm text-[var(--text-secondary)]" />,
+  ol: ({ node: _node, ...props }) => <ol {...props} className="mb-3 ml-4 list-decimal text-sm text-[var(--text-secondary)]" />,
+  li: ({ node: _node, ...props }) => <li {...props} className="mb-1" />,
+  code: ({ node: _node, ...props }) => <code {...props} className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-primary)]" />,
+  pre: ({ node: _node, ...props }) => <pre {...props} className="my-3 overflow-x-auto rounded-lg bg-[var(--bg-hover)] p-3 font-mono text-sm break-words" />,
+  blockquote: ({ node: _node, ...props }) => <blockquote {...props} className="my-3 border-l-2 border-[var(--accent)] pl-3 italic text-[var(--text-secondary)]" />,
+  strong: ({ node: _node, ...props }) => <strong {...props} className="font-semibold text-[var(--text-primary)]" />,
+  hr: ({ node: _node, ...props }) => <hr {...props} className="my-4 border-[var(--border)]" />,
+  table: ({ node: _node, ...props }) => <table {...props} className="mb-3 w-full text-sm text-[var(--text-secondary)]" />,
+  th: ({ node: _node, ...props }) => <th {...props} className="border border-[var(--border)] bg-[var(--bg-hover)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-primary)]" />,
+  td: ({ node: _node, ...props }) => <td {...props} className="border border-[var(--border)] px-3 py-2" />,
+};
+
 import {
   BookOpen,
   Search,
@@ -85,7 +109,6 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deleteResult, setDeleteResult] = useState('');
-  const { show } = useToast();
 
   const load = useCallback(async (searchQuery?: string) => {
     setLoading(true);
@@ -108,10 +131,10 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
         });
       }
     } catch {
-      show('加载笔记失败', 'error');
+      console.error('加载笔记失败');
     }
     setLoading(false);
-  }, [show]);
+  }, []);
 
   // 搜索去抖：用户停止输入 300ms 后触发后端全文搜索
   // 清空搜索框时立即恢复全量列表
@@ -164,16 +187,15 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
       const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.ok) {
-        show(`已删除《${note.title}》`, 'info');
         await load();
       } else {
         setDeleteResult(`删除失败 · ${data.error}`);
       }
     } catch {
-      show('删除失败', 'error');
+      console.error('删除失败');
     }
     setDeletingId(null);
-  }, [confirmingDeleteId, load, show]);
+  }, [confirmingDeleteId, load]);
 
   const filtered = useMemo(() => {
     let result = notes;
@@ -183,13 +205,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
     return result;
   }, [notes, statusFilter]);
 
-  const formatDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString('zh-CN');
-    } catch {
-      return iso;
-    }
-  };
+  const formatDateNoTime = (iso: string) => formatDate(iso, { withTime: false });
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -281,7 +297,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
                 </div>
                 <p className="mt-1.5 flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
                   <Calendar className="h-3 w-3" />
-                  {formatDate(note.created)}
+                  {formatDateNoTime(note.created)}
                 </p>
               </button>
             ))}
@@ -303,7 +319,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
                       <StatusBadge status={selected.status} />
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {formatDate(selected.created)}
+                        {formatDateNoTime(selected.created)}
                       </span>
                       {selected.sources.length > 0 && (
                         <span className="flex flex-wrap items-center gap-1">
@@ -531,29 +547,7 @@ export default function NotesPanelClient({ initialNotes }: NotesPanelClientProps
                         详细内容
                       </h4>
                       <div className="markdown-content rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            a: ({ node, ...props }) => (
-                              <a {...props} target="_blank" rel="noopener noreferrer" className="break-all text-[var(--accent)] underline transition-opacity hover:opacity-80" />
-                            ),
-                            p: ({ node, ...props }) => <p {...props} className="mb-3 text-sm leading-relaxed text-[var(--text-secondary)]" />,
-                            h1: ({ node, ...props }) => <h1 {...props} className="mb-3 mt-5 text-xl font-semibold text-[var(--text-primary)]" />,
-                            h2: ({ node, ...props }) => <h2 {...props} className="mb-2 mt-4 text-lg font-semibold text-[var(--text-primary)]" />,
-                            h3: ({ node, ...props }) => <h3 {...props} className="mb-2 mt-3 text-base font-semibold text-[var(--text-primary)]" />,
-                            ul: ({ node, ...props }) => <ul {...props} className="mb-3 ml-4 list-disc text-sm text-[var(--text-secondary)]" />,
-                            ol: ({ node, ...props }) => <ol {...props} className="mb-3 ml-4 list-decimal text-sm text-[var(--text-secondary)]" />,
-                            li: ({ node, ...props }) => <li {...props} className="mb-1" />,
-                            code: ({ node, ...props }) => <code {...props} className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 font-mono text-xs text-[var(--text-primary)]" />,
-                            pre: ({ node, ...props }) => <pre {...props} className="my-3 overflow-x-auto rounded-lg bg-[var(--bg-hover)] p-3 font-mono text-sm break-words" />,
-                            blockquote: ({ node, ...props }) => <blockquote {...props} className="my-3 border-l-2 border-[var(--accent)] pl-3 italic text-[var(--text-secondary)]" />,
-                            strong: ({ node, ...props }) => <strong {...props} className="font-semibold text-[var(--text-primary)]" />,
-                            hr: ({ node, ...props }) => <hr {...props} className="my-4 border-[var(--border)]" />,
-                            table: ({ node, ...props }) => <table {...props} className="mb-3 w-full text-sm text-[var(--text-secondary)]" />,
-                            th: ({ node, ...props }) => <th {...props} className="border border-[var(--border)] bg-[var(--bg-hover)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-primary)]" />,
-                            td: ({ node, ...props }) => <td {...props} className="border border-[var(--border)] px-3 py-2" />,
-                          }}
-                        >
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={noteDetailComponents}>
                           {selected.content}
                         </ReactMarkdown>
                       </div>

@@ -102,7 +102,7 @@ export default function SettingsPanel() {
                 value={settings?.llm.model || ''}
                 onChange={(e) => setSettings((s) => s ? { ...s, llm: { ...s.llm, model: e.target.value } } : s)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
-                placeholder="MiniMax-M2.7"
+                placeholder="claude-sonnet-4-20250514"
               />
             </div>
             <div>
@@ -114,7 +114,7 @@ export default function SettingsPanel() {
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
                 placeholder="sk-..."
               />
-              <p className="mt-1 text-xs text-[var(--text-tertiary)]">留空则使用环境变量 MINIMAX_API_KEY</p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">留空则使用环境变量 ANTHROPIC_API_KEY</p>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">Base URL</label>
@@ -123,7 +123,7 @@ export default function SettingsPanel() {
                 value={settings?.llm.baseUrl || ''}
                 onChange={(e) => setSettings((s) => s ? { ...s, llm: { ...s.llm, baseUrl: e.target.value } } : s)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
-                placeholder="https://api.minimaxi.com/anthropic"
+                placeholder="https://api.anthropic.com"
               />
             </div>
           </div>
