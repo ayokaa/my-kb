@@ -409,13 +409,15 @@ export async function POST(req: Request) {
   const relevantNoteIds = searchResults.map((r) => r.id);
   const memoryContext = getChatContext(memory, relevantNoteIds);
 
-  const fixedSystemPrompt = [baseSystem, memoryContext, toolsSection]
-    .filter(Boolean)
-    .join('\n\n');
-
-  const contextSection = contextText
-    ? `【知识库检索结果】以下是从用户知识库中检索到的相关信息，请按上述【回答原则】处理。\n\n---\n${contextText}\n---`
-    : '【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。';
+  // 构建 system blocks：固定角色定义 + 动态检索结果分层传递
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: baseSystem },
+    memoryContext ? { type: 'text', text: memoryContext } : null,
+    { type: 'text', text: toolsSection },
+    contextText
+      ? { type: 'text', text: `【知识库检索结果】以下是从用户知识库中检索到的相关信息，请按上述【回答原则】处理。\n\n---\n${contextText}\n---` }
+      : { type: 'text', text: '【注意】当前知识库为空或没有与本次查询相关的笔记。你可以基于自己的知识回答，但请明确说明"知识库中没有相关信息"。' },
+  ].filter((b): b is Anthropic.TextBlockParam => b !== null);
 
   const client = await getLLMClient();
   const model = await getLLMModel();
@@ -441,12 +443,11 @@ export async function POST(req: Request) {
         );
       }
 
-      // 构建 Anthropic MessageParam 数组（system 单独传递，不在 messages 中）
-      const contextMessage = `${contextSection}\n\n用户问题：${messages.at(-1)?.content || ''}`;
-      let currentMessages: Anthropic.MessageParam[] = [
-        ...messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
-        { role: 'user', content: contextMessage },
-      ];
+      // 构建 Anthropic MessageParam 数组：保留原始对话历史，检索结果通过 system 注入
+      let currentMessages: Anthropic.MessageParam[] = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })) as Anthropic.MessageParam[];
 
       let round = 0;
 
@@ -464,7 +465,7 @@ export async function POST(req: Request) {
             {
               model,
               max_tokens: 4096,
-              system: fixedSystemPrompt,
+              system: systemBlocks,
               messages: currentMessages,
               tools: isFirstRound ? anthropicTools : undefined,
               stream: true,

@@ -635,7 +635,8 @@ describe('/api/chat', () => {
     const round1Call = calls.find((c) => c.tools !== undefined && c.stream === true);
     expect(round1Call).toBeDefined();
     expect(round1Call.system).toBeDefined();
-    expect(typeof round1Call.system).toBe('string');
+    expect(Array.isArray(round1Call.system)).toBe(true);
+    expect(round1Call.system[0]).toMatchObject({ type: 'text' });
 
     // Round 2 (no tools): messages history must be pure Anthropic format
     const round2Call = calls.find((c) => c.tools === undefined && c.stream === true);
