@@ -9,7 +9,6 @@ import { formatDate } from '@/lib/utils';
 
 interface UserProfile {
   role?: string;
-  techStack: string[];
   interests: string[];
   background?: string;
   updatedAt?: string;
@@ -71,9 +70,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [editRole, setEditRole] = useState('');
   const [editBackground, setEditBackground] = useState('');
-  const [editTechStack, setEditTechStack] = useState<string[]>([]);
   const [editInterests, setEditInterests] = useState<string[]>([]);
-  const [newTech, setNewTech] = useState('');
   const [newInterest, setNewInterest] = useState('');
 
   // Deleting states
@@ -114,9 +111,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
     if (!memory) return;
     setEditRole(memory.profile.role || '');
     setEditBackground(memory.profile.background || '');
-    setEditTechStack([...memory.profile.techStack]);
     setEditInterests([...memory.profile.interests]);
-    setNewTech('');
     setNewInterest('');
     setEditingProfile(true);
   }
@@ -135,7 +130,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
           profile: {
             role: editRole || undefined,
             background: editBackground || undefined,
-            techStack: editTechStack,
             interests: editInterests,
           },
         }),
@@ -146,18 +140,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
     } catch {
       console.error('更新失败');
     }
-  }
-
-  function addTech() {
-    const t = newTech.trim();
-    if (t && !editTechStack.includes(t)) {
-      setEditTechStack((prev) => [...prev, t]);
-    }
-    setNewTech('');
-  }
-
-  function removeTech(t: string) {
-    setEditTechStack((prev) => prev.filter((x) => x !== t));
   }
 
   function addInterest() {
@@ -278,7 +260,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
   // ── Derived state ───────────────────────────────────────────
 
   const hasProfile = memory?.profile.role ||
-    (memory?.profile.techStack && memory.profile.techStack.length > 0) ||
     (memory?.profile.interests && memory.profile.interests.length > 0) ||
     memory?.profile.background;
 
@@ -394,7 +375,7 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
                   </div>
                   <p className="mt-3 text-sm text-[var(--text-tertiary)]">还没有积累任何记忆</p>
                   <p className="mt-1 text-xs text-[var(--text-tertiary)] opacity-70">
-                    与 AI 对话后，系统会自动提取你的兴趣、技术栈和偏好
+                    与 AI 对话后，系统会自动提取你的兴趣和偏好
                   </p>
                 </div>
               )}
@@ -453,23 +434,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
                         <p className="mt-0.5 text-sm text-[var(--text-secondary)]">{memory.profile.background}</p>
                       </div>
                     )}
-                    {memory.profile.techStack.length > 0 && (
-                      <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
-                          技术栈
-                        </span>
-                        <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          {memory.profile.techStack.map((t) => (
-                            <span
-                              key={t}
-                              className="rounded-md bg-[var(--accent-dim)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)]"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                     {memory.profile.interests.length > 0 && (
                       <div>
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
@@ -508,17 +472,6 @@ export default function MemoryPanel({ isActive }: MemoryPanelProps) {
                         placeholder="补充背景信息"
                         rows={3}
                         className="w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">技术栈</label>
-                      <TagInput
-                        tags={editTechStack}
-                        onRemove={removeTech}
-                        newValue={newTech}
-                        onNewChange={setNewTech}
-                        onAdd={addTech}
-                        placeholder="添加技术…"
                       />
                     </div>
                     <div>

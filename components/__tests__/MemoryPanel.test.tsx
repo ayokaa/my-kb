@@ -39,7 +39,7 @@ describe('MemoryPanel rendering', () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       json: async () => ({
-        profile: { techStack: [], interests: [] },
+        profile: { interests: [] },
         noteKnowledge: {},
         conversationDigest: '',
         preferences: {},
@@ -57,7 +57,7 @@ describe('MemoryPanel rendering', () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       json: async () => ({
-        profile: { techStack: [], interests: [] },
+        profile: { interests: [] },
         noteKnowledge: {},
         conversationDigest: '最近讨论了 RAG 检索和 agent 架构设计',
         preferences: {},
@@ -78,7 +78,6 @@ describe('MemoryPanel rendering', () => {
       json: async () => ({
         profile: {
           role: '开发者',
-          techStack: ['TypeScript'],
           interests: ['AI'],
           background: '背景信息',
         },
@@ -93,7 +92,7 @@ describe('MemoryPanel rendering', () => {
     await waitFor(() => {
       expect(document.body.textContent).toContain('用户档案');
       expect(document.body.textContent).toContain('开发者');
-      expect(document.body.textContent).toContain('TypeScript');
+
       expect(document.body.textContent).toContain('AI');
       expect(document.body.textContent).toContain('背景信息');
     });
@@ -107,7 +106,7 @@ describe('MemoryPanel rendering', () => {
       return Promise.resolve({
         ok: true,
         json: async () => ({
-          profile: { techStack: [], interests: [] },
+          profile: { interests: [] },
           noteKnowledge: {},
           conversationDigest: '测试摘要',
           preferences: {},
