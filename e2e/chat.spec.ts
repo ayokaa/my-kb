@@ -1,87 +1,240 @@
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 
-test.describe('Chat', () => {
-  test('can toggle ingest panel', async ({ page }) => {
-    await page.goto('/');
+const NAV_OPTS = { timeout: 15000, waitUntil: 'domcontentloaded' } as const;
 
-    const nav = page.getByTestId('nav-ingest');
-    await expect(nav).toBeVisible();
+async function waitForApp(page: any) {
+  await page.waitForSelector('[data-ready="true"]', { timeout: 15000 });
+}
 
-    await nav.click();
-    await expect(page.getByTestId('ingest-tab-text')).toBeVisible();
-    await expect(page.getByTestId('ingest-tab-link')).toBeVisible();
-    await expect(page.getByTestId('ingest-tab-file')).toBeVisible();
+async function createConvAndWaitForTextarea(page: any) {
+  await page.getByRole('button', { name: '新对话' }).first().click();
+  // 乐观更新后 ChatSession 立即渲染（不等 POST），等 textarea 出现
+  await page.waitForSelector('textarea[placeholder="问点什么..."]', { timeout: 10000 });
+}
+
+function waitForPost(page: any) {
+  return page.waitForResponse(
+    r => r.url().endsWith('/api/conversations') && r.request().method() === 'POST' && r.status() === 200,
+    { timeout: 15000 }
+  );
+}
+
+function waitForDelete(page: any) {
+  return page.waitForResponse(
+    r => r.url().includes('/api/conversations/') && r.request().method() === 'DELETE' && r.status() === 200,
+    { timeout: 10000 }
+  );
+}
+
+test.describe('Chat Panel', () => {
+  test('displays chat panel on load', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    await expect(page.getByRole('button', { name: '新对话' }).first()).toBeVisible();
   });
 
-  test('chat textarea is present and clickable', async ({ page }) => {
-    await page.goto('/');
-
-    const textarea = page.getByLabel('聊天输入');
-    await expect(textarea).toBeVisible();
-    await expect(textarea).toBeEnabled();
-    await expect(textarea).toHaveAttribute('rows', '1');
-
-    const sendBtn = page.getByRole('button', { name: '发送' });
-    await expect(sendBtn).toBeVisible();
+  test('creates a new conversation', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    await createConvAndWaitForTextarea(page);
+    await expect(page.locator('[class*="space-y-1"]').getByText('新对话').first()).toBeVisible();
   });
 
-  test('send button is disabled when input is empty', async ({ page }) => {
-    await page.goto('/');
-
-    const textarea = page.getByLabel('聊天输入');
-    const sendBtn = page.getByRole('button', { name: '发送' });
-
-    await expect(sendBtn).toBeDisabled();
-
-    await textarea.fill('Hello');
-    await expect(sendBtn).toBeEnabled();
-
-    await textarea.fill('');
-    await expect(sendBtn).toBeDisabled();
+  test('creates multiple conversations', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const btn = page.getByRole('button', { name: '新对话' }).first();
+    const before = await page.locator('[class*="space-y-1"] > div').count();
+    await btn.click();
+    await page.waitForFunction(
+      (cnt) => document.querySelectorAll('[class*="space-y-1"] > div').length > cnt,
+      before, { timeout: 10000 }
+    );
+    await page.waitForTimeout(400); // 尊重 300ms 防抖
+    await btn.click();
+    await page.waitForFunction(
+      (cnt) => document.querySelectorAll('[class*="space-y-1"] > div').length > cnt,
+      before + 1, { timeout: 10000 }
+    );
+    expect(await page.locator('[class*="space-y-1"] > div').count()).toBeGreaterThanOrEqual(before + 2);
   });
 
-  test('typing in textarea updates value', async ({ page }) => {
-    await page.goto('/');
-
-    const textarea = page.getByLabel('聊天输入');
-    await textarea.fill('Test message');
-    await expect(textarea).toHaveValue('Test message');
+  test('switches between conversations', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const btn = page.getByRole('button', { name: '新对话' }).first();
+    await btn.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="space-y-1"] > div').length >= 1,
+      { timeout: 10000 }
+    );
+    await page.waitForTimeout(400);
+    await btn.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="space-y-1"] > div').length >= 2,
+      { timeout: 10000 }
+    );
+    const items = page.locator('[class*="space-y-1"] > div');
+    await items.nth(0).locator('button').first().click();
+    await expect(items.nth(0)).toHaveClass(/bg-\[var\(--accent-dim\)\]/);
   });
 
-  test('Enter inserts newline in textarea', async ({ page }) => {
-    await page.goto('/');
+  test('deletes a conversation', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    await createConvAndWaitForTextarea(page);
+    const before = await page.locator('[class*="space-y-1"] > div').count();
+    expect(before).toBeGreaterThanOrEqual(1);
 
-    const textarea = page.getByLabel('聊天输入');
-    await textarea.fill('Line1');
-    await textarea.press('End');
-    await textarea.press('Enter');
-    await textarea.type('Line2');
-    await expect(textarea).toHaveValue('Line1\nLine2');
+    const first = page.locator('[class*="space-y-1"] > div').first();
+    await first.hover();
+    await first.getByLabel('删除对话').click();
+    await page.waitForTimeout(300);
+    await first.hover();
+    const confirm = first.getByLabel('确认删除');
+    if (await confirm.isVisible().catch(() => false)) {
+      const delDone = waitForDelete(page);
+      await confirm.click();
+      await delDone;
+    }
+    expect(await page.locator('[class*="space-y-1"] > div').count()).toBeLessThan(before);
   });
 
-  test('Ctrl+Enter submits chat message', async ({ page }) => {
-    await page.goto('/');
+  test('textarea accepts input and send enables', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    await createConvAndWaitForTextarea(page);
+    const input = page.getByPlaceholder('问点什么...');
+    await input.fill('你好');
+    await expect(input).toHaveValue('你好');
+    await expect(page.getByRole('button', { name: '发送' })).toBeEnabled();
+  });
 
-    // Intercept chat API to avoid real LLM call
-    let requestBody: unknown = null;
-    await page.route('/api/chat', async (route, request) => {
-      requestBody = request.postDataJSON();
-      // Return a minimal valid ai SDK v3 stream response
-      const body = '0:"Hello"\nd:{"finishReason":"stop"}\n';
-      await route.fulfill({
-        status: 200,
-        body,
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
-    });
+  test('input area + button also creates conversation', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    // 第一个对话用侧边栏按钮
+    const sidebarBtn = page.getByRole('button', { name: '新对话' }).first();
+    await sidebarBtn.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="space-y-1"] > div').length >= 1,
+      { timeout: 10000 }
+    );
+    await page.waitForTimeout(400);
+    const before = await page.locator('[class*="space-y-1"] > div').count();
+    await page.getByTitle('新对话').click();
+    await page.waitForFunction(
+      (cnt) => document.querySelectorAll('[class*="space-y-1"] > div').length > cnt,
+      before, { timeout: 10000 }
+    );
+  });
 
-    const textarea = page.getByLabel('聊天输入');
-    await textarea.fill('Hello via Ctrl+Enter');
-    await textarea.press('Control+Enter');
+  test('send button disabled with empty input', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    await createConvAndWaitForTextarea(page);
+    await expect(page.getByRole('button', { name: '发送' })).toBeDisabled();
+  });
+});
 
-    await expect.poll(() => requestBody).toBeTruthy();
-    const body = requestBody as { messages?: Array<{ role: string; content: string }> };
-    const lastMessage = body.messages?.at(-1);
-    expect(lastMessage?.content).toBe('Hello via Ctrl+Enter');
+test.describe('Theme', () => {
+  test('toggles and persists across reload', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const html = page.locator('html');
+    const initial = await html.getAttribute('data-theme');
+    await page.locator('button[title*="切换到"]').first().click();
+    await expect(html).not.toHaveAttribute('data-theme', initial);
+    await page.reload(); await waitForApp(page);
+    await expect(html).not.toHaveAttribute('data-theme', initial);
+  });
+
+  test('theme is set immediately (no flash)', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    const theme = await page.locator('html').getAttribute('data-theme');
+    expect(['dark', 'light']).toContain(theme);
+  });
+});
+
+test.describe('Persistence', () => {
+  test('conversations survive reload', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const before = await page.locator('[class*="space-y-1"] > div').count();
+
+    // 需要等 POST 确认持久化——用 waitForResponse
+    const postDone = waitForPost(page);
+    await page.getByRole('button', { name: '新对话' }).first().click();
+    await postDone;
+
+    const afterCreate = await page.locator('[class*="space-y-1"] > div').count();
+    expect(afterCreate).toBeGreaterThan(before);
+    await page.reload(); await waitForApp(page);
+    expect(await page.locator('[class*="space-y-1"] > div').count()).toBeGreaterThanOrEqual(afterCreate);
+  });
+
+  test('deleted stays gone after reload', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+
+    const postDone = waitForPost(page);
+    await page.getByRole('button', { name: '新对话' }).first().click();
+    await postDone;
+
+    const before = await page.locator('[class*="space-y-1"] > div').count();
+    const first = page.locator('[class*="space-y-1"] > div').first();
+    await first.hover();
+    await first.getByLabel('删除对话').click();
+    await page.waitForTimeout(300);
+    await first.hover();
+    const confirm = first.getByLabel('确认删除');
+    if (await confirm.isVisible().catch(() => false)) {
+      const delDone = waitForDelete(page);
+      await confirm.click();
+      await delDone;
+    }
+    expect(await page.locator('[class*="space-y-1"] > div').count()).toBeLessThan(before);
+    await page.reload(); await waitForApp(page);
+    expect(await page.locator('[class*="space-y-1"] > div').count()).toBeLessThan(before);
+  });
+});
+
+test.describe('Edge cases', () => {
+  test('sidebar handles many conversations', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const btn = page.getByRole('button', { name: '新对话' }).first();
+    for (let i = 0; i < 5; i++) {
+      await btn.click();
+      await page.waitForFunction(
+        (cnt) => document.querySelectorAll('[class*="space-y-1"] > div').length > cnt,
+        i, { timeout: 10000 }
+      );
+      await page.waitForTimeout(400);
+    }
+    const items = page.locator('[class*="space-y-1"] > div');
+    expect(await items.count()).toBeGreaterThanOrEqual(5);
+    await expect(items.last()).toBeAttached();
+  });
+
+  test('ChatSession remounts when switching back', async ({ page }) => {
+    await page.goto('/', NAV_OPTS);
+    await waitForApp(page);
+    const btn = page.getByRole('button', { name: '新对话' }).first();
+    await btn.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="space-y-1"] > div').length >= 1,
+      { timeout: 10000 }
+    );
+    await page.waitForTimeout(400);
+    await btn.click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="space-y-1"] > div').length >= 2,
+      { timeout: 10000 }
+    );
+    const items = page.locator('[class*="space-y-1"] > div');
+    await items.nth(0).locator('button').first().click();
+    await page.waitForSelector('textarea[placeholder="问点什么..."]', { timeout: 5000 });
+    await expect(page.getByPlaceholder('问点什么...')).toBeVisible();
   });
 });
