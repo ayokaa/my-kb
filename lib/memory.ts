@@ -7,7 +7,6 @@ import type { NoteStatus } from './types';
 
 export interface UserProfile {
   role?: string;
-  techStack: string[];
   interests: string[];
   background?: string;
   updatedAt?: string;
@@ -24,6 +23,7 @@ export interface UserMemory {
   profile: UserProfile;
   noteKnowledge: Record<string, NoteKnowledge>;
   conversationDigest: string;
+  recentDigests: string[];
   preferences: Record<string, unknown>;
   updatedAt: string;
 }
@@ -36,7 +36,10 @@ export interface MemoryExtractResult {
     level: NoteKnowledge['level'];
     notes: string;
   }>;
-  conversationDigest?: string;
+  /** 本轮对话的 1-2 句摘要，追加到 recentDigests */
+  newDigest?: string;
+  /** 基于全部历史摘要生成的综合"最近讨论"文本，覆盖 conversationDigest */
+  recentDiscussion?: string;
   preferenceSignals?: Record<string, unknown>;
 }
 
@@ -61,9 +64,10 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 
 export function emptyMemory(): UserMemory {
   return {
-    profile: { techStack: [], interests: [] },
+    profile: { interests: [] },
     noteKnowledge: {},
     conversationDigest: '',
+    recentDigests: [],
     preferences: {},
     updatedAt: new Date().toISOString(),
   };
@@ -106,11 +110,6 @@ export function mergeMemory(current: UserMemory, extracted: MemoryExtractResult,
     const p = extracted.profileChanges;
     if (p.role) merged.profile.role = p.role;
     if (p.background) merged.profile.background = p.background;
-    if (p.techStack) {
-      const existing = new Set(merged.profile.techStack);
-      for (const t of p.techStack) existing.add(t);
-      merged.profile.techStack = Array.from(existing);
-    }
     if (p.interests) {
       const existing = new Set(merged.profile.interests);
       for (const i of p.interests) existing.add(i);
@@ -132,9 +131,22 @@ export function mergeMemory(current: UserMemory, extracted: MemoryExtractResult,
     }
   }
 
-  // 3. conversationDigest：直接覆盖为整体摘要
-  if (extracted.conversationDigest) {
-    merged.conversationDigest = extracted.conversationDigest;
+  // 3. newDigest：追加本轮摘要到 recentDigests（7 天 TTL）
+  if (extracted.newDigest) {
+    const today = new Date().toISOString().slice(0, 10);
+    const entry = `${today} | ${extracted.newDigest}`;
+    merged.recentDigests.unshift(entry);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    merged.recentDigests = merged.recentDigests.filter((d) => {
+      const dateStr = d.split(' | ')[0];
+      return new Date(dateStr) >= cutoff;
+    });
+  }
+
+  // 4. recentDiscussion：LLM 基于全部历史生成的综合"最近讨论"
+  if (extracted.recentDiscussion) {
+    merged.conversationDigest = extracted.recentDiscussion;
   }
 
   // 4. preferenceSignals：覆盖
@@ -153,8 +165,12 @@ export function getChatContext(
   memory: UserMemory,
   relevantNoteIds: string[]
 ): string | null {
-  if (!memory.profile.role && memory.profile.interests.length === 0 &&
-      memory.conversationDigest.length === 0 && relevantNoteIds.length === 0) {
+  const hasProfile = memory.profile.role ||
+    memory.profile.interests.length > 0 || memory.profile.background;
+  const hasDigests = memory.recentDigests.length > 0 || memory.conversationDigest.length > 0;
+  const hasPrefs = Object.keys(memory.preferences).length > 0;
+
+  if (!hasProfile && !hasDigests && !hasPrefs && relevantNoteIds.length === 0) {
     return null; // 没有有意义的信息
   }
 
@@ -162,12 +178,11 @@ export function getChatContext(
   const profileLines: string[] = [];
 
   if (memory.profile.role) profileLines.push(`角色: ${memory.profile.role}`);
-  if (memory.profile.techStack.length > 0) profileLines.push(`技术栈: ${memory.profile.techStack.join(', ')}`);
   if (memory.profile.interests.length > 0) profileLines.push(`关注: ${memory.profile.interests.join(', ')}`);
   if (memory.profile.background) profileLines.push(`背景: ${memory.profile.background}`);
 
-  if (memory.profile.role || memory.profile.techStack.length > 0 ||
-      memory.profile.interests.length > 0 || memory.profile.background) {
+  if (memory.profile.role || memory.profile.interests.length > 0 ||
+      memory.profile.background) {
     parts.push(profileLines.join('\n'));
   }
 
@@ -179,10 +194,9 @@ export function getChatContext(
     parts.push(`偏好:\n${prefs}`);
   }
 
-  // 最近会话整体摘要
+  // 注入 LLM 综合生成的"最近讨论"（原始摘要不直接暴露给 Chat）
   if (memory.conversationDigest) {
-    parts.push('\n【最近讨论】');
-    parts.push(memory.conversationDigest);
+    parts.push(`【最近讨论】${memory.conversationDigest}`);
   }
 
   // 相关笔记的认知

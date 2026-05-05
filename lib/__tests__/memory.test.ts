@@ -13,7 +13,6 @@ describe('memory module', () => {
   describe('emptyMemory', () => {
     it('returns a valid empty memory structure', () => {
       const m = emptyMemory();
-      expect(m.profile.techStack).toEqual([]);
       expect(m.profile.interests).toEqual([]);
       expect(m.noteKnowledge).toEqual({});
       expect(m.conversationDigest).toEqual('');
@@ -28,31 +27,26 @@ describe('memory module', () => {
       const extract: MemoryExtractResult = {
         profileChanges: {
           role: '全栈开发者',
-          techStack: ['TypeScript', 'Python'],
           interests: ['RAG'],
         },
       };
 
       const merged = mergeMemory(current, extract, 'conv-1');
       expect(merged.profile.role).toBe('全栈开发者');
-      expect(merged.profile.techStack).toEqual(['TypeScript', 'Python']);
       expect(merged.profile.interests).toEqual(['RAG']);
     });
 
-    it('deduplicates techStack and interests on merge', () => {
+    it('deduplicates interests on merge', () => {
       const current = emptyMemory();
-      current.profile.techStack = ['TypeScript'];
       current.profile.interests = ['RAG'];
 
       const extract: MemoryExtractResult = {
         profileChanges: {
-          techStack: ['TypeScript', 'Python'],
           interests: ['RAG', '性能优化'],
         },
       };
 
       const merged = mergeMemory(current, extract, 'conv-2');
-      expect(merged.profile.techStack).toEqual(['TypeScript', 'Python']);
       expect(merged.profile.interests).toEqual(['RAG', '性能优化']);
     });
 
@@ -91,15 +85,24 @@ describe('memory module', () => {
       expect(merged2.noteKnowledge['rag-overview'].firstSeenAt).toBe(firstSeen);
     });
 
-    it('overwrites conversationDigest with string', () => {
+    it('appends newDigest to recentDigests and updates conversationDigest via recentDiscussion', () => {
       const current = emptyMemory();
-      const extract1: MemoryExtractResult = { conversationDigest: '第一次摘要' };
+      const extract1: MemoryExtractResult = {
+        newDigest: '第一次讨论了 React',
+        recentDiscussion: '用户最近在研究 React 19 的新特性。',
+      };
       const merged1 = mergeMemory(current, extract1, 'conv-1');
-      expect(merged1.conversationDigest).toBe('第一次摘要');
+      expect(merged1.recentDigests.length).toBe(1);
+      expect(merged1.recentDigests[0]).toContain('第一次讨论了 React');
+      expect(merged1.conversationDigest).toBe('用户最近在研究 React 19 的新特性。');
 
-      const extract2: MemoryExtractResult = { conversationDigest: '第二次摘要' };
+      const extract2: MemoryExtractResult = {
+        newDigest: '第二次讨论了 RAG',
+        recentDiscussion: '用户最近在研究 React 19，同时关注 RAG 检索优化。',
+      };
       const merged2 = mergeMemory(merged1, extract2, 'conv-2');
-      expect(merged2.conversationDigest).toBe('第二次摘要');
+      expect(merged2.recentDigests.length).toBe(2);
+      expect(merged2.conversationDigest).toBe('用户最近在研究 React 19，同时关注 RAG 检索优化。');
     });
 
     it('applies preferenceSignals', () => {
@@ -123,6 +126,56 @@ describe('memory module', () => {
       expect(merged.profile.role).toBe('dev');
       expect(merged.conversationDigest).toBe('');
     });
+
+    it('prepends date prefix to newDigest in recentDigests', () => {
+      const current = emptyMemory();
+      const extract: MemoryExtractResult = {
+        newDigest: '讨论了 React',
+      };
+      const merged = mergeMemory(current, extract, 'conv-1');
+      expect(merged.recentDigests.length).toBe(1);
+      const today = new Date().toISOString().slice(0, 10);
+      expect(merged.recentDigests[0]).toMatch(new RegExp(`^${today} \\| 讨论了 React$`));
+    });
+
+    it('filters out digests older than 7 days', () => {
+      const current = emptyMemory();
+      const oldDate = new Date();
+      oldDate.setDate(oldDate.getDate() - 8);
+      const oldDateStr = oldDate.toISOString().slice(0, 10);
+      current.recentDigests = [
+        `${oldDateStr} | 旧的摘要 1`,
+        `${oldDateStr} | 旧的摘要 2`,
+      ];
+
+      const extract: MemoryExtractResult = {
+        newDigest: '新的讨论',
+      };
+      const merged = mergeMemory(current, extract, 'conv-1');
+
+      // 旧摘要被过滤，只剩下新的
+      expect(merged.recentDigests.length).toBe(1);
+      expect(merged.recentDigests[0]).toContain('新的讨论');
+    });
+
+    it('keeps digests within 7 days', () => {
+      const current = emptyMemory();
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - 3);
+      const recentDateStr = recentDate.toISOString().slice(0, 10);
+      current.recentDigests = [
+        `${recentDateStr} | 3天前的摘要`,
+      ];
+
+      const extract: MemoryExtractResult = {
+        newDigest: '今天的讨论',
+      };
+      const merged = mergeMemory(current, extract, 'conv-1');
+
+      expect(merged.recentDigests.length).toBe(2);
+      expect(merged.recentDigests[0]).toContain('今天的讨论');
+      expect(merged.recentDigests[1]).toContain('3天前的摘要');
+    });
   });
 
   describe('getChatContext', () => {
@@ -139,23 +192,22 @@ describe('memory module', () => {
       const m = makeMemory({
         profile: {
           role: '研究员',
-          techStack: ['Python'],
           interests: ['AI'],
           background: '',
         },
       });
       const ctx = getChatContext(m, []);
       expect(ctx).toContain('研究员');
-      expect(ctx).toContain('Python');
       expect(ctx).toContain('AI');
     });
 
-    it('includes conversation digest string', () => {
+    it('includes recentDiscussion from conversationDigest', () => {
       const m = makeMemory({
-        conversationDigest: '最近讨论了 A、B、C 等话题',
+        conversationDigest: '用户最近在研究 React 19 新特性，同时关注 RAG 检索优化。',
       });
       const ctx = getChatContext(m, []);
-      expect(ctx).toContain('最近讨论了 A、B、C 等话题');
+      expect(ctx).toContain('用户最近在研究 React 19 新特性');
+      expect(ctx).toContain('RAG 检索优化');
     });
 
     it('includes relevant note knowledge', () => {
