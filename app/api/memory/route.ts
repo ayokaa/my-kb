@@ -20,7 +20,6 @@ export async function POST(req: Request) {
         const p = body.profile as Partial<UserProfile>;
         if (p.role !== undefined) memory.profile.role = p.role || undefined;
         if (p.background !== undefined) memory.profile.background = p.background || undefined;
-        if (p.techStack) memory.profile.techStack = p.techStack;
         if (p.interests) memory.profile.interests = p.interests;
         memory.profile.updatedAt = new Date().toISOString();
         break;

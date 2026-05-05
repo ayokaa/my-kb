@@ -30,7 +30,6 @@ describe('/api/memory', () => {
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.profile.techStack).toEqual([]);
       expect(data.profile.interests).toEqual([]);
       expect(data.noteKnowledge).toEqual({});
       expect(data.conversationDigest).toEqual('');
@@ -40,8 +39,9 @@ describe('/api/memory', () => {
     it('returns persisted memory', async () => {
       const memory = emptyMemory();
       memory.profile.role = '开发者';
-      memory.profile.techStack = ['TypeScript'];
       memory.preferences.detailLevel = 'concise';
+      memory.conversationDigest = '最近讨论了 React 和 RAG';
+      memory.recentDigests = ['2024-01-15 | 讨论了 React', '2024-01-14 | 讨论了 RAG'];
       await saveMemory(memory);
 
       const res = await GET();
@@ -49,8 +49,20 @@ describe('/api/memory', () => {
 
       expect(res.status).toBe(200);
       expect(data.profile.role).toBe('开发者');
-      expect(data.profile.techStack).toEqual(['TypeScript']);
       expect(data.preferences.detailLevel).toBe('concise');
+      expect(data.conversationDigest).toBe('最近讨论了 React 和 RAG');
+      expect(data.recentDigests).toEqual(['2024-01-15 | 讨论了 React', '2024-01-14 | 讨论了 RAG']);
+    });
+
+    it('returns empty recentDigests and conversationDigest for fresh memory', async () => {
+      const memory = emptyMemory();
+      await saveMemory(memory);
+
+      const res = await GET();
+      const data = await res.json();
+
+      expect(data.conversationDigest).toBe('');
+      expect(data.recentDigests).toEqual([]);
     });
   });
 
@@ -68,7 +80,6 @@ describe('/api/memory', () => {
           profile: {
             role: '研究员',
             background: 'AI 实验室',
-            techStack: ['Python', 'PyTorch'],
             interests: ['深度学习', 'NLP'],
           },
         }),
@@ -83,7 +94,6 @@ describe('/api/memory', () => {
       const getData = await getRes.json();
       expect(getData.profile.role).toBe('研究员');
       expect(getData.profile.background).toBe('AI 实验室');
-      expect(getData.profile.techStack).toEqual(['Python', 'PyTorch']);
       expect(getData.profile.interests).toEqual(['深度学习', 'NLP']);
       expect(getData.profile.updatedAt).toBeTruthy();
     });
@@ -99,7 +109,7 @@ describe('/api/memory', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'updateProfile',
-          profile: { role: '', background: '', techStack: [], interests: [] },
+          profile: { role: '', background: '', interests: [] },
         }),
       });
 
@@ -301,12 +311,12 @@ describe('/api/memory', () => {
   });
 
   describe('DELETE clearAll', () => {
-    it('resets all memory to empty', async () => {
+    it('resets all memory to empty including recentDigests', async () => {
       const memory = emptyMemory();
       memory.profile.role = 'dev';
-      memory.profile.techStack = ['TS'];
       memory.noteKnowledge['n1'] = { level: 'discussed', firstSeenAt: '', lastReferencedAt: '', notes: '' };
       memory.conversationDigest = 'A';
+      memory.recentDigests = ['2024-01-10 | 旧摘要'];
       memory.preferences.theme = 'dark';
       await saveMemory(memory);
 
@@ -322,9 +332,9 @@ describe('/api/memory', () => {
       const getRes = await GET();
       const getData = await getRes.json();
       expect(getData.profile.role).toBeUndefined();
-      expect(getData.profile.techStack).toEqual([]);
       expect(getData.noteKnowledge).toEqual({});
       expect(getData.conversationDigest).toEqual('');
+      expect(getData.recentDigests).toEqual([]);
       expect(getData.preferences).toEqual({});
     });
   });
