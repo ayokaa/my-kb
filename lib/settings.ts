@@ -38,8 +38,8 @@ function envOverride(settings: RuntimeSettings): RuntimeSettings {
   return {
     llm: {
       model: process.env.LLM_MODEL || settings.llm.model,
-      apiKey: process.env.MINIMAX_API_KEY || settings.llm.apiKey,
-      baseUrl: process.env.MINIMAX_BASE_URL || settings.llm.baseUrl,
+      apiKey: process.env.ANTHROPIC_API_KEY || settings.llm.apiKey,
+      baseUrl: process.env.ANTHROPIC_BASE_URL || settings.llm.baseUrl,
     },
     cron: {
       rssIntervalMinutes: parseInt(process.env.RSS_CHECK_INTERVAL_MINUTES || String(settings.cron.rssIntervalMinutes), 10),

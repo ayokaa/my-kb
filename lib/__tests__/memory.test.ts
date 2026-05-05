@@ -16,7 +16,7 @@ describe('memory module', () => {
       expect(m.profile.techStack).toEqual([]);
       expect(m.profile.interests).toEqual([]);
       expect(m.noteKnowledge).toEqual({});
-      expect(m.conversationDigest).toEqual([]);
+      expect(m.conversationDigest).toEqual('');
       expect(m.preferences).toEqual({});
       expect(m.updatedAt).toBeTruthy();
     });
@@ -91,17 +91,15 @@ describe('memory module', () => {
       expect(merged2.noteKnowledge['rag-overview'].firstSeenAt).toBe(firstSeen);
     });
 
-    it('prepends conversationDigest and keeps max 20', () => {
+    it('overwrites conversationDigest with string', () => {
       const current = emptyMemory();
-      for (let i = 0; i < 25; i++) {
-        const extract: MemoryExtractResult = {
-          conversationDigest: { summary: `话题 ${i}`, topics: ['test'] },
-        };
-        const merged = mergeMemory(current, extract, `conv-${i}`);
-        Object.assign(current, merged);
-      }
-      expect(current.conversationDigest).toHaveLength(20);
-      expect(current.conversationDigest[0].summary).toBe('话题 24');
+      const extract1: MemoryExtractResult = { conversationDigest: '第一次摘要' };
+      const merged1 = mergeMemory(current, extract1, 'conv-1');
+      expect(merged1.conversationDigest).toBe('第一次摘要');
+
+      const extract2: MemoryExtractResult = { conversationDigest: '第二次摘要' };
+      const merged2 = mergeMemory(merged1, extract2, 'conv-2');
+      expect(merged2.conversationDigest).toBe('第二次摘要');
     });
 
     it('applies preferenceSignals', () => {
@@ -123,7 +121,7 @@ describe('memory module', () => {
       const merged = mergeMemory(current, extract, 'conv-1');
 
       expect(merged.profile.role).toBe('dev');
-      expect(merged.conversationDigest).toHaveLength(0);
+      expect(merged.conversationDigest).toBe('');
     });
   });
 
@@ -152,20 +150,12 @@ describe('memory module', () => {
       expect(ctx).toContain('AI');
     });
 
-    it('includes recent 3 conversation digests', () => {
+    it('includes conversation digest string', () => {
       const m = makeMemory({
-        conversationDigest: [
-          { conversationId: 'c1', summary: '讨论 A', topics: [], timestamp: '' },
-          { conversationId: 'c2', summary: '讨论 B', topics: [], timestamp: '' },
-          { conversationId: 'c3', summary: '讨论 C', topics: [], timestamp: '' },
-          { conversationId: 'c4', summary: '讨论 D', topics: [], timestamp: '' },
-        ],
+        conversationDigest: '最近讨论了 A、B、C 等话题',
       });
       const ctx = getChatContext(m, []);
-      expect(ctx).toContain('讨论 A');
-      expect(ctx).toContain('讨论 B');
-      expect(ctx).toContain('讨论 C');
-      expect(ctx).not.toContain('讨论 D');
+      expect(ctx).toContain('最近讨论了 A、B、C 等话题');
     });
 
     it('includes relevant note knowledge', () => {

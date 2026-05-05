@@ -11,8 +11,8 @@ import { loadSettings, saveSettings, maskApiKey, safeSettings } from '../setting
 beforeEach(async () => {
   // Reset env overrides between tests
   delete process.env.LLM_MODEL;
-  delete process.env.MINIMAX_API_KEY;
-  delete process.env.MINIMAX_BASE_URL;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_BASE_URL;
   delete process.env.RSS_CHECK_INTERVAL_MINUTES;
   delete process.env.RELINK_CRON_EXPRESSION;
 });

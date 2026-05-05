@@ -20,17 +20,10 @@ export interface NoteKnowledge {
   notes: string;
 }
 
-export interface ConversationDigestEntry {
-  conversationId: string;
-  summary: string;
-  topics: string[];
-  timestamp: string;
-}
-
 export interface UserMemory {
   profile: UserProfile;
   noteKnowledge: Record<string, NoteKnowledge>;
-  conversationDigest: ConversationDigestEntry[];
+  conversationDigest: string;
   preferences: Record<string, unknown>;
   updatedAt: string;
 }
@@ -43,10 +36,7 @@ export interface MemoryExtractResult {
     level: NoteKnowledge['level'];
     notes: string;
   }>;
-  conversationDigest?: {
-    summary: string;
-    topics: string[];
-  };
+  conversationDigest?: string;
   preferenceSignals?: Record<string, unknown>;
 }
 
@@ -73,7 +63,7 @@ export function emptyMemory(): UserMemory {
   return {
     profile: { techStack: [], interests: [] },
     noteKnowledge: {},
-    conversationDigest: [],
+    conversationDigest: '',
     preferences: {},
     updatedAt: new Date().toISOString(),
   };
@@ -83,7 +73,7 @@ export async function loadMemory(): Promise<UserMemory> {
   try {
     const raw = await readFile(getMemoryPath(), 'utf-8');
     const parsed = JSON.parse(raw) as UserMemory;
-    // 确保必要字段存在（向后兼容旧格式）
+    // 确保必要字段存在
     return {
       ...emptyMemory(),
       ...parsed,
@@ -142,16 +132,9 @@ export function mergeMemory(current: UserMemory, extracted: MemoryExtractResult,
     }
   }
 
-  // 3. conversationDigest：插入前面，保留最近 20 条
+  // 3. conversationDigest：直接覆盖为整体摘要
   if (extracted.conversationDigest) {
-    merged.conversationDigest.unshift({
-      conversationId,
-      ...extracted.conversationDigest,
-      timestamp: now,
-    });
-    if (merged.conversationDigest.length > 20) {
-      merged.conversationDigest = merged.conversationDigest.slice(0, 20);
-    }
+    merged.conversationDigest = extracted.conversationDigest;
   }
 
   // 4. preferenceSignals：覆盖
@@ -196,13 +179,10 @@ export function getChatContext(
     parts.push(`偏好:\n${prefs}`);
   }
 
-  // 最近 3 条对话摘要
-  const recent = memory.conversationDigest.slice(0, 3);
-  if (recent.length > 0) {
+  // 最近会话整体摘要
+  if (memory.conversationDigest) {
     parts.push('\n【最近讨论】');
-    for (const d of recent) {
-      parts.push(`- ${d.summary}`);
-    }
+    parts.push(memory.conversationDigest);
   }
 
   // 相关笔记的认知
