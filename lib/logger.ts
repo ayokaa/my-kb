@@ -352,21 +352,28 @@ export class Logger {
   }
 
   async close(): Promise<void> {
-    // Flush any pending lines before closing
-    if (this.pendingLines.length > 0) {
-      this.flushRequested = false;
-      const lines = this.pendingLines.splice(0);
-      if (this.currentFile) {
-        try {
-          await appendFile(this.currentFile, lines.join(''));
-        } catch {
-          // ignore
-        }
-      }
-    }
-    // Wait for any in-flight flush to complete
-    while (this.flushInProgress) {
+    // 触发最终 flush，统一走 scheduleFlush() 单一路径
+    // 避免 close() 自己和 microtask 同时 appendFile 造成竞态
+    this.scheduleFlush();
+
+    // 等待所有 in-flight flush 完成（最多等 5 秒，防止死循环）
+    let waited = 0;
+    while (this.flushInProgress && waited < 500) {
       await new Promise((r) => setTimeout(r, 10));
+      waited++;
+    }
+    if (waited >= 500) {
+      console.warn('[Logger] close() timed out waiting for flush, forcing shutdown');
+    }
+
+    // 兜底：如果 flush 完成后又有新 pendingLines（理论上不应发生），再刷一次
+    if (this.pendingLines.length > 0) {
+      this.scheduleFlush();
+      waited = 0;
+      while (this.flushInProgress && waited < 500) {
+        await new Promise((r) => setTimeout(r, 10));
+        waited++;
+      }
     }
   }
 }
