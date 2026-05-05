@@ -14,9 +14,10 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 vi.mock('@/lib/memory', () => ({
   loadMemory: vi.fn().mockResolvedValue({
-    profile: { techStack: [], interests: [] },
+    profile: { interests: [] },
     noteKnowledge: {},
     conversationDigest: '',
+    recentDigests: [],
     preferences: {},
     updatedAt: '',
   }),
@@ -27,6 +28,14 @@ vi.mock('@/lib/memory', () => ({
 
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/settings', () => ({
+  loadSettings: vi.fn().mockResolvedValue({
+    llm: { model: 'test-model', apiKey: 'test-key', baseUrl: 'http://test' },
+    cron: { rssIntervalMinutes: 60, relinkCronExpression: '0 3 * * *' },
+    memory: { taskIntervalMs: 0 },
+  }),
 }));
 
 import { POST } from '../route';
@@ -42,8 +51,9 @@ async function flushMicrotasks() {
 describe('POST /api/memory/update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 4 个串行任务都需要有效 JSON 响应
     mockCreate.mockResolvedValue({
-      content: [{ type: 'text', text: JSON.stringify({ conversationDigest: '测试对话' }) }],
+      content: [{ type: 'text', text: JSON.stringify({ newDigest: '测试摘要' }) }],
     });
   });
 
@@ -94,13 +104,13 @@ describe('POST /api/memory/update', () => {
     // 等待后台处理完成
     await flushMicrotasks();
 
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(4); // 4 个并行 LLM 任务
     expect(mockSaveMemory).toHaveBeenCalledTimes(1);
     expect(mockEvolveStatuses).toHaveBeenCalledTimes(1);
   });
 
   it('handles LLM returning malformed JSON gracefully in background', async () => {
-    mockCreate.mockResolvedValueOnce({
+    mockCreate.mockResolvedValue({
       content: [{ type: 'text', text: 'not json at all' }],
     });
 
@@ -123,15 +133,15 @@ describe('POST /api/memory/update', () => {
     expect(data.ok).toBe(true);
     expect(data.queued).toBe(true);
 
-    // 后台处理时遇到 parse error，不会抛到前端
+    // 后台处理时 4 个并行任务都遇到 parse error，不会抛到前端
     await flushMicrotasks();
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(4);
     expect(mockSaveMemory).not.toHaveBeenCalled();
     vi.clearAllMocks(); // 清理，防止影响后续测试
   });
 
   it('handles LLM API failure gracefully in background', async () => {
-    mockCreate.mockRejectedValueOnce(new Error('API rate limit'));
+    mockCreate.mockRejectedValue(new Error('API rate limit'));
 
     const req = new Request('http://localhost/api/memory/update', {
       method: 'POST',
@@ -152,9 +162,9 @@ describe('POST /api/memory/update', () => {
     expect(data.ok).toBe(true);
     expect(data.queued).toBe(true);
 
-    // 后台处理时遇到 API 错误，不会抛到前端
+    // 后台处理时 4 个并行任务都遇到 API 错误，不会抛到前端
     await flushMicrotasks();
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(4);
     expect(mockSaveMemory).not.toHaveBeenCalled();
   });
 
@@ -176,6 +186,6 @@ describe('POST /api/memory/update', () => {
     expect(data.queued).toBe(true);
 
     await flushMicrotasks();
-    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockCreate).toHaveBeenCalledTimes(4);
   });
 });

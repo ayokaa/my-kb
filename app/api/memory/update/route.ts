@@ -2,107 +2,350 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getLLMClient, getLLMModel } from '@/lib/llm';
 import { loadMemory, saveMemory, mergeMemory, evolveNoteStatuses, type MemoryExtractResult } from '@/lib/memory';
 import { logger } from '@/lib/logger';
+import { loadSettings } from '@/lib/settings';
 
-const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 AI 助手的一次完整会话，提取以下信息。只基于对话内容，不要编造。
+// ── 各任务独立的 System Prompt ─────────────────────────────
 
-输出严格 JSON，不要 markdown 代码块：
+const PROFILE_SYSTEM_PROMPT = `你是一个用户画像提取助手。分析用户和 AI 的对话，只提取用户**明确陈述**的画像信息。
 
+输出严格 JSON，不要 markdown：
 {
-  "profileChanges": {
-    "role": "用户的职业角色（如有新信息，不填则省略此字段）",
-    "techStack": ["技术栈新增项（不填则省略此字段）"],
-    "interests": ["新发现的兴趣领域（不填则省略此字段）"],
-    "background": "补充的背景信息（如有，不填则省略此字段）"
-  },
+  "role": "用户明确陈述的职业身份（没有则省略）",
+  "interests": ["用户明确表达的长期关注领域（临时好奇不要填）"],
+  "background": "用户明确陈述的补充背景（没有则省略）"
+}
+
+【边界示例】
+✅ user: "我是前端开发者" → { "role": "前端开发者" }
+❌ user: "Rust 和 Go 哪个好？" → {} （临时询问）
+❌ user: "AI 绘画很火" → {} （随口提及）
+
+没有变化时返回 {} 或只输出空 JSON。`;
+
+const NOTE_FAMILIARITY_SYSTEM_PROMPT = `你是一个笔记认知评估助手。分析对话中涉及的知识库笔记，评估用户对这些笔记的认知水平。
+
+对话中笔记会以 "ID: xxx" 的形式标注。输出严格 JSON：
+{
   "noteFamiliarity": [
     {
-      "noteId": "笔记 ID（对话中笔记标注的 ID: xxx 值，如 rag-overview）",
-      "level": "referenced 或 discussed",
-      "notes": "用户对该笔记话题的认知水平观察（1句话）"
+      "noteId": "笔记 ID",
+      "level": "referenced | discussed",
+      "notes": "用户对该笔记的认知水平观察（1句话）"
     }
-  ],
-  "conversationDigest": "最近会话的整体摘要（2-3句话，涵盖本次及近期对话的核心主题）",
+  ]
+}
+
+对话未涉及任何笔记时返回 {}。`;
+
+const DIGEST_SYSTEM_PROMPT = `你是一个会话摘要助手。分析本次对话，生成 1-2 句核心摘要。
+
+输出严格 JSON：
+{
+  "newDigest": "本轮对话的 1-2 句核心摘要，提炼用户本次最关心的主题和意图"
+}
+
+只关注本轮对话本身，不需要关联历史。`;
+
+const PREFERENCE_SYSTEM_PROMPT = `你是一个用户偏好识别助手。分析对话，提取用户**明确表达**的偏好。
+
+输出严格 JSON：
+{
   "preferenceSignals": {
-    "_description": "以下为示例，键名不限于这些。任何从对话中观察到的用户偏好都可以记录",
-    "detailLevel": "concise 或 normal 或 detailed（如果观察到）",
+    "detailLevel": "concise | normal | detailed（仅当用户明确说时）",
     "preferCodeExamples": true,
-    "language": "用户偏好的语言（如 zh, en 等）",
-    "responseFormat": "用户偏好的回答格式（如 markdown, 列表, 表格）",
-    "expertiseLevel": "用户表现出的专业水平（beginner, intermediate, expert）"
+    "language": "用户明确偏好的语言",
+    "responseFormat": "用户明确要求的格式",
+    "expertiseLevel": "用户明确表现出的水平"
   }
 }
 
-规则：
-- 只填有变化的字段，没观察到的字段不填或省略
-- 不要重复已有信息，只提取新内容
-- noteFamiliarity 只在对话确实涉及某篇笔记时才填
-- conversationDigest 用中文`;
+不要猜测。没有明确偏好时返回 {}。`;
+
+const DISCUSSION_REGEN_SYSTEM_PROMPT = `你是一个用户动态综合助手。基于用户最近的多轮会话摘要，生成一段综合的"最近讨论"文本。
+
+输入是多条按时间排列的会话摘要，你需要：
+1. 识别用户持续关注的主线主题
+2. 发现新的关注方向或变化
+3. 概括用户最近在做什么、关注什么
+
+输出严格 JSON：
+{
+  "recentDiscussion": "3-5 句综合文本，像一段自然的用户动态摘要"
+}
+
+要求：
+- 基于所有历史摘要综合，不要只写最新一条
+- 语言自然流畅，不是 bullet list
+- 中文`;
+
+// ── 通用 LLM 调用工具 ──────────────────────────────────────
+
+async function callLLM(system: string, userContent: string, maxTokens = 1024): Promise<unknown> {
+  const client = await getLLMClient();
+  const model = await getLLMModel();
+  const response = await client.messages.create({
+    model,
+    max_tokens: maxTokens,
+    temperature: 0.3,
+    system,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const textBlocks = response.content.filter(
+    (b): b is Anthropic.TextBlock => b.type === 'text'
+  );
+  const raw = textBlocks.map((b) => b.text).join('').trim();
+
+  const jsonText = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+  return JSON.parse(jsonText);
+}
+
+async function safeCallLLM(
+  taskName: string,
+  system: string,
+  userContent: string,
+  maxTokens = 1024
+): Promise<unknown | null> {
+  try {
+    return await callLLM(system, userContent, maxTokens);
+  } catch (err) {
+    logger.warn('Memory', `${taskName} failed: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+// ── 延迟重新生成 "最近讨论" 的 debounce 机制 ───────────────
+
+let discussionRegenTimer: NodeJS.Timeout | null = null;
+const DISCUSSION_REGEN_DELAY_MS = 10 * 60 * 1000; // 10 分钟
+
+async function regenerateRecentDiscussion() {
+  try {
+    logger.info('Memory', 'Starting delayed discussion regeneration');
+    const memory = await loadMemory();
+    if (memory.recentDigests.length === 0) {
+      logger.info('Memory', 'Skipping regen: no recent digests');
+      return;
+    }
+
+    const digestsText = memory.recentDigests.join('\n');
+    const userPrompt = [
+      '【最近会话摘要】（从新到旧）',
+      digestsText,
+      '',
+      '【任务】基于以上全部摘要，生成一段综合的"最近讨论"文本。',
+    ].join('\n');
+
+    const result = await safeCallLLM(
+      'regenerateDiscussion',
+      DISCUSSION_REGEN_SYSTEM_PROMPT,
+      userPrompt,
+      1536
+    );
+
+    if (result && (result as Record<string, unknown>).recentDiscussion) {
+      const recentDiscussion = (result as Record<string, unknown>).recentDiscussion as string;
+      memory.conversationDigest = recentDiscussion;
+      await saveMemory(memory);
+      logger.info('Memory', `Regenerated recentDiscussion (${memory.recentDigests.length} digests)`);
+    } else {
+      logger.warn('Memory', 'Regen produced no recentDiscussion');
+    }
+  } catch (err) {
+    logger.error('Memory', `Discussion regen failed: ${(err as Error).message}`);
+  }
+}
+
+function scheduleDiscussionRegen() {
+  if (discussionRegenTimer) {
+    logger.info('Memory', `Cancelling previous regen timer, rescheduling in ${DISCUSSION_REGEN_DELAY_MS / 60000}min`);
+    clearTimeout(discussionRegenTimer);
+  } else {
+    logger.info('Memory', `Scheduling regen in ${DISCUSSION_REGEN_DELAY_MS / 60000}min`);
+  }
+  discussionRegenTimer = setTimeout(() => {
+    regenerateRecentDiscussion().catch(() => {});
+    discussionRegenTimer = null;
+  }, DISCUSSION_REGEN_DELAY_MS);
+}
+
+// ── 各即时任务的 user prompt 构建 ──────────────────────────
+
+function buildUserContext(existingMemory: Awaited<ReturnType<typeof loadMemory>>): string {
+  const parts: string[] = [];
+
+  const profileLines = [
+    existingMemory.profile.role && `角色: ${existingMemory.profile.role}`,
+    existingMemory.profile.interests.length > 0 && `兴趣: ${existingMemory.profile.interests.join(', ')}`,
+    existingMemory.profile.background && `背景: ${existingMemory.profile.background}`,
+  ].filter(Boolean);
+  if (profileLines.length > 0) {
+    parts.push('【用户画像】');
+    parts.push(...profileLines);
+  }
+
+  const prefLines = Object.entries(existingMemory.preferences)
+    .map(([k, v]) => `- ${k}: ${v}`);
+  if (prefLines.length > 0) {
+    parts.push('【已知偏好】');
+    parts.push(...prefLines);
+  }
+
+  return parts.join('\n') || '(尚无用户记忆)';
+}
+
+function buildProfilePrompt(existingMemory: Awaited<ReturnType<typeof loadMemory>>, conversationText: string): string {
+  return [
+    buildUserContext(existingMemory),
+    '',
+    '【本次对话】',
+    conversationText.slice(0, 4000),
+    '',
+    '【任务】只提取用户明确陈述的画像变化（角色/兴趣/背景），不要推断。',
+  ].join('\n');
+}
+
+function buildNoteFamiliarityPrompt(
+  existingMemory: Awaited<ReturnType<typeof loadMemory>>,
+  conversationText: string
+): string {
+  return [
+    buildUserContext(existingMemory),
+    '',
+    '【本次对话】',
+    conversationText.slice(0, 4000),
+    '',
+    '【任务】基于用户画像和本次对话，更新涉及的笔记认知评估。未涉及的笔记不要输出。',
+  ].join('\n');
+}
+
+function buildDigestPrompt(
+  existingMemory: Awaited<ReturnType<typeof loadMemory>>,
+  conversationText: string
+): string {
+  return [
+    buildUserContext(existingMemory),
+    '',
+    '【本次对话】',
+    conversationText.slice(0, 6000),
+    '',
+    '【任务】生成本轮对话的 1-2 句核心摘要。结合用户画像，突出本轮与之前不同的新信息。',
+  ].join('\n');
+}
+
+function buildPreferencePrompt(
+  existingMemory: Awaited<ReturnType<typeof loadMemory>>,
+  conversationText: string
+): string {
+  return [
+    buildUserContext(existingMemory),
+    '',
+    '【本次对话】',
+    conversationText.slice(0, 4000),
+    '',
+    '【任务】只提取用户明确表达的**新增偏好或变化**。已有偏好不要重复输出，没有变化返回 {}。',
+  ].join('\n');
+}
+
+// ── 主流程 ─────────────────────────────────────────────────
 
 async function processMemoryUpdate(convId: string, messages: Array<{ role: string; content: string }>) {
   try {
     const existingMemory = await loadMemory();
 
-    // 构建用户消息
-    const profileSummary = [
-      existingMemory.profile.role && `角色: ${existingMemory.profile.role}`,
-      existingMemory.profile.techStack.length > 0 && `技术栈: ${existingMemory.profile.techStack.join(', ')}`,
-      existingMemory.profile.interests.length > 0 && `兴趣: ${existingMemory.profile.interests.join(', ')}`,
-      existingMemory.profile.background && `补充: ${existingMemory.profile.background}`,
-    ].filter(Boolean).join('\n');
-
-    const recentTopics = existingMemory.conversationDigest;
-
     const conversationText = messages
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n\n');
 
-    const userPrompt = [
-      '【当前用户档案】',
-      profileSummary || '(尚无档案)',
-      '',
-      recentTopics ? `最近话题：${recentTopics}` : '',
-      '',
-      '【本次会话】',
-      conversationText.slice(0, 8000),
-    ].join('\n');
+    // ── 即时任务：会话结束后串行执行，间隔 30 秒 ───────────
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const settings = await loadSettings();
+    const TASK_INTERVAL_MS = settings.memory.taskIntervalMs;
 
-    // LLM 调用
-    const client = await getLLMClient();
-    const model = await getLLMModel();
-    const response = await client.messages.create({
-      model,
-      max_tokens: 2048,
-      temperature: 0.3,
-      system: MEMORY_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    });
+    logger.info('Memory', `Starting immediate tasks for ${convId}`);
 
-    const textBlocks = response.content.filter(
-      (b): b is Anthropic.TextBlock => b.type === 'text'
-    );
-    const raw = textBlocks.map((b) => b.text).join('').trim();
+    logger.info('Memory', 'Task: profile extraction');
+    const profileResult = await safeCallLLM('profile', PROFILE_SYSTEM_PROMPT, buildProfilePrompt(existingMemory, conversationText));
+    await sleep(TASK_INTERVAL_MS);
 
-    // 解析 LLM 输出
-    let extracted: MemoryExtractResult;
-    try {
-      const jsonText = raw.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      extracted = JSON.parse(jsonText);
-    } catch (parseErr) {
-      logger.warn('Memory', `Failed to parse LLM output: ${(parseErr as Error).message}`);
-      return;
+    logger.info('Memory', 'Task: note familiarity');
+    const noteResult = await safeCallLLM('noteFamiliarity', NOTE_FAMILIARITY_SYSTEM_PROMPT, buildNoteFamiliarityPrompt(existingMemory, conversationText));
+    await sleep(TASK_INTERVAL_MS);
+
+    logger.info('Memory', 'Task: digest generation');
+    const digestResult = await safeCallLLM('digest', DIGEST_SYSTEM_PROMPT, buildDigestPrompt(existingMemory, conversationText));
+    await sleep(TASK_INTERVAL_MS);
+
+    logger.info('Memory', 'Task: preference extraction');
+    const prefResult = await safeCallLLM('preference', PREFERENCE_SYSTEM_PROMPT, buildPreferencePrompt(existingMemory, conversationText));
+
+    // 合并各即时任务结果
+    const extracted: MemoryExtractResult = {};
+
+    if (profileResult) {
+      const p = profileResult as Record<string, unknown>;
+      if (p.role || p.interests || p.background) {
+        extracted.profileChanges = {
+          role: p.role as string | undefined,
+          interests: p.interests as string[] | undefined,
+          background: p.background as string | undefined,
+        };
+      }
     }
 
-    // 合并并保存
-    const updated = mergeMemory(existingMemory, extracted, convId);
-    await saveMemory(updated);
-
-    // 根据新的 noteKnowledge 自动演进笔记状态
-    const statusChanges = await evolveNoteStatuses(updated);
-    if (statusChanges.length > 0) {
-      logger.info('Memory', `Status changes: ${statusChanges.map(c => `${c.noteId}: ${c.from}→${c.to}`).join(', ')}`);
+    if (noteResult) {
+      const n = noteResult as Record<string, unknown>;
+      if (n.noteFamiliarity && Array.isArray(n.noteFamiliarity)) {
+        extracted.noteFamiliarity = n.noteFamiliarity as MemoryExtractResult['noteFamiliarity'];
+      }
     }
 
-    logger.info('Memory', `Updated for conversation ${convId}`);
+    if (digestResult) {
+      const d = digestResult as Record<string, unknown>;
+      if (d.newDigest) extracted.newDigest = d.newDigest as string;
+    }
+
+    if (prefResult) {
+      const p = prefResult as Record<string, unknown>;
+      if (p.preferenceSignals && typeof p.preferenceSignals === 'object') {
+        extracted.preferenceSignals = p.preferenceSignals as Record<string, unknown>;
+      }
+    }
+
+    const changedFields: string[] = [];
+    if (extracted.profileChanges) changedFields.push('profile');
+    if (extracted.noteFamiliarity) changedFields.push('notes');
+    if (extracted.newDigest) changedFields.push('digest');
+    if (extracted.preferenceSignals) changedFields.push('prefs');
+
+    const hasContent = changedFields.length > 0;
+
+    if (hasContent) {
+      logger.info('Memory', `Merging changes [${changedFields.join(', ')}] for ${convId}`);
+      const updated = mergeMemory(existingMemory, extracted, convId);
+      await saveMemory(updated);
+
+      const statusChanges = await evolveNoteStatuses(updated);
+      if (statusChanges.length > 0) {
+        logger.info('Memory', `Status changes: ${statusChanges.map(c => `${c.noteId}: ${c.from}→${c.to}`).join(', ')}`);
+      }
+
+      logger.info('Memory', `Immediate update done for ${convId}`);
+    } else {
+      const reasons: string[] = [];
+      if (!profileResult) reasons.push('profile-failed');
+      if (!noteResult) reasons.push('note-failed');
+      if (!digestResult) reasons.push('digest-failed');
+      if (!prefResult) reasons.push('pref-failed');
+      if (reasons.length === 0) reasons.push('all-empty');
+      logger.info('Memory', `No immediate content for ${convId}: ${reasons.join(', ')}`);
+    }
+
+    // ── 延迟任务：空闲时重新生成 "最近讨论" ────────────────
+    // 只要有新的 newDigest 被追加，就 reschedule 延迟生成
+    if (extracted.newDigest) {
+      scheduleDiscussionRegen();
+    }
   } catch (err) {
     logger.error('Memory', `Update failed: ${(err as Error).message}`);
   }
