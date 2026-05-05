@@ -21,10 +21,7 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
       "notes": "用户对该笔记话题的认知水平观察（1句话）"
     }
   ],
-  "conversationDigest": {
-    "summary": "本次会话的核心主题（1-2句话）",
-    "topics": ["3-5个话题关键词"]
-  },
+  "conversationDigest": "最近会话的整体摘要（2-3句话，涵盖本次及近期对话的核心主题）",
   "preferenceSignals": {
     "_description": "以下为示例，键名不限于这些。任何从对话中观察到的用户偏好都可以记录",
     "detailLevel": "concise 或 normal 或 detailed（如果观察到）",
@@ -39,7 +36,7 @@ const MEMORY_SYSTEM_PROMPT = `你是一个用户建模助手。分析用户和 A
 - 只填有变化的字段，没观察到的字段不填或省略
 - 不要重复已有信息，只提取新内容
 - noteFamiliarity 只在对话确实涉及某篇笔记时才填
-- conversationDigest.summary 用中文`;
+- conversationDigest 用中文`;
 
 async function processMemoryUpdate(convId: string, messages: Array<{ role: string; content: string }>) {
   try {
@@ -53,10 +50,7 @@ async function processMemoryUpdate(convId: string, messages: Array<{ role: strin
       existingMemory.profile.background && `补充: ${existingMemory.profile.background}`,
     ].filter(Boolean).join('\n');
 
-    const recentTopics = existingMemory.conversationDigest
-      .slice(0, 3)
-      .map((d) => d.summary)
-      .join('; ');
+    const recentTopics = existingMemory.conversationDigest;
 
     const conversationText = messages
       .map((m) => `${m.role}: ${m.content}`)

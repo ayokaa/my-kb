@@ -64,16 +64,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     let conv;
     try {
       conv = await storage.loadConversation(id);
-    } catch {
-      // Create new if not exists
-      conv = {
-        id,
-        date: new Date().toISOString(),
-        topics: ['新对话'],
-        status: 'open' as const,
-        turns: [],
-        agentActions: [],
-      };
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        return Response.json({ error: 'Conversation not found' }, { status: 404 });
+      }
+      throw err;
     }
 
     conv.turns = messagesToTurns(messages);

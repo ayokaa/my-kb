@@ -33,6 +33,43 @@ async function drainStream(res: Response) {
   }
 }
 
+function createMockStream(options: {
+  msgId?: string;
+  textDeltas?: string[];
+  toolUses?: Array<{ id: string; name: string; input: Record<string, unknown> }>;
+}) {
+  const msgId = options.msgId ?? 'msg-1';
+  return async function* () {
+    yield {
+      type: 'message_start',
+      message: {
+        id: msgId, type: 'message', role: 'assistant',
+        content: [], model: '', stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    };
+    let idx = 0;
+    if (options.textDeltas) {
+      yield { type: 'content_block_start', index: idx, content_block: { type: 'text', text: '' } };
+      for (const text of options.textDeltas) {
+        yield { type: 'content_block_delta', index: idx, delta: { type: 'text_delta', text } };
+      }
+      yield { type: 'content_block_stop', index: idx };
+      idx++;
+    }
+    if (options.toolUses) {
+      for (const tu of options.toolUses) {
+        yield { type: 'content_block_start', index: idx, content_block: { type: 'tool_use', id: tu.id, name: tu.name, input: {} } };
+        yield { type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: JSON.stringify(tu.input) } };
+        yield { type: 'content_block_stop', index: idx };
+        idx++;
+      }
+    }
+    yield { type: 'message_stop' };
+  };
+}
+
 describe('/api/chat', () => {
   beforeEach(() => {
     mockMessagesCreate.mockReset();
@@ -226,6 +263,61 @@ describe('/api/chat', () => {
     expect(mockFetchWebContent).toHaveBeenCalledTimes(3);
   });
 
+  it('executes multiple web fetches in parallel', async () => {
+    vi.resetModules();
+    const delay = 100;
+    const callOrder: number[] = [];
+    const mockFetchWebContent = vi.fn().mockImplementation(async (url: string) => {
+      const idx = parseInt(url.match(/page-(\d+)/)?.[1] || '0');
+      callOrder.push(idx);
+      await new Promise((r) => setTimeout(r, delay));
+      return { title: `Page ${idx}`, content: `content-${idx}`, excerpt: '' };
+    });
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
+    }));
+
+    // Round 1: LLM returns 3 tool calls
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      for (let i = 0; i < 3; i++) {
+        yield { type: 'content_block_start', index: i, content_block: { type: 'tool_use', id: `tc-${i}`, name: 'web_fetch', input: {} } };
+        yield { type: 'content_block_delta', index: i, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ url: `https://example.com/page-${i}`, reason: 'test' }) } };
+        yield { type: 'content_block_stop', index: i };
+      }
+      yield { type: 'message_stop' };
+    }
+
+    // Round 2: final answer
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+    });
+    const start = Date.now();
+    const res = await POST(req);
+    await drainStream(res);
+    const elapsed = Date.now() - start;
+
+    expect(mockFetchWebContent).toHaveBeenCalledTimes(3);
+    // Sequential would take 300ms+, parallel should be near delay (100ms + overhead)
+    expect(elapsed).toBeLessThan(delay * 2.5);
+  });
+
   it('triggers query rewrite on multi-turn conversation', async () => {
     // Round 0: query rewrite (non-streaming)
     const rewriteResponse = {
@@ -384,5 +476,213 @@ describe('/api/chat', () => {
     expect(res.status).toBe(200);
     // Single turn: no rewrite, only 1 LLM call
     expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes abort signal to Anthropic SDK on every call', async () => {
+    async function* mockStream() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStream());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+    });
+
+    await POST(req);
+    expect(mockMessagesCreate).toHaveBeenCalledTimes(1);
+    expect(mockMessagesCreate.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
+
+  it('handles client abort gracefully without crashing', async () => {
+    const controller = new AbortController();
+
+    mockMessagesCreate.mockImplementation(async (params, options) => {
+      async function* gen() {
+        yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+        yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+        yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello' } };
+
+        // Simulate abort after first chunk
+        if (options?.signal?.aborted) {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          throw err;
+        }
+
+        yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: ' world' } };
+        yield { type: 'content_block_stop', index: 0 };
+        yield { type: 'message_stop' };
+      }
+      return gen();
+    });
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+      signal: controller.signal,
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    // Read first chunk then abort client side
+    const reader = res.body!.getReader();
+    const firstRead = await reader.read();
+    expect(firstRead.done).toBe(false);
+
+    controller.abort();
+
+    // Drain remaining stream with the same reader
+    while (true) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+  });
+
+  it('breaks stream loop early when signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    mockMessagesCreate.mockImplementation(async (params, options) => {
+      async function* gen() {
+        yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+        yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+        yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'should not appear' } };
+        yield { type: 'content_block_stop', index: 0 };
+        yield { type: 'message_stop' };
+      }
+      return gen();
+    });
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+      signal: controller.signal,
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    // Drain stream — should complete without error even though signal was already aborted
+    await drainStream(res);
+  });
+
+  it('builds Anthropic-format message history after tool calls', async () => {
+    vi.resetModules();
+    const mockFetchWebContent = vi.fn().mockResolvedValue({
+      title: 'Test Page', content: 'test content', excerpt: '',
+    });
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
+    }));
+
+    // Round 1: assistant returns text + tool_use
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me fetch' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'tc-1', name: 'web_fetch', input: {} } };
+      yield { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ url: 'https://example.com', reason: 'test' }) } };
+      yield { type: 'content_block_stop', index: 1 };
+      yield { type: 'message_stop' };
+    }
+
+    // Round 2: final answer
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'fetch something' }],
+      }),
+    });
+
+    const res = await POST(req);
+    await drainStream(res);
+
+    // 2 rounds: main LLM call + follow-up after tool execution
+    expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
+
+    const calls = mockMessagesCreate.mock.calls.map((c) => c[0]);
+
+    // Round 1 (tools present): system prompt passed as top-level param, not in messages
+    const round1Call = calls.find((c) => c.tools !== undefined && c.stream === true);
+    expect(round1Call).toBeDefined();
+    expect(round1Call.system).toBeDefined();
+    expect(typeof round1Call.system).toBe('string');
+
+    // Round 2 (no tools): messages history must be pure Anthropic format
+    const round2Call = calls.find((c) => c.tools === undefined && c.stream === true);
+    expect(round2Call).toBeDefined();
+
+    // Assistant message with tool_use blocks
+    const assistantMsg = round2Call.messages.find((m: any) => m.role === 'assistant' && Array.isArray(m.content));
+    expect(assistantMsg).toBeDefined();
+    expect(assistantMsg.content[0]).toMatchObject({ type: 'text', text: 'Let me fetch' });
+    expect(assistantMsg.content[1]).toMatchObject({ type: 'tool_use', id: 'tc-1', name: 'web_fetch' });
+    expect(assistantMsg.content[1].input).toMatchObject({ url: 'https://example.com', reason: 'test' });
+
+    // User message with tool_result blocks
+    const toolResultMsg = round2Call.messages.find((m: any) => m.role === 'user' && Array.isArray(m.content) && m.content[0]?.type === 'tool_result');
+    expect(toolResultMsg).toBeDefined();
+    expect(toolResultMsg.content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'tc-1' });
+    expect(typeof toolResultMsg.content[0].content).toBe('string');
+    expect(toolResultMsg.content[0].content).toContain('Test Page');
+  });
+
+  it('survives truncated tool input JSON (aborted stream scenario)', async () => {
+    // 直接测试 processStreamRound 的行为：截断 JSON 不应崩溃
+    const { processStreamRound } = await import('../route');
+
+    // 手动构造一个包含截断 toolUse 的 stream
+    async function* truncatedStream() {
+      yield {
+        type: 'message_start',
+        message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
+      };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tc-1', name: 'web_fetch', input: {} } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"url":"https://e' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    const encoder = new TextEncoder();
+
+    // 应正常返回，截断的 JSON 被处理成 {}
+    const { text, toolUses } = await processStreamRound(
+      truncatedStream() as any,
+      () => {},
+      encoder,
+      new AbortController().signal
+    );
+
+    expect(toolUses.length).toBe(1);
+    expect(toolUses[0].input).toEqual({}); // 截断的 JSON 降级为空对象
   });
 });

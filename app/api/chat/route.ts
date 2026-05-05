@@ -47,7 +47,7 @@ function validateMessages(messages: unknown): Array<{ role: string; content: str
     const record = msg as Record<string, unknown>;
     const role = record.role;
     const content = record.content;
-    if (!['system', 'user', 'assistant'].includes(String(role))) {
+    if (!['user', 'assistant'].includes(String(role))) {
       throw new Error('Invalid message role');
     }
     if (typeof content !== 'string' || content.length === 0) {
@@ -67,75 +67,11 @@ function filterThink(content: string): string {
 
 interface StreamResult {
   text: string;
-  toolCalls: Array<{
+  toolUses: Array<{
     id: string;
-    type: string;
-    function: { name: string; arguments: string };
+    name: string;
+    input: Record<string, unknown>;
   }>;
-}
-
-/**
- * 将内部 OpenAI 风格消息转换为 Anthropic MessageParam 数组，并提取 system prompt。
- */
-function toAnthropicParams(openaiMessages: any[]): {
-  system?: string;
-  messages: Anthropic.MessageParam[];
-} {
-  let system: string | undefined;
-  const anthropicMessages: Anthropic.MessageParam[] = [];
-
-  for (const msg of openaiMessages) {
-    if (msg.role === 'system') {
-      system = msg.content;
-      continue;
-    }
-    if (msg.role === 'user') {
-      if (msg.tool_call_id) {
-        // tool result
-        anthropicMessages.push({
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: msg.tool_call_id,
-              content: msg.content,
-            } as Anthropic.ToolResultBlockParam,
-          ],
-        });
-      } else {
-        anthropicMessages.push({
-          role: 'user',
-          content: msg.content,
-        });
-      }
-      continue;
-    }
-    if (msg.role === 'assistant') {
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        const content: Anthropic.ContentBlockParam[] = [];
-        if (msg.content) {
-          content.push({ type: 'text', text: msg.content });
-        }
-        for (const tc of msg.tool_calls) {
-          content.push({
-            type: 'tool_use',
-            id: tc.id,
-            name: tc.function.name,
-            input: JSON.parse(tc.function.arguments || '{}'),
-          } as Anthropic.ToolUseBlockParam);
-        }
-        anthropicMessages.push({ role: 'assistant', content });
-      } else {
-        anthropicMessages.push({
-          role: 'assistant',
-          content: msg.content,
-        });
-      }
-      continue;
-    }
-  }
-
-  return { system, messages: anthropicMessages };
 }
 
 // ── LLM Query Rewriter ──────────────────────────────────────
@@ -162,18 +98,22 @@ function buildRewritePrompt(messages: Array<{ role: string; content: string }>):
 async function rewriteQuery(
   client: Anthropic,
   model: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  signal?: AbortSignal
 ): Promise<string> {
   const original = messages.at(-1)?.content || '';
 
   try {
-    const response = await client.messages.create({
-      model,
-      max_tokens: 256,
-      temperature: 0.1,
-      system: REWRITE_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildRewritePrompt(messages) }],
-    });
+    const response = await client.messages.create(
+      {
+        model,
+        max_tokens: 256,
+        temperature: 0.1,
+        system: REWRITE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: buildRewritePrompt(messages) }],
+      },
+      { signal }
+    );
 
     const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
     const raw = textBlocks.map((b) => b.text).join('').trim();
@@ -192,15 +132,16 @@ async function rewriteQuery(
 }
 
 /**
- * 处理单轮流式响应，实时转发文本，收集 tool_calls。
+ * 处理单轮流式响应，实时转发文本，收集 tool_use。
  */
-async function processStreamRound(
+export async function processStreamRound(
   stream: AsyncIterable<Anthropic.MessageStreamEvent>,
-  controller: ReadableStreamDefaultController,
-  encoder: TextEncoder
+  enqueue: (chunk: Uint8Array) => void,
+  encoder: TextEncoder,
+  signal: AbortSignal
 ): Promise<StreamResult> {
   let textBuffer = '';
-  const toolCallsMap = new Map<
+  const toolUseMap = new Map<
     number,
     { id: string; name: string; inputJson: string }
   >();
@@ -208,11 +149,16 @@ async function processStreamRound(
   let thinkBuffer = '';
 
   for await (const event of stream) {
+    if (signal.aborted) {
+      logger.info('Chat', 'Stream aborted by client disconnect');
+      break;
+    }
+
     switch (event.type) {
       case 'content_block_start': {
         const block = event.content_block;
         if (block.type === 'tool_use') {
-          toolCallsMap.set(event.index, {
+          toolUseMap.set(event.index, {
             id: block.id,
             name: block.name,
             inputJson: '',
@@ -251,19 +197,18 @@ async function processStreamRound(
 
           if (output) {
             textBuffer += output;
-            controller.enqueue(encoder.encode(formatStreamPart('text', output)));
+            enqueue(encoder.encode(formatStreamPart('text', output)));
           }
         } else if (event.delta.type === 'input_json_delta') {
-          const tc = toolCallsMap.get(event.index);
-          if (tc) {
-            tc.inputJson += event.delta.partial_json;
+          const tu = toolUseMap.get(event.index);
+          if (tu) {
+            tu.inputJson += event.delta.partial_json;
           }
         }
         break;
       }
 
       case 'content_block_stop': {
-        // content block 结束，不需要特殊处理
         break;
       }
 
@@ -276,68 +221,63 @@ async function processStreamRound(
   // 处理结尾剩余的非 think 内容
   if (!inThink && thinkBuffer.length > 0) {
     textBuffer += thinkBuffer;
-    controller.enqueue(encoder.encode(formatStreamPart('text', thinkBuffer)));
+    enqueue(encoder.encode(formatStreamPart('text', thinkBuffer)));
   }
 
-  const toolCalls = Array.from(toolCallsMap.values()).map((tc) => ({
-    id: tc.id,
-    type: 'function' as const,
-    function: {
-      name: tc.name,
-      arguments: tc.inputJson,
-    },
-  }));
+  const toolUses = Array.from(toolUseMap.values())
+    .map((tu) => {
+      let input: Record<string, unknown> = {};
+      try {
+        input = JSON.parse(tu.inputJson || '{}');
+      } catch {
+        logger.warn('Chat', `Truncated tool input JSON for ${tu.name} (id=${tu.id})`);
+      }
+      return { id: tu.id, name: tu.name, input };
+    });
 
-  return { text: textBuffer, toolCalls };
+  return { text: textBuffer, toolUses };
 }
 
 /**
  * 执行工具调用。
  */
 async function executeToolCalls(
-  toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }>
-): Promise<Array<{ id: string; name: string; url: string; content: string }>> {
-  const limitedCalls = toolCalls.slice(0, MAX_TOOL_CALLS);
-  if (toolCalls.length > MAX_TOOL_CALLS) {
-    logger.warn('Chat', `LLM returned ${toolCalls.length} tool calls, limiting to ${MAX_TOOL_CALLS}`);
+  toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }>
+): Promise<{ blocks: Anthropic.ToolResultBlockParam[] }> {
+  const limitedCalls = toolUses.slice(0, MAX_TOOL_CALLS);
+  if (toolUses.length > MAX_TOOL_CALLS) {
+    logger.warn('Chat', `LLM returned ${toolUses.length} tool calls, limiting to ${MAX_TOOL_CALLS}`);
   }
 
-  const results: Array<{ id: string; name: string; url: string; content: string }> = [];
+  const tasks = limitedCalls.map(async (toolUse) => {
+    if (toolUse.name !== 'web_fetch') return null;
 
-  for (const toolCall of limitedCalls) {
-    if (toolCall.function?.name === 'web_fetch') {
-      let args: { url?: string; reason?: string };
-      try {
-        args = JSON.parse(toolCall.function.arguments || '{}');
-      } catch {
-        args = {};
-      }
-      const url = args.url || '';
-      logger.info('Chat', `Tool call web_fetch: ${url} (${args.reason || ''})`);
+    const args = toolUse.input as { url?: string; reason?: string };
+    const url = args.url || '';
+    logger.info('Chat', `Tool call web_fetch: ${url} (${args.reason || ''})`);
 
-      if (url && isValidHttpUrl(url)) {
-        try {
-          const webContent = await fetchWebContent(url);
-          results.push({
-            id: toolCall.id,
-            name: 'web_fetch',
-            url,
-            content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
-          });
-        } catch (err) {
-          logger.error('Chat', 'web_fetch failed', { error: err });
-          results.push({
-            id: toolCall.id,
-            name: 'web_fetch',
-            url,
-            content: `抓取失败: ${(err as Error).message}`,
-          });
-        }
-      }
+    if (!url || !isValidHttpUrl(url)) return null;
+
+    try {
+      const webContent = await fetchWebContent(url);
+      return {
+        type: 'tool_result' as const,
+        tool_use_id: toolUse.id,
+        content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
+      };
+    } catch (err) {
+      logger.error('Chat', 'web_fetch failed', { error: err });
+      return {
+        type: 'tool_result' as const,
+        tool_use_id: toolUse.id,
+        content: `抓取失败: ${(err as Error).message}`,
+      };
     }
-  }
+  });
 
-  return results;
+  const results = await Promise.all(tasks);
+  const blocks = results.filter((b): b is Anthropic.ToolResultBlockParam => b !== null);
+  return { blocks };
 }
 
 export async function POST(req: Request) {
@@ -366,7 +306,7 @@ export async function POST(req: Request) {
   const [searchQuery, index] = await Promise.all([
     userMessageCount >= 2
       ? getLLM()
-          .then(({ client, model }) => rewriteQuery(client, model, messages))
+          .then(({ client, model }) => rewriteQuery(client, model, messages, req.signal))
           .catch(() => messages.at(-1)?.content || '')
       : Promise.resolve(messages.at(-1)?.content || ''),
     loadOrBuildIndex(storage, notes),
@@ -483,18 +423,28 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      const signal = req.signal;
+
+      // 安全的 enqueue：客户端 abort 后忽略写入错误
+      const safeEnqueue = (chunk: Uint8Array) => {
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          // controller already closed, client aborted
+        }
+      };
+
       // 先发送检索来源数据
       if (searchResults.length > 0) {
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(formatStreamPart('data', [{ type: 'sources', notes: searchResults }]))
         );
       }
 
-      // 构建初始 messages（OpenAI 风格内部格式）
+      // 构建 Anthropic MessageParam 数组（system 单独传递，不在 messages 中）
       const contextMessage = `${contextSection}\n\n用户问题：${messages.at(-1)?.content || ''}`;
-      let currentMessages: any[] = [
-        { role: 'system', content: fixedSystemPrompt },
-        ...messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
+      let currentMessages: Anthropic.MessageParam[] = [
+        ...messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }) as Anthropic.MessageParam),
         { role: 'user', content: contextMessage },
       ];
 
@@ -502,63 +452,85 @@ export async function POST(req: Request) {
 
       try {
         while (round < MAX_AGENT_ROUNDS) {
+          if (signal.aborted) {
+      logger.info('Chat', 'Stream aborted by client disconnect');
+      break;
+    }
           round++;
 
           const isFirstRound = round === 1;
-          const { system, messages: apiMessages } = toAnthropicParams(currentMessages);
 
-          const response = await client.messages.create({
-            model,
-            max_tokens: 4096,
-            system,
-            messages: apiMessages,
-            tools: isFirstRound ? anthropicTools : undefined,
-            stream: true,
-          });
+          const response = await client.messages.create(
+            {
+              model,
+              max_tokens: 4096,
+              system: fixedSystemPrompt,
+              messages: currentMessages,
+              tools: isFirstRound ? anthropicTools : undefined,
+              stream: true,
+            },
+            { signal }
+          );
 
-          const { text, toolCalls } = await processStreamRound(response, controller, encoder);
+          const { text, toolUses } = await processStreamRound(response, safeEnqueue, encoder, signal);
 
-          if (toolCalls.length === 0) {
+          if (toolUses.length === 0) {
             // 没有工具调用，本轮就是最终回答
             break;
           }
 
-          // 执行工具
-          const toolResultItems = await executeToolCalls(toolCalls);
-
-          // 发送工具调用事件给前端
-          for (const item of toolResultItems) {
-            controller.enqueue(
-              encoder.encode(
-                formatStreamPart('data', [{ type: 'tool_call', name: item.name, url: item.url }])
-              )
-            );
+          // 发送工具调用状态给前端（通过 text 事件，useChat 原生支持实时显示）
+          for (const tu of toolUses) {
+            const input = tu.input as { url?: string; reason?: string };
+            const url = input.url || '';
+            const reason = input.reason || '';
+            if (url) {
+              safeEnqueue(
+                encoder.encode(
+                  formatStreamPart('text', `\n\n> **[正在抓取网页]** ${reason || '获取更多信息'}  \n> ${url}\n\n`)
+                )
+              );
+            }
           }
 
-          // 构建下一轮 messages（保持 OpenAI 风格内部格式）
-          currentMessages = [
-            ...currentMessages,
-            {
-              role: 'assistant',
-              content: text,
-              tool_calls: toolCalls.map((tc) => ({
-                id: tc.id,
-                type: tc.type,
-                function: { name: tc.function.name, arguments: tc.function.arguments },
-              })),
-            },
-            ...toolResultItems.map((r) => ({
-              role: 'tool',
-              tool_call_id: r.id,
-              content: r.content,
-            })),
-          ];
+          // 执行工具
+          const { blocks } = await executeToolCalls(toolUses);
+
+          // 构建下一轮 Anthropic 消息
+          const assistantBlocks: Anthropic.ContentBlockParam[] = [];
+          if (text) assistantBlocks.push({ type: 'text', text });
+          for (const tu of toolUses) {
+            assistantBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input });
+          }
+          currentMessages.push({ role: 'assistant', content: assistantBlocks });
+
+          if (blocks.length > 0) {
+            currentMessages.push({ role: 'user', content: blocks });
+          }
         }
       } catch (err) {
+        // 忽略 AbortError（客户端主动断开）
+        if (err instanceof Error && err.name === 'AbortError') {
+          logger.info('Chat', 'Client aborted stream');
+          return;
+        }
         logger.error('Chat', 'Stream error', { error: err });
-        controller.error(err);
-      } finally {
+        const errorMessage = err instanceof Error ? err.message : '未知错误';
+        safeEnqueue(
+          encoder.encode(formatStreamPart('text', `\n\n**[请求失败] ${errorMessage}**`))
+        );
+        try {
+          controller.error(err);
+        } catch {
+          // controller may already be closed
+        }
+        return;
+      }
+
+      try {
         controller.close();
+      } catch {
+        // controller may already be closed
       }
     },
   });

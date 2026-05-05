@@ -1,12 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 
-vi.mock('openai', () => ({
+vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(function () {
     return {
-      chat: {
-        completions: {
-          create: vi.fn().mockResolvedValue(new ReadableStream()),
-        },
+      messages: {
+        create: vi.fn().mockResolvedValue(new ReadableStream()),
       },
     };
   }),
@@ -32,10 +30,7 @@ vi.mock('@/lib/search/inverted-index', () => ({
 }));
 
 vi.mock('ai', () => ({
-  OpenAIStream: vi.fn().mockReturnValue(new ReadableStream()),
-  StreamingTextResponse: vi.fn().mockImplementation((stream) => {
-    return new Response(stream, { headers: { 'content-type': 'text/plain' } });
-  }),
+  formatStreamPart: vi.fn().mockReturnValue(''),
 }));
 
 describe('/api/chat validation', () => {
@@ -83,5 +78,17 @@ describe('/api/chat validation', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for system role (Anthropic format: system is a top-level param, not in messages)', async () => {
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ messages: [{ role: 'system', content: 'you are a bot' }] }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe('Invalid messages');
   });
 });

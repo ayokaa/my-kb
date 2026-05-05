@@ -33,7 +33,7 @@ describe('/api/memory', () => {
       expect(data.profile.techStack).toEqual([]);
       expect(data.profile.interests).toEqual([]);
       expect(data.noteKnowledge).toEqual({});
-      expect(data.conversationDigest).toEqual([]);
+      expect(data.conversationDigest).toEqual('');
       expect(data.preferences).toEqual({});
     });
 
@@ -246,22 +246,15 @@ describe('/api/memory', () => {
   });
 
   describe('DELETE deleteConversationDigest', () => {
-    it('removes matching digest entry', async () => {
+    it('clears digest string', async () => {
       const memory = emptyMemory();
-      memory.conversationDigest = [
-        { conversationId: 'c1', summary: 'A', topics: [], timestamp: '2024-01-01T00:00:00Z' },
-        { conversationId: 'c2', summary: 'B', topics: [], timestamp: '2024-01-02T00:00:00Z' },
-      ];
+      memory.conversationDigest = '测试摘要';
       await saveMemory(memory);
 
       const req = new Request('http://localhost/api/memory', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'deleteConversationDigest',
-          conversationId: 'c1',
-          timestamp: '2024-01-01T00:00:00Z',
-        }),
+        body: JSON.stringify({ action: 'deleteConversationDigest' }),
       });
 
       const res = await DELETE(req);
@@ -269,21 +262,7 @@ describe('/api/memory', () => {
 
       const getRes = await GET();
       const getData = await getRes.json();
-      expect(getData.conversationDigest).toHaveLength(1);
-      expect(getData.conversationDigest[0].summary).toBe('B');
-    });
-
-    it('rejects missing parameters', async () => {
-      const req = new Request('http://localhost/api/memory', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteConversationDigest', conversationId: 'c1' }),
-      });
-
-      const res = await DELETE(req);
-      const data = await res.json();
-      expect(res.status).toBe(400);
-      expect(data.error).toContain('conversationId and timestamp are required');
+      expect(getData.conversationDigest).toBe('');
     });
   });
 
@@ -327,7 +306,7 @@ describe('/api/memory', () => {
       memory.profile.role = 'dev';
       memory.profile.techStack = ['TS'];
       memory.noteKnowledge['n1'] = { level: 'discussed', firstSeenAt: '', lastReferencedAt: '', notes: '' };
-      memory.conversationDigest.push({ conversationId: 'c1', summary: 'A', topics: [], timestamp: '' });
+      memory.conversationDigest = 'A';
       memory.preferences.theme = 'dark';
       await saveMemory(memory);
 
@@ -345,7 +324,7 @@ describe('/api/memory', () => {
       expect(getData.profile.role).toBeUndefined();
       expect(getData.profile.techStack).toEqual([]);
       expect(getData.noteKnowledge).toEqual({});
-      expect(getData.conversationDigest).toEqual([]);
+      expect(getData.conversationDigest).toEqual('');
       expect(getData.preferences).toEqual({});
     });
   });

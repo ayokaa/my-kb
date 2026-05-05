@@ -48,8 +48,15 @@ describe('/api/conversations/[id]', () => {
     expect(res.status).toBe(404);
   });
 
-  it('saves conversation messages', async () => {
-    mockLoadConversation.mockRejectedValue(new Error('not found'));
+  it('saves messages to an existing conversation', async () => {
+    mockLoadConversation.mockResolvedValue({
+      id: 'conv-1',
+      date: '2024-01-01',
+      topics: ['Old Topic'],
+      status: 'open',
+      turns: [],
+      agentActions: [],
+    });
     mockSaveConversation.mockResolvedValue(undefined);
 
     const req = new Request('http://localhost/api/conversations/conv-1', {
@@ -66,6 +73,24 @@ describe('/api/conversations/[id]', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
+  });
+
+  it('returns 404 when saving to a non-existent conversation', async () => {
+    const err: any = new Error('ENOENT: no such file');
+    err.code = 'ENOENT';
+    mockLoadConversation.mockRejectedValue(err);
+
+    const req = new Request('http://localhost/api/conversations/missing', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: 'Hello', createdAt: '2024-01-01T00:00:00Z' },
+        ],
+      }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: 'missing' }) });
+    expect(res.status).toBe(404);
   });
 
   it('returns 400 for invalid messages', async () => {

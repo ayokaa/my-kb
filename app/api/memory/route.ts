@@ -62,13 +62,7 @@ export async function DELETE(req: Request) {
         break;
       }
       case 'deleteConversationDigest': {
-        const { conversationId, timestamp } = body;
-        if (typeof conversationId !== 'string' || typeof timestamp !== 'string') {
-          return Response.json({ error: 'conversationId and timestamp are required' }, { status: 400 });
-        }
-        memory.conversationDigest = memory.conversationDigest.filter(
-          (d) => !(d.conversationId === conversationId && d.timestamp === timestamp)
-        );
+        memory.conversationDigest = '';
         break;
       }
       case 'deletePreference': {

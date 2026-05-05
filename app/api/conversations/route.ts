@@ -29,8 +29,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const title = typeof body.title === 'string' ? body.title : '新对话';
-
-    const id = `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // 允许客户端指定 ID（用于乐观创建），未提供则服务端生成
+    const id = typeof body.id === 'string' ? body.id : `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const conv: Conversation = {
       id,
       date: new Date().toISOString(),

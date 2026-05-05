@@ -16,7 +16,7 @@ vi.mock('@/lib/memory', () => ({
   loadMemory: vi.fn().mockResolvedValue({
     profile: { techStack: [], interests: [] },
     noteKnowledge: {},
-    conversationDigest: [],
+    conversationDigest: '',
     preferences: {},
     updatedAt: '',
   }),
@@ -43,7 +43,7 @@ describe('POST /api/memory/update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreate.mockResolvedValue({
-      content: [{ type: 'text', text: JSON.stringify({ conversationDigest: { summary: '测试对话', topics: ['test'] } }) }],
+      content: [{ type: 'text', text: JSON.stringify({ conversationDigest: '测试对话' }) }],
     });
   });
 

@@ -61,6 +61,21 @@ describe('/api/conversations', () => {
     expect(data.conversation.title).toBe('新对话');
   });
 
+  it('uses client-provided id when supplied', async () => {
+    mockSaveConversation.mockResolvedValue(undefined);
+
+    const req = new Request('http://localhost/api/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ id: 'conv-custom-123', title: '定制' }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.conversation.id).toBe('conv-custom-123');
+    expect(data.conversation.title).toBe('定制');
+  });
+
   it('returns 500 on list error', async () => {
     mockListConversations.mockRejectedValue(new Error('disk error'));
     const res = await GET();
