@@ -18,7 +18,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `KNOWLEDGE_ROOT=knowledge-test MINIMAX_API_KEY=${process.env.MINIMAX_API_KEY || ''} npx next dev -p 3001`,
+    command: `KNOWLEDGE_ROOT=knowledge-test ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY || ''} npx next dev -p 3001`,
     url: 'http://localhost:3001',
     reuseExistingServer: !process.env.CI,
   },

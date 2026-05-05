@@ -63,7 +63,9 @@ my-kb/
 │   └── page.tsx                  # 主页面（标签页切换器）
 ├── components/                   # React 组件
 │   ├── Sidebar.tsx               # 左侧导航栏
-│   ├── ChatPanel.tsx             # 聊天面板（多会话 + Markdown 渲染）
+│   ├── ChatPanel.tsx             # 聊天布局壳（~120 行）
+│   ├── ChatSession.tsx           # 单会话聊天组件（useChat + ReactMarkdown）
+│   ├── ThemeProvider.tsx         # 主题上下文（hydration 安全）
 │   ├── InboxPanel.tsx            # 收件箱审核
 │   ├── IngestPanel.tsx           # 知识入库面板（文本/链接/文件/RSS）
 │   ├── NotesPanel.tsx            # 笔记浏览与搜索（Server Component）
@@ -72,7 +74,13 @@ my-kb/
 │   ├── SettingsPanel.tsx         # 运行时设置面板
 │   ├── TasksPanel.tsx            # 任务队列状态面板
 │   ├── LogsPanel.tsx             # 日志查看面板（实时推送 + 过滤）
-│   └── TabShell.tsx              # 标签页容器（CSS hidden 保活状态）
+│   ├── TabShell.tsx              # 标签页容器（CSS hidden 保活状态）
+│   └── __tests__/                # 组件测试
+├── hooks/                        # 自定义 React hooks
+│   ├── useConversationManager.ts # 会话 CRUD + 持久化 + keep-alive 状态
+│   ├── useMemoryFlush.ts         # 延迟记忆更新 API 调用
+│   ├── useSSE.ts                 # 通用 SSE hook（自动重连）
+│   └── useKeyboardShortcuts.ts   # 快捷键处理（Ctrl+Enter）
 ├── lib/                          # 核心业务逻辑
 │   ├── types.ts                  # TypeScript 类型定义
 │   ├── storage.ts                # FileSystemStorage 实现
@@ -80,6 +88,7 @@ my-kb/
 │   ├── queue.ts                  # 任务队列与 Worker（内存运行 + JSON 持久化）
 │   ├── settings.ts               # 运行时配置（YAML 持久化）
 │   ├── llm.ts                    # 集中式 LLM 客户端工厂
+│   ├── utils.ts                  # 共享工具函数（formatDate、serializeMessages）
 │   ├── events.ts                 # SSE 事件总线（服务端推送）
 │   ├── logger.ts                 # 结构化日志（pino + 内存缓冲 + 文件持久化 + SSE 广播）
 │   ├── cognition/
@@ -170,8 +179,8 @@ npm run test:e2e
 
 | 变量名 | 说明 | 是否必须 |
 |--------|------|----------|
-| `MINIMAX_API_KEY` | LLM API 密钥（Anthropic 或兼容端点） | 是（聊天、笔记生成） |
-| `MINIMAX_BASE_URL` | LLM API 基地址，默认 `https://api.minimaxi.com/anthropic` | 否 |
+| `ANTHROPIC_API_KEY` | LLM API 密钥（Anthropic Messages API 兼容端点） | 是（聊天、笔记生成） |
+| `ANTHROPIC_BASE_URL` | LLM API 基地址，默认 `https://api.minimaxi.com/anthropic` | 否 |
 | `KNOWLEDGE_ROOT` | 数据存储根目录，默认 `knowledge` | 否 |
 
 

@@ -2,6 +2,58 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-05
+
+### Changed
+
+- **ChatPanel 架构拆分**：820 行单文件拆为三层——`useConversationManager`（会话 CRUD + 持久化）、`ChatSession`（单会话 UI）、`ChatPanel`（120 行布局 shell）。`ChatSession` 可独立测试。
+- **会话按需挂载**：从「全部 ChatSession 挂载 + CSS 隐藏」改为「活跃 + stream 中才挂载」。100 个会话时只有 1~N 个在 DOM 上。`streamingIds: Set<string>` 替代了 `streamingSessionsRef + streamTick` 假 state。
+- **消息按需加载**：移除 Phase 2 全量预加载（避免 69 并发占满浏览器连接池）。切换会话时首次访问才 `GET /api/conversations/[id]`。
+- **乐观创建**：新建会话客户端生成 ID，UI 立即切换，POST 后台持久化。300ms 时间戳防抖替代 `isCreatingRef` 互斥锁，支持连续快速创建。
+- **主题无闪烁**：`<head>` 内联阻塞脚本，在 React hydration 前设置 `data-theme`。`ThemeProvider` 从 DOM 读取初始值，`useLayoutEffect` 同步。
+- **会话状态类型安全**：`ChatMessage.role` 从 `string` 改为 `'user' | 'assistant'` 联合类型。`parseMessages()` 统一 API 响应映射，消除重复代码。
+- **React 性能优化**：`markdownComponents` 提取为模块级常量；非活跃会话不渲染 DOM；stream data effect 从 O(n²) 改为 O(n)（`lastDataLenRef`）；`handleStreamStateChange` 无变化时返回 `prev` 跳过重渲染；`onSave`/`onStreamStateChange` 用 ref 包装避免过期闭包。
+- **Chat 组件清理**：移除死代码（`toolCalls` UI、`Globe` icon import）；排队消息 key 从数组索引改为唯一 ID；双重隐藏简化为条件渲染 + `hidden` class。
+- **面板清理**：所有面板统一使用共享的 `formatDate`/`serializeMessages`；`NotesPanelClient` 内联 markdown components 提取为 `noteDetailComponents` 常量；`TasksPanel` 移除未使用的 `typeLabel`；`SettingsPanel` placeholder 改为 Anthropic 默认值。
+- **ENV 迁移**：`MINIMAX_API_KEY` → `ANTHROPIC_API_KEY`，`MINIMAX_BASE_URL` → `ANTHROPIC_BASE_URL`。
+- **Logger 健壮性**：`close()` 等待循环加 5 秒超时保护，防止进程无法退出。
+
+### Fixed
+
+- **删除会话后刷新重现**：根因是 `POST /api/conversations/[id]` 在文件不存在时静默重建。修复：API 返回 404 不重建；前端 `deletedIdsRef` 5 秒窗口拦截 save。
+- **AI streaming 时新建会话无响应**：`handleNewConversation` 从 `await` API 改为乐观更新 + fire-and-forget，UI 瞬间切换。
+- **stream 中断时截断 JSON 崩溃**：`processStreamRound` 的 `JSON.parse` 加 try-catch，截断时返回 `{}` 并记录 warn。
+- **多 stream 并发卡顿**：移除 Phase 2 预加载（`Promise.all` 全部会话消息）——300ms 窗口内 16 个请求占满连接池，正常操作请求受阻。
+- **E2E 测试间歇性失败**：根因是 hydration 时序——服务端渲染的文本在 React 接管前就被 `waitForFunction` 检测到。修复：`loadConversations` 完成后设 `data-ready="true"`，测试等确切信号。
+- **非活跃 keep-alive 会话抢占布局空间**：`hidden` class 被误删导致 `flex-1` 均分高度。修复：非活跃会话外层 div 加回 `hidden`。
+
+### Added
+
+- **E2E 测试**：14 个 Playwright 测试覆盖创建/切换/删除/输入/主题/持久化，确定性等待（`waitForResponse`、`waitForSelector`）替代盲等 timeout。
+- **单元测试**：`parseMessages`（5 例）、`ThemeProvider`（8 例）、`ChatPanel`（10 例）、`utils.test.ts`。
+- **`data-ready` 就绪标记**：`useConversationManager` 在 `loadConversations` 完成后设 `ready=true`，E2E 测试和后续逻辑可依赖。
+
+### Removed
+
+- **ToastContext + Providers**：死代码，所有调用早已替换为 `console.error`。
+- **Phase 2 全量消息预加载**：切换时按需加载替代。
+
+## 2026-05-04
+
+### Changed
+
+- **ChatPanel 多会话架构重构**：从单 `useChat` 实例切换模型改为每个会话独立 `ChatSession` 组件，所有实例同时挂载、CSS `hidden` 控制可见性：
+  - 彻底解决「生成中切换会话导致消息保存到错误会话」的问题
+  - 每个 `ChatSession` 拥有独立的 `useChat` hook，会话之间完全隔离，互不干扰
+  - 持久化双重保障：`isLoading` 从 true→false 时自动保存 + 组件 `unmount` 时兜底保存
+  - 使用 `convIdRef` 捕获当前会话 ID，保存时不受 props 变化影响
+  - `handleSave` 去掉 `id !== activeIdRef.current` 检查，后台 stream 完成后也能正确保存
+  - 切换会话直接 `setActiveId(id)`，不再需要 `setActiveMessages([])` 清空消息，避免闪烁
+  - 新建对话直接 `setActiveId(newId)`，不再需要等待消息加载
+  - `loadConversations` 并行加载所有会话的初始消息，避免点击时才加载的延迟
+  - `handleSave` 仅更新对应会话的 `turnCount`，不再触发全量 `loadConversations` 重新拉取
+- **ToastPortal 布局抖动修复**：去掉 `toasts.length === 0 ? null` 条件、始终渲染容器；添加 `will-change: transform` 创建 GPU 合成层；限制 `max-h/max-w`；`transition-all` 改为 `transition-colors`；`html, body` 添加 `overflow-x: hidden`
+
 ## 2026-05-04
 
 ### Changed
@@ -16,6 +68,13 @@ All notable changes to this project are documented in this file.
   - `关联`（links，含权重和关联原因）
   - `反向链接`（backlinks，含权重和关联原因）
 - **提示词文档同步更新**：运行 `npm run extract-prompts` 重新生成 `docs/PROMPTS.md`，提示词总数从 14 更新为 18。
+- **聊天错误处理增强**：流式响应当中后端出错时，错误信息直接写入消息流（用户能在对话中看到 `[请求失败] ...`），同时触发 `useChat` 的 `onError` 回调弹出 Toast 通知；前端消息区域新增红色错误状态展示。
+- **聊天 API 纯 Anthropic 格式重构**：`app/api/chat/route.ts` 删除 `toAnthropicParams()` 转换层，后端内部消息历史全面改用 `Anthropic.MessageParam[]`：
+  - `validateMessages` 收紧：messages 数组中不再允许 `system` role（Anthropic 中 system 通过顶层 `system` 参数传递）
+  - `processStreamRound` 返回 Anthropic 风格的 `toolUses`（`{id, name, input}`），替代此前的 OpenAI 风格 `toolCalls`
+  - `executeToolCalls` 返回 `Anthropic.ToolResultBlockParam[]` 数组，直接用于构建下一轮消息
+  - 多轮 Agent Loop 中，assistant 消息直接以 `ContentBlockParam[]`（含 `text` + `tool_use` blocks）追加；工具结果以 `user` 消息（含 `tool_result` blocks）追加，完全符合 Anthropic Messages API 的 user/assistant 交替约束
+  - 同步更新 `app/api/chat/__tests__/validation.test.ts`，移除过时的 `openai` SDK mock
 
 ## 2026-05-03
 

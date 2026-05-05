@@ -108,34 +108,112 @@ This provides grounded, knowledge-aware answers rather than generic conversation
 
 ---
 
+## Chat Architecture
+
+### Multi-Session Design
+
+Chat conversations use a three-layer architecture:
+
+```
+ChatPanel.tsx         (~120 lines)  Layout shell: sidebar + main area
+  ├── useConversationManager.ts  (~330 lines)  All conversation state + CRUD
+  └── ChatSession.tsx  (~380 lines)  Single-chat UI (useChat + ReactMarkdown)
+```
+
+**Lazy mounting:** Only the active conversation and any conversation with an in-progress stream are mounted in the DOM. Inactive/idle conversations return `null`, avoiding unnecessary `useChat` instances and `ReactMarkdown` parsing overhead.
+
+```
+conversations.map(conv => {
+  isActive  = activeId === conv.id
+  keepAlive = streamingIds.has(conv.id)
+
+  !isActive && !keepAlive → return null     // unmounted
+  otherwise                → <ChatSession /> // mounted
+})
+```
+
+### Conversation Lifecycle
+
+**Creation** (optimistic):
+1. Client generates `conv-{timestamp}-{random}` ID
+2. Immediately updates UI via `setConversations` + `setActiveId`
+3. Fire-and-forget `POST /api/conversations { id, title }` for persistence
+4. On API failure: remove from list, rollback to previous active conversation
+5. 300ms timestamp debounce prevents accidental double-creates
+
+**Deletion:**
+1. `deletedIdsRef` marks the ID to prevent subsequent `handleSave` from recreating the file
+2. `DELETE /api/conversations/[id]` removes from disk
+3. API-side safety net: `POST /api/conversations/[id]` returns 404 when file doesn't exist (no silent recreation)
+4. `deletedIdsRef` entry auto-cleaned after 5 seconds
+
+**Message loading** (on-demand):
+- Initial load: only the active conversation's history is fetched (Phase 1)
+- Switching: `handleSelectConversation` checks `convMessages[id]` — loads on first access
+- No bulk preloading (Phase 2 removed) — avoids saturating the browser's HTTP connection pool
+
+### Stream Keep-Alive
+
+When switching away from a conversation with an active AI stream:
+1. `ChatSession` detects `isLoading → onStreamStateChange(true) → streamingIds.add(id)`
+2. Parent sees `keepAlive=true` → keeps `ChatSession` mounted (DOM `hidden`, not unmounted)
+3. Stream continues in background; concurrent sessions can stream simultaneously
+4. When stream ends: `onStreamStateChange(false) → streamingIds.delete(id) → re-render → unmount`
+
+### Persistence
+
+Messages are saved automatically at two trigger points:
+- **Stream end:** `isLoading` transitions `true→false`, last message is from assistant
+- **Component unmount:** cleanup effect fires `onSave` via ref (stable callback, no stale closure)
+
+Both check `deletedIdsRef` before posting — deleted conversations are never re-persisted.
+
+### State Management
+
+Key state lives in `useConversationManager`:
+
+| State | Purpose |
+|-------|---------|
+| `conversations` | Sidebar list |
+| `activeId` | Currently active conversation |
+| `convMessages` | Message cache (on-demand, no eviction) |
+| `streamingIds: Set<string>` | Keep-alive tracking (replaces old `streamingSessionsRef + streamTick`) |
+| `ready: boolean` | Signals `loadConversations` completion for E2E testing |
+
+`handleStreamStateChange` uses reference-equality optimization: returns `prev` unchanged when no state transition occurs, avoiding unnecessary re-renders.
+
+---
+
 ## Module Boundaries
 
 ```
 app/                — HTTP layer (routing, JSON serialization)
 ├── api/            — Route handlers
-├── layout.tsx      — Root layout, cron bootstrap
+├── layout.tsx      — Root layout, theme inline script, cron bootstrap
 └── page.tsx        — Tab shell
 
 components/         — React UI (Client Components + Server Components)
 ├── Sidebar.tsx
-├── ChatPanel.tsx
+├── ChatPanel.tsx           — Chat layout shell (~120 lines)
+├── ChatSession.tsx         — Single-chat UI component (~380 lines)
 ├── InboxPanel.tsx
 ├── NotesPanel.tsx          — Server Component (fetches initial data)
 ├── NotesPanelClient.tsx    — Client Component (interactivity + SSE)
 ├── RSSPanel.tsx
 ├── TasksPanel.tsx
 ├── TabShell.tsx            — Tab container (CSS hidden for state preservation)
-├── Providers.tsx           — Client wrapper (ToastProvider)
-└── Providers.tsx           — Client wrapper (ToastProvider)
+├── ThemeProvider.tsx       — Theme context + hydration-safe init
+└── __tests__/              — Component tests (ChatPanel, ThemeProvider, MemoryPanel)
 
 hooks/
-├── ToastContext.tsx  — Global toast notification system (React Context)
-└── useSSE.ts         — Generic SSE hook with typed events + auto-reconnect
+├── useConversationManager.ts  — Chat CRUD + persistence + keep-alive state
+├── useMemoryFlush.ts          — Deferred memory update API calls
+├── useSSE.ts                  — Generic SSE hook with typed events + auto-reconnect
+└── __tests__/                 — Hook tests
 
 lib/
+├── utils.ts        — Shared helpers (formatDate, serializeMessages, parseMessages)
 ├── memory.ts       — User memory modeling (profile, note familiarity, conversation digest)
-
-lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
 ├── parsers.ts      — Note Markdown ↔ object serialization + inbox parsing
@@ -168,15 +246,15 @@ lib/
 
 ---
 
-## Real-Time Updates (SSE + Toast)
+## Real-Time Updates (SSE)
 
 ### Problem
 
-The original system used a single undifferentiated `data: changed` SSE broadcast for all events. Every panel that subscribed (only NotesPanel and TasksPanel) had to re-fetch its entire dataset because the signal carried no information about what changed. InboxPanel and RSSPanel had no SSE subscription at all — new RSS items and incoming inbox entries were invisible until the user manually refreshed or switched tabs. Operation feedback was limited to in-line status text (e.g., delete results) or silent `console.error` for failures.
+The original system used a single undifferentiated `data: changed` SSE broadcast for all events. Every panel that subscribed (only NotesPanel and TasksPanel) had to re-fetch its entire dataset because the signal carried no information about what changed. InboxPanel and RSSPanel had no SSE subscription at all — new RSS items and incoming inbox entries were invisible until the user manually refreshed or switched tabs.
 
 ### Solution
 
-Three layers of infrastructure:
+Two layers of infrastructure:
 
 **1. Typed SSE Events (`lib/events.ts`)**
 
@@ -205,33 +283,19 @@ const { connected } = useSSE({
 
 Features: exponential backoff reconnection (1s → 2s → 4s → max 30s), JSON parsing built-in, cleanup on unmount.
 
-**3. Global Toast (`hooks/ToastContext.tsx`)**
-
-Zero-dependency React Context system:
-
-```typescript
-const { show } = useToast()
-show('笔记已删除', 'info')
-show('任务完成', 'success')
-show('加载失败', 'error')
-```
-
-Toasts stack at bottom-right, auto-dismiss after 4 seconds, click to close. `ToastProvider` wraps the app in `layout.tsx`.
-
 **Connection Status:** `Sidebar` renders a green/amber dot in its footer using `useSSE`'s `connected` state, providing visual feedback when the SSE connection drops. Three states: gray "连接中" → green "已连接" → amber pulsing "重连中".
 
-### Panel Migration
+### Panel SSE Integration
 
-All 6 panels migrated from manual `EventSource` + `console.error` to `useSSE` + `useToast`:
+| Panel | SSE Events |
+|-------|-----------|
+| NotesPanelClient | `useSSE({ onNote })` → re-fetch notes |
+| TasksPanel | `useSSE({ onTask })` → re-fetch tasks |
+| InboxPanel | `useSSE({ onInbox })` → re-fetch inbox |
+| RSSPanel | `useSSE({ onInbox })` → re-fetch subscriptions |
+| TabShell | `useSSE({ onInbox, onTask })` → badge count update |
 
-| Panel | Before | After |
-|-------|--------|-------|
-| NotesPanelClient | Manual EventSource → load() | `useSSE({ onNote })` → load(); toast on delete/errors |
-| TasksPanel | Manual EventSource → load() | `useSSE({ onTask })` → load() + toast on complete/fail |
-| InboxPanel | **No SSE** | `useSSE({ onInbox })` → load(); toast on approve/reject |
-| RSSPanel | **No SSE** | `useSSE({ onInbox })` → load(); toast on add/remove/check |
-| ChatPanel | `console.error` | toast on save/create/delete errors |
-| TabShell | Manual EventSource → count fetch | `useSSE({ onInbox, onTask })` → badge count update |
+Operation errors are logged via `console.error` with contextual module prefixes (e.g., `[ChatPanel]`, `[useConversationManager]`).
 
 ---
 
@@ -291,7 +355,7 @@ LLM credentials, model names, and cron intervals were statically baked into envi
 `lib/settings.ts` provides a runtime configuration layer:
 
 1. **Persistence**: Settings are stored as YAML at `knowledge/meta/settings.yml` via atomic write (tmp+rename).
-2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`MINIMAX_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
+2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`ANTHROPIC_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
 3. **Hot reload**: `lib/llm.ts` caches the `Anthropic` client instance and invalidates the cache when settings change (detected via settings content hash). This avoids the overhead of reconstructing the client on every call while still enabling hot reload without server restart.
 4. **Cron restartability**: Both `lib/rss/cron.ts` and `lib/relink/cron.ts` expose `stop/restart` functions. The Settings API (`POST /api/settings`) calls them when interval/expression changes.
 5. **Security**: `GET /api/settings` returns a *safe* copy where the API key is masked (`sk-...xxxx`). Only `POST` accepts the full key.
