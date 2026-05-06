@@ -16,7 +16,7 @@ vi.mock('../../ingestion/rss', async (importOriginal) => {
 vi.mock('../../storage', () => ({
   FileSystemStorage: vi.fn().mockImplementation(function () {
     return {
-      writeInbox: vi.fn().mockResolvedValue(true),
+      writeInbox: vi.fn().mockResolvedValue('1234567890-test.md'),
       listInbox: vi.fn().mockResolvedValue([]),
       listNoteSources: vi.fn().mockResolvedValue([]),
     };
@@ -169,7 +169,7 @@ describe('RSS Manager', () => {
 
     (FileSystemStorage as any).mockImplementationOnce(function () {
       return {
-        writeInbox: vi.fn().mockResolvedValue(undefined),
+        writeInbox: vi.fn().mockResolvedValue(null),
         listInbox: vi.fn().mockResolvedValue([
           { rawMetadata: { rss_link: 'https://example.com/dup' } },
         ]),

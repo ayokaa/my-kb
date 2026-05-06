@@ -62,7 +62,7 @@ vi.mock('@/lib/storage', () => ({
       listNoteSources: vi.fn().mockResolvedValue([]),
       saveNote: vi.fn().mockResolvedValue(undefined),
       archiveInbox: vi.fn().mockResolvedValue(undefined),
-      writeInbox: vi.fn().mockResolvedValue(undefined),
+      writeInbox: vi.fn().mockResolvedValue(null),
       listInbox: vi.fn().mockResolvedValue([]),
       rebuildBacklinks: vi.fn().mockResolvedValue(undefined),
     };

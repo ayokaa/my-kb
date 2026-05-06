@@ -278,7 +278,7 @@ describe('FileSystemStorage', () => {
       };
 
       const written = await storage.writeInbox(entry);
-      expect(written).toBe(true);
+      expect(written).toBeTruthy();
       expect(entry.filePath).toBeDefined();
 
       const entries = await storage.listInbox();
@@ -316,7 +316,7 @@ describe('FileSystemStorage', () => {
         rawMetadata: { rss_link: 'https://example.com/dup' },
       };
       const written1 = await storage.writeInbox(entry1);
-      expect(written1).toBe(true);
+      expect(written1).toBeTruthy();
 
       const entry2: InboxEntry = {
         sourceType: 'web',
@@ -325,7 +325,7 @@ describe('FileSystemStorage', () => {
         rawMetadata: { rss_link: 'https://example.com/dup' },
       };
       const written2 = await storage.writeInbox(entry2);
-      expect(written2).toBe(false);
+      expect(written2).toBeNull();
 
       const entries = await storage.listInbox();
       expect(entries).toHaveLength(1);
@@ -339,7 +339,7 @@ describe('FileSystemStorage', () => {
         content: 'content1',
         rawMetadata: { source_url: 'https://example.com/article' },
       };
-      expect(await storage.writeInbox(entry1)).toBe(true);
+      expect(await storage.writeInbox(entry1)).toBeTruthy();
 
       const entry2: InboxEntry = {
         sourceType: 'web',
@@ -347,7 +347,7 @@ describe('FileSystemStorage', () => {
         content: 'content2',
         rawMetadata: { source_url: 'https://example.com/article' },
       };
-      expect(await storage.writeInbox(entry2)).toBe(false);
+      expect(await storage.writeInbox(entry2)).toBeNull();
 
       const entries = await storage.listInbox();
       expect(entries).toHaveLength(1);
@@ -360,7 +360,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { rss_link: 'https://example.com/archived', source_url: 'https://example.com/s' },
       };
-      expect(await storage.writeInbox(entry)).toBe(true);
+      expect(await storage.writeInbox(entry)).toBeTruthy();
       const fileName = entry.filePath!.split('/').pop()!;
       await storage.archiveInbox(fileName);
 
@@ -371,7 +371,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { rss_link: 'https://example.com/archived' },
       };
-      expect(await storage.writeInbox(dupRss)).toBe(false);
+      expect(await storage.writeInbox(dupRss)).toBeNull();
 
       // source_url duplicate should also be rejected
       const dupUrl: InboxEntry = {
@@ -380,7 +380,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { source_url: 'https://example.com/s' },
       };
-      expect(await storage.writeInbox(dupUrl)).toBe(false);
+      expect(await storage.writeInbox(dupUrl)).toBeNull();
     });
 
     it('sorts inbox entries by extractedAt descending (newest first)', async () => {
