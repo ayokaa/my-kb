@@ -498,6 +498,32 @@ export class FileSystemStorage implements Storage {
     await rename(src, dst);
   }
 
+  /** Append digest to an inbox file's frontmatter without modifying the body content. */
+  async updateInboxDigest(fileName: string, digest: string): Promise<void> {
+    const path = this.inboxPath(fileName);
+    const raw = await readFile(path, 'utf-8');
+
+    if (!raw.startsWith('---')) {
+      throw new Error(`Invalid inbox file format: ${fileName}`);
+    }
+
+    const endMarker = raw.indexOf('\n---', 3);
+    if (endMarker === -1) {
+      throw new Error(`Unclosed frontmatter in inbox file: ${fileName}`);
+    }
+
+    const fmRaw = raw.slice(3, endMarker).trim();
+    const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
+
+    fm.digest = digest;
+    fm.digest_generated_at = new Date().toISOString();
+
+    const body = raw.slice(endMarker + 4);
+    const updated = `---\n${yaml.dump(fm, { allowUnicode: true } as import('./types').YamlDumpOptions)}---${body}`;
+
+    await this.atomicWrite(path, updated);
+  }
+
   // ===== Git =====
 
   getRoot(): string {
