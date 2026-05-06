@@ -7,9 +7,9 @@
 
 | 类型 | 数量 |
 |------|------|
-| system | 18 |
+| system | 20 |
 | tool-definition | 3 |
-| **总计** | **21** |
+| **总计** | **23** |
 
 ## app/api/chat/route.ts
 
@@ -336,9 +336,45 @@
 }
 ```
 
-### hintSection `{p-017}`
+### DIGEST_SYSTEM_PROMPT `{p-017}`
 
-- **位置**：lib/cognition/ingest.ts:267
+- **位置**：lib/cognition/ingest.ts:257
+- **类型**：system
+- **触发时机**：`processInboxEntry()` 知识入库流水线
+
+```
+你是一位专业的内容摘要助手。你的任务是为技术、科学和知识类文章生成准确、信息密度高的中文摘要。
+
+摘要必须包含以下信息：
+1. 这篇文章的核心主题是什么（一句话）
+2. 文章在讨论或解决什么具体问题
+3. 关键结论、发现或观点（如果文章有明确结论）
+
+要求：
+- 用简洁清晰的中文撰写
+- 不要使用"本文"、"该文"等元指代，直接描述内容
+- 长度控制在 3-5 句话
+- 保持客观，不加个人评价
+- 如果文章包含技术细节，简要提及技术方向但不展开
+- 只输出摘要文本，不要加标题、标签或任何额外格式
+```
+
+### userPrompt `{p-018}`
+
+- **位置**：lib/cognition/ingest.ts:274
+- **类型**：system
+- **触发时机**：`processInboxEntry()` 知识入库流水线
+- **动态插值**：是（提示词模板中包含运行时变量）
+
+```
+标题：{title}
+
+{content.slice(0, 20000)}
+```
+
+### hintSection `{p-019}`
+
+- **位置**：lib/cognition/ingest.ts:289
 - **类型**：system
 - **触发时机**：`processInboxEntry()` 知识入库流水线
 - **动态插值**：是（提示词模板中包含运行时变量）
@@ -354,9 +390,9 @@
 
 ```
 
-### userPrompt `{p-018}`
+### userPrompt `{p-020}`
 
-- **位置**：lib/cognition/ingest.ts:271
+- **位置**：lib/cognition/ingest.ts:293
 - **类型**：system
 - **触发时机**：`processInboxEntry()` 知识入库流水线
 - **动态插值**：是（提示词模板中包含运行时变量）
@@ -371,7 +407,7 @@
 
 ## lib/cognition/relink.ts
 
-### buildRelinkPrompt `{p-019}`
+### buildRelinkPrompt `{p-021}`
 
 - **位置**：lib/cognition/relink.ts:11
 - **类型**：system
@@ -383,7 +419,7 @@
 摘要：{n.summary}{facts}
 ```
 
-### buildRelinkPrompt `{p-020}`
+### buildRelinkPrompt `{p-022}`
 
 - **位置**：lib/cognition/relink.ts:15
 - **类型**：system
@@ -407,7 +443,7 @@ JSON 格式如下：
 }{candidateHint}
 ```
 
-### userPrompt `{p-021}`
+### userPrompt `{p-023}`
 
 - **位置**：lib/cognition/relink.ts:43
 - **类型**：system

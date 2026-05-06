@@ -43,7 +43,7 @@ For RSS entries and legacy inbox files, when the user clicks **Approve** in the 
 
 ### 3. Queue → Notes
 
-The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, `web_fetch`, and `relink` tasks never block each other. Supported task types:
+The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes its own task type independently, so `ingest`, `rss_fetch`, `web_fetch`, `relink`, and `inbox_digest` tasks never block each other. Supported task types:
 
 **`ingest`** — Convert content to a structured note. Supports two modes:
 
@@ -80,6 +80,13 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 3. Calls `processInboxEntry()` → LLM to generate a structured note.
 4. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
 5. `saveQueueState()` records task completion.
+
+**`inbox_digest`** — Generate an AI summary for an inbox entry:
+1. Reads the inbox file and checks for idempotency (skips if `digest` already present).
+2. Tries `fetchFullContent(rss_link)` to fetch the full article; falls back to inbox entry content on failure.
+3. Calls `generateDigest(title, content)` → `callLLM(DIGEST_SYSTEM_PROMPT, ...)` to produce a short Chinese summary.
+4. Appends `digest` and `digest_generated_at` fields to the inbox file's frontmatter via `updateInboxDigest()`.
+5. Emits `emitInboxEvent` to push UI refresh.
 
 **Retry:** Failed tasks can be manually retried via `retryTask(id)`, which resets the task to `pending` and re-queues it.
 
@@ -217,7 +224,7 @@ lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
 ├── parsers.ts      — Note Markdown ↔ object serialization + inbox parsing
-├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch, relink)
+├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch, relink, inbox_digest)
 ├── settings.ts     — Runtime configuration (YAML persistence, env fallback)
 ├── llm.ts          — Centralized async LLM client factory (reads settings fresh every call)
 ├── events.ts       — Typed SSE event bus (emitNoteEvent, emitTaskEvent, emitInboxEvent)
@@ -226,7 +233,7 @@ lib/
 │   ├── engine.ts          — Search scoring, link diffusion, context assembly
 │   └── eval.ts            — Quantified evaluation framework (golden dataset, quality gates)
 ├── cognition/
-│   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links)
+│   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links) + digest generation (generateDigest, fetchFullContent)
 │   └── relink.ts   — LLM gateway for refreshing note-to-note links
 ├── ingestion/
 │   ├── web.ts      — Camoufox + trafilatura extraction
@@ -264,7 +271,7 @@ The single `broadcastNoteChanged()` is replaced by three typed emit functions:
 |----------|-----------|---------|-------------|
 | `emitNoteEvent` | `note` | `{ action, id, title }` | `saveNote()`, `deleteNote()`, queue ingest/web_fetch workers |
 | `emitTaskEvent` | `task` | `{ action, id, type, error?, result? }` | `enqueue()`, worker start/complete/fail, `retryTask()` |
-| `emitInboxEvent` | `inbox` | `{ action, count }` | `writeInbox()` |
+| `emitInboxEvent` | `inbox` | `{ action, count }` | `writeInbox()`, `inbox_digest` worker |
 
 Events use standard SSE format (`event: note\ndata: {"action":"created",...}\n\n`), enabling `EventSource.addEventListener()` for targeted handling.
 
@@ -355,7 +362,7 @@ LLM credentials, model names, and cron intervals were statically baked into envi
 `lib/settings.ts` provides a runtime configuration layer:
 
 1. **Persistence**: Settings are stored as YAML at `knowledge/meta/settings.yml` via atomic write (tmp+rename).
-2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`ANTHROPIC_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work.
+2. **Fallback chain**: `loadSettings()` reads the file first, then overrides individual fields with environment variables (`ANTHROPIC_API_KEY`, `LLM_MODEL`, `RSS_CHECK_INTERVAL_MINUTES`, etc.). This ensures backward compatibility — existing `.env.local` files continue to work. Settings include LLM config, cron intervals, memory task interval, and `digest.autoDigest` (default `true` — automatically generates AI summaries for new RSS inbox entries).
 3. **Hot reload**: `lib/llm.ts` caches the `Anthropic` client instance and invalidates the cache when settings change (detected via settings content hash). This avoids the overhead of reconstructing the client on every call while still enabling hot reload without server restart.
 4. **Cron restartability**: Both `lib/rss/cron.ts` and `lib/relink/cron.ts` expose `stop/restart` functions. The Settings API (`POST /api/settings`) calls them when interval/expression changes.
 5. **Security**: `GET /api/settings` returns a *safe* copy where the API key is masked (`sk-...xxxx`). Only `POST` accepts the full key.
@@ -527,7 +534,7 @@ Queue state is serialized as JSON after every state change:
 Persistence strategy:
 - All `pending` and `running` tasks are **always** retained (never trimmed).
 - `done` and `failed` tasks are capped at the most recent 100, sorted by `createdAt` descending.
-- `pendingIds` covers all 4 task types (`ingest`, `rss_fetch`, `web_fetch`, `relink`).
+- `pendingIds` covers all 5 task types (`ingest`, `rss_fetch`, `web_fetch`, `relink`, `inbox_digest`).
 
 On module load, the queue reads `queue.json` and re-enqueues any tasks that were `pending` or `running` (the latter are reset to `pending`).
 
