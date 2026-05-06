@@ -22,7 +22,7 @@ test.describe.serial('Camoufox web scraping', () => {
   test.skip('fetches a real web page into inbox via task queue', async ({ page, request }) => {
     test.setTimeout(120000);
     if (!(await isCamoufoxAvailable())) {
-      test.skip(true, 'camoufox Python package not installed; run ./scripts/setup_camoufox.sh');
+      test.skip(true, 'camoufox Python package not installed; run: python3 -m camoufox fetch');
     }
 
     // Record existing web_fetch task IDs to distinguish new tasks

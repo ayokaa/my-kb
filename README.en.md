@@ -55,7 +55,7 @@ cd my-kb
 npm install
 
 # Install camoufox (web scraping engine, required on first use)
-./scripts/setup_camoufox.sh
+python3 -m camoufox fetch
 ```
 
 ### 2. Configure Environment Variables

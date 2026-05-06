@@ -149,7 +149,7 @@ my-kb/
 npm install
 
 # 安装 camoufox（网页抓取引擎，首次使用必须执行）
-./scripts/setup_camoufox.sh
+python3 -m camoufox fetch
 
 # 开发服务器（默认 http://localhost:3000）
 npm run dev

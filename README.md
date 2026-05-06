@@ -38,7 +38,7 @@
 - **语言**：TypeScript 5（严格模式）
 - **样式**：Tailwind CSS + 自定义 CSS 变量（深色主题）
 - **AI 流式**：`ai` SDK + Anthropic Messages API
-- **网页抓取**：Camoufox（Python，Firefox 反指纹浏览器）+ trafilatura
+- **网页抓取**：TinyFish（主） + Camoufox + trafilatura（兜底）；按类型隔离的 Worker 防止任务互相阻塞
 - **RSS**：`feedsmith` + 增量更新（`lastPubDate` 水位线），异步队列抓取
 - **搜索**：jieba 中文分词倒排索引 + Zone 加权评分用于聊天 RAG；笔记面板搜索使用 ripgrep 全文回退；5 分钟 TTL 内存缓存
 - **存储**：纯文件系统（`knowledge/` 目录），原子写入
@@ -54,8 +54,11 @@ git clone https://github.com/ayokaa/my-kb.git
 cd my-kb
 npm install
 
-# 安装 camoufox（网页抓取引擎，首次使用必须执行）
-./scripts/setup_camoufox.sh
+# 创建 Python 虚拟环境并安装网页抓取依赖
+uv venv && uv pip install -r requirements.txt
+
+# 下载 Camoufox 浏览器二进制（首次使用必须执行）
+python3 -m camoufox fetch
 ```
 
 ### 2. 配置环境变量
@@ -69,10 +72,12 @@ cp .env.example .env.local
 - `ANTHROPIC_API_KEY` — LLM API 密钥（用于笔记生成和聊天）
 
 可选项：
-- `ANTHROPIC_BASE_URL` — LLM API 基地址，默认 `https://api.minimaxi.com/anthropic`（可替换为 Anthropic 官方或其他兼容端点）
+- `ANTHROPIC_BASE_URL` — LLM API 基地址，默认 `https://api.minimaxi.com/anthropic`
 - `LLM_MODEL` — 默认 `claude-3-5-sonnet-20241022`
 - `RSS_CHECK_INTERVAL_MINUTES` — 默认 `60`
 - `RELINK_CRON_EXPRESSION` — 默认 `0 3 * * *`（每天凌晨 3 点）
+- `TINYFISH_API_KEY` — TinyFish 搜索 API 密钥（用于 chat agent 的 `web_search` 工具和 `web_fetch` 主抓取）
+- `SEARCH_API_KEY` — Serper（Google）搜索 API 密钥（`web_search` 兜底）
 
 > 以上所有配置均可通过**设置**面板在运行时修改。环境变量仅作为默认值；通过 UI 保存的设置会覆盖环境变量。
 
@@ -183,7 +188,8 @@ E2E 测试使用独立的 `knowledge-test/` 目录（通过 `playwright.config.t
 | 决策 | 理由 |
 |------|------|
 | **文件系统存储** | 笔记即文档；Markdown 是原生格式。Git 天然提供版本管理。 |
-| **Camoufox 抓取** | 现代网站多为客户端渲染。纯 `fetch` 只能拿到空 HTML 骨架。Camoufox 启动隐私加固版 Firefox，执行 JavaScript 后返回渲染好的 HTML，再由 Python `trafilatura` 提取文章内容。 |
+| **Camoufox 兜底** | 现代网站多为客户端渲染；TinyFish 处理大多数情况，Camoufox 处理 TinyFish 失败或 JS 渲染复杂的页面。 |
+| **TinyFish 主抓取 + Serper 兜底搜索** | `web_search` 工具使用 TinyFish 作为主提供者，失败时降级到 Serper（Google）；`web_fetch` 使用 TinyFish 主抓取，失败时降级到 Camoufox。 |
 | **内存队列 + JSON 持久化** | 负载较小（单用户，每天几十个任务）。避免 Redis 运维开销。按类型隔离的 Worker 防止入库任务阻塞 RSS 或关联刷新任务。 |
 | **RSS 增量更新** | 以 `lastPubDate` 作为水位线，避免重复抓取。首次检查仅获取最近 5 条。 |
 | **收件箱审核环节** | LLM 调用需要成本，且可能产生噪声。人工审批可防止污染知识库。 |

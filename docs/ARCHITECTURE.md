@@ -24,7 +24,7 @@ Raw content enters the system through four paths:
 
 | Source | Entry Point | Handler |
 |--------|-------------|---------|
-| Web link | `POST /api/ingest` | Enqueues `web_fetch` task → `fetchWebContent` (Camoufox + trafilatura) → LLM |
+| Web link | `POST /api/ingest` | Enqueues `web_fetch` task → `fetchWebContent` (TinyFish / Camoufox) → LLM |
 | RSS feed | `lib/rss/cron.ts` | Enqueues `rss_fetch` task → `fetchRSS` + `ingestFeedItems` |
 | File upload | `POST /api/upload` | `extractPDF` or direct text read → enqueues `ingest` task |
 | Plain text | `POST /api/ingest` | Enqueues `ingest` task directly |
@@ -75,7 +75,7 @@ The queue uses per-type isolated workers (`lib/queue.ts`). Each worker processes
 4. Updates subscription metadata (`lastChecked`, `lastEntryCount`, `lastPubDate`).
 
 **`web_fetch`** — Scrape a web page and generate a note directly:
-1. Calls `fetchWebContent(url)` (Camoufox + trafilatura) to extract article content.
+1. Calls `fetchWebContent(url)` to extract article content. Uses TinyFish fetch (`client.fetch.getContents`) when `TINYFISH_API_KEY` is set; falls back to Camoufox + trafilatura on failure or when not configured.
 2. Checks for duplicate source URLs in existing notes (skips if found).
 3. Calls `processInboxEntry()` → LLM to generate a structured note.
 4. `saveNote()` writes the note to `knowledge/notes/{id}.md`.
@@ -102,10 +102,13 @@ The chat endpoint (`POST /api/chat`) performs retrieval-augmented generation (RA
 4. If structured search returns fewer than 3 results, a **ripgrep fallback** (`rg -l -i pattern notes/`) scans all note bodies for the query terms. Any matches are loaded via `storage.loadNote()` and appended at a low fixed score (0.3).
 5. Applies optional link diffusion (1-hop neighbor notes at 30% weight decay).
 6. Assembles the top results into a structured context string with dynamic character budget (`maxChars: 15000`). Each note's `sources` URLs are included so the LLM can discover referenced web pages.
-7. **Tool calling (optional)**: A single streaming LLM call (`stream: true`) with Anthropic `tools` is issued. The response is consumed as `content_block_delta` events (`text_delta` for text, `input_json_delta` for tool arguments).
+7. **Tool calling (optional)**: A single streaming LLM call (`stream: true`) with Anthropic `tools` is issued. Two tools are available:
+   - `web_search(query, reason)` — Search the live web via TinyFish (primary) or Serper (fallback). Returns up to 20 results with title, URL, and snippet.
+   - `web_fetch(url, reason)` — Scrape a specific web page for full content via TinyFish (primary) or Camoufox (fallback).
    - URLs are validated before fetching: only HTTP/HTTPS schemes are allowed; private/internal addresses (localhost, RFC 1918 ranges) are rejected to prevent SSRF.
    - A single chat request is limited to at most 3 tool calls to prevent resource exhaustion.
-   - If `web_fetch` is invoked, the server calls `fetchWebContent(url)` (via Camoufox Python script) and appends the extracted article as a `tool_result` content block in the message history (Anthropic format).
+   - Tool results are appended as `tool_result` content blocks in the message history (Anthropic format).
+   - **XML tool call compatibility**: Non-standard endpoints (e.g. MiniMax) may return tool calls as `<invoke>` XML in text instead of proper `tool_use` blocks. The `extractXMLToolCalls` function detects and parses these, enabling seamless tool execution regardless of endpoint format.
 8. Injects the context (+ tool results if any) into the conversation.
 9. Filters `<think>...</think>` tags from the LLM output before streaming to the client.
 10. Streams the LLM response back to the client via `ai` SDK `formatStreamPart`.
@@ -224,6 +227,7 @@ lib/
 ├── types.ts        — Source of truth for all data shapes
 ├── storage.ts      — FileSystemStorage (atomic writes, CRUD, index mgmt)
 ├── parsers.ts      — Note Markdown ↔ object serialization + inbox parsing
+├── web-search.ts   — Web search abstraction (provider-agnostic: TinyFish / Serper)
 ├── queue.ts        — Task queue + per-type workers + persistence (ingest, rss_fetch, web_fetch, relink, inbox_digest)
 ├── settings.ts     — Runtime configuration (YAML persistence, env fallback)
 ├── llm.ts          — Centralized async LLM client factory (reads settings fresh every call)
@@ -236,7 +240,7 @@ lib/
 │   ├── ingest.ts   — LLM gateway for note generation (structure + QAs + links) + digest generation (generateDigest, fetchFullContent)
 │   └── relink.ts   — LLM gateway for refreshing note-to-note links
 ├── ingestion/
-│   ├── web.ts      — Camoufox + trafilatura extraction
+│   ├── web.ts      — Web content extraction (TinyFish primary, Camoufox + trafilatura fallback)
 │   ├── rss.ts      — RSS/Atom/JSON Feed parsing
 │   └── pdf.ts      — PDF text extraction
 ├── rss/
@@ -248,6 +252,7 @@ lib/
 
 **Rules:**
 - `lib/ingestion/*` only fetches raw data. It never touches the LLM.
+- `lib/web-search.ts` provides a provider-agnostic search interface (`WebSearchProvider`). TinyFish and Serper are swappable implementations; call sites use `webSearch()` directly.
 - `lib/cognition/ingest.ts` and `lib/cognition/relink.ts` are the only modules allowed to call the LLM for note generation / link refresh.
 - `lib/llm.ts` is the single source of truth for LLM client instantiation. All call sites (`ingest.ts`, `relink.ts`, `app/api/chat/route.ts`, `app/api/memory/update/route.ts`) go through it.
 
@@ -572,11 +577,20 @@ Two layers of defense prevent overlapping execution:
 
 ## Web Extraction
 
-### Why Camoufox?
+### Dual Provider Architecture
 
-Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Camoufox is a privacy-focused Firefox fork built for automation: it executes JavaScript like a real browser while resisting fingerprinting and bot detection. The Node.js side spawns a Python script (`scripts/fetch_web.py`) that uses `camoufox.sync_api.Camoufox` to render the page and return the full HTML.
+`fetchWebContent(url)` in `lib/ingestion/web.ts` uses a two-tier extraction strategy:
 
-### Pipeline
+1. **TinyFish** (primary when `TINYFISH_API_KEY` is set): Calls `client.fetch.getContents({ urls, format: 'markdown' })` to extract clean markdown content from any URL. Fast and reliable for most sites.
+2. **Camoufox + trafilatura** (fallback): Spawns a Python script (`scripts/fetch_web.py`) that renders the page in a headless browser and extracts article content.
+
+TinyFish failures (API errors, empty content) automatically fall back to Camoufox.
+
+### Why Camoufox as Fallback?
+
+Modern sites (Next.js, React, Vue) ship HTML skeletons and render content client-side. A simple `fetch` only gets the empty shell. Camoufox is a privacy-focused Firefox fork built for automation: it executes JavaScript like a real browser while resisting fingerprinting and bot detection.
+
+### Pipeline (Camoufox)
 
 ```
 URL ──Camoufox (Python)──→ rendered HTML ──trafilatura──→ {title, content}
@@ -625,6 +639,8 @@ The `e2e/fixtures.ts` fixture provides `resetTestData()` which deletes `knowledg
 | **Filesystem over database** | Notes are documents; Markdown is the native format. Git provides versioning for free. |
 | **Memory queue + JSON persistence** | Workload is tiny. Avoids Redis ops overhead. |
 | **Camoufox over fetch** | Required for modern client-rendered sites; anti-fingerprinting reduces bot detection. |
+| **TinyFish primary + Camoufox fallback** | TinyFish provides fast cloud-based extraction; Camoufox handles JS-heavy sites when TinyFish fails or is not configured. |
+| **Provider-agnostic web search** | `WebSearchProvider` interface allows swapping search backends (TinyFish, Serper) without changing call sites. |
 | **Inbox review step** | LLM calls cost money and can produce garbage. Human approval prevents polluting the knowledge base. |
 | **YAML frontmatter** | Human-readable metadata that any Markdown editor can display. |
 | **Inverted index + ripgrep fallback** | Chinese tokenization via jieba dictionary; 7 metadata fields indexed (content excluded). Structured results below threshold trigger `rg` full-text scan. Index persisted as `search-index.json`, updated incrementally on note save/delete. |

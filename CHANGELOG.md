@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## 2026-05-06
+
+### Added
+
+- **收件箱 AI 摘要生成**：`inbox_digest` 任务类型，RSS 条目写入收件箱后异步串行调用 LLM 生成中文摘要（3-5 句话），追加到 frontmatter 的 `digest`/`digest_generated_at` 字段。启用 `autoDigest`（默认开启，可通过设置面板关闭）。摘要卡片在 InboxPanel 中展示。
+- **web_search 工具**：Chat Agent 新增 `web_search(query, reason)` 工具，LLM 可主动搜索互联网获取最新信息。TinyFish SDK 作为提供者（`TINYFISH_API_KEY`），未配置时使用 Serper（`SEARCH_API_KEY`）。
+- **TinyFish fetch 优先 + Camoufox 回退**：`fetchWebContent` 在 `TINYFISH_API_KEY` 设置时优先使用 TinyFish `client.fetch.getContents`（markdown 格式）；失败或未配置时降级到 Camoufox + trafilatura。
+- **MiniMax XML 工具调用兼容**：`extractXMLToolCalls` 函数检测并解析非标准端点（如 MiniMax）返回的 `<invoke>` XML 格式工具调用，使 `web_search` 和 `web_fetch` 在这类端点也能正常工作。
+- **Python venv 统一管理**：项目根目录 `.venv/` 通过 `uv venv` 创建，安装 `camoufox` + `trafilatura` 依赖，`fetch_web.py` 使用 `.venv/bin/python3` 执行。
+- **单元测试**：新增 `lib/__tests__/web-search.test.ts`（11 个：供应商选择、TinyFish 搜索、Serper 兜底）、`lib/ingestion/__tests__/web.test.ts`（6 个 TinyFish 路径测试）、`app/api/chat/__tests__/route.test.ts`（4 个 XML 工具调用兼容测试）。
+- **E2E 测试**：`e2e/inbox.spec.ts` 新增摘要展示测试；`e2e/settings.spec.ts` 新增 autoDigest 开关测试。
+
+### Changed
+
+- **Web 工具描述更新**：`web_search` 和 `web_fetch` 两个工具的说明和状态提示更新到 Chat RAG system prompt。
+- **文档更新**：`docs/ARCHITECTURE.md` 更新 Web Extraction 双提供者架构、工具调用章节、模块边界和 Key Design Decisions；`docs/PROMPTS.md` 自动重新生成（从 21 条提示词更新到 26 条）。
+
 ## 2026-05-05
 
 ### Changed
@@ -70,11 +87,6 @@ All notable changes to this project are documented in this file.
   - `loadConversations` 并行加载所有会话的初始消息，避免点击时才加载的延迟
   - `handleSave` 仅更新对应会话的 `turnCount`，不再触发全量 `loadConversations` 重新拉取
 - **ToastPortal 布局抖动修复**：去掉 `toasts.length === 0 ? null` 条件、始终渲染容器；添加 `will-change: transform` 创建 GPU 合成层；限制 `max-h/max-w`；`transition-all` 改为 `transition-colors`；`html, body` 添加 `overflow-x: hidden`
-
-## 2026-05-04
-
-### Changed
-
 - **聊天系统提示词重构**：全面重写 `app/api/chat/route.ts` 的 `baseSystem`，从简单的"优先基于知识库作答"升级为结构化格式说明 + 精细化回答原则：
   - 新增【检索结果格式说明】：逐字段解释笔记结构化格式（标签、来源、摘要、与我相关、关键事实、时间线、问答、关联/反向链接、正文）的语义和引用策略
   - 新增【回答原则】：明确"按需取材，拒绝堆砌""深度整合，拒绝粘贴"，禁止复制笔记原文

@@ -8,14 +8,14 @@
 | 类型 | 数量 |
 |------|------|
 | system | 20 |
-| tool-definition | 3 |
-| **总计** | **23** |
+| tool-definition | 6 |
+| **总计** | **26** |
 
 ## app/api/chat/route.ts
 
 ### web_fetch (tool description) `{p-001}`
 
-- **位置**：app/api/chat/route.ts:20
+- **位置**：app/api/chat/route.ts:21
 - **类型**：tool-definition
 - **触发时机**：聊天时 LLM 可调用 `web_fetch` 工具
 
@@ -25,7 +25,7 @@
 
 ### web_fetch (tool description) `{p-002}`
 
-- **位置**：app/api/chat/route.ts:27
+- **位置**：app/api/chat/route.ts:28
 - **类型**：tool-definition
 - **触发时机**：聊天时 LLM 可调用 `web_fetch` 工具
 
@@ -35,7 +35,7 @@
 
 ### web_fetch (tool description) `{p-003}`
 
-- **位置**：app/api/chat/route.ts:31
+- **位置**：app/api/chat/route.ts:32
 - **类型**：tool-definition
 - **触发时机**：聊天时 LLM 可调用 `web_fetch` 工具
 
@@ -43,9 +43,39 @@
 简要说明为什么需要抓取这个网页（1-2句话）
 ```
 
-### REWRITE_SYSTEM_PROMPT `{p-004}`
+### web_search (tool description) `{p-004}`
 
-- **位置**：app/api/chat/route.ts:79
+- **位置**：app/api/chat/route.ts:40
+- **类型**：tool-definition
+- **触发时机**：聊天时 LLM 可调用 `web_search` 工具
+
+```
+当知识库内容不足以回答用户问题时，搜索互联网获取最新的相关信息。适用于需要最新资讯、事实核查、或知识库未覆盖的主题。
+```
+
+### web_search (tool description) `{p-005}`
+
+- **位置**：app/api/chat/route.ts:47
+- **类型**：tool-definition
+- **触发时机**：聊天时 LLM 可调用 `web_search` 工具
+
+```
+搜索关键词，使用用户提问的语言
+```
+
+### web_search (tool description) `{p-006}`
+
+- **位置**：app/api/chat/route.ts:51
+- **类型**：tool-definition
+- **触发时机**：聊天时 LLM 可调用 `web_search` 工具
+
+```
+简要说明为什么需要搜索（1-2句话）
+```
+
+### REWRITE_SYSTEM_PROMPT `{p-007}`
+
+- **位置**：app/api/chat/route.ts:99
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 
@@ -62,9 +92,9 @@
 7. 只输出查询字符串，不要解释、不要加引号、不要有多余内容
 ```
 
-### buildRewritePrompt `{p-005}`
+### buildRewritePrompt `{p-008}`
 
-- **位置**：app/api/chat/route.ts:95
+- **位置**：app/api/chat/route.ts:115
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 - **动态插值**：是（提示词模板中包含运行时变量）
@@ -79,9 +109,9 @@
 检索查询：
 ```
 
-### baseSystem `{p-006}`
+### baseSystem `{p-009}`
 
-- **位置**：app/api/chat/route.ts:368
+- **位置**：app/api/chat/route.ts:448
 - **类型**：system
 - **触发时机**：`POST /api/chat` → 流式 AI 对话
 
@@ -119,23 +149,24 @@
 当用户输入简短、模糊或无明显意图时（如单个字、表情符号、打招呼），简短自然地回应，不要主动罗列知识库内容或展开长篇解释。只有在用户明确提出问题或表达求知意图时才检索和引用知识库。
 ```
 
-### toolsSection `{p-007}`
+### toolsSection `{p-010}`
 
-- **位置**：app/api/chat/route.ts:401
+- **位置**：app/api/chat/route.ts:481
 - **类型**：system
 - **触发时机**：聊天时，LLM 工具调用
 
 ```
 【可用工具】
 当知识库内容不足以回答问题时，你可以调用工具来获取更多信息。当前可用工具：
+- web_search(query, reason): 搜索互联网获取最新相关信息。适用于需要最新资讯、事实核查、或知识库未覆盖的主题。
 - web_fetch(url, reason): 抓取指定网页内容。你可以从知识库笔记的"来源"中选择 URL 进行抓取，不要编造不存在的 URL。
 
-调用规则：仅在知识库内容明显不足时调用工具。如果知识库内容已足够，直接回答，不要调用工具。
+调用规则：仅在知识库内容明显不足时调用工具。优先使用 web_search 获取概览信息；当用户明确提供了 URL 或需要深入阅读某篇网页时使用 web_fetch。如果知识库内容已足够，直接回答，不要调用工具。
 ```
 
 ## app/api/memory/update/route.ts
 
-### PROFILE_SYSTEM_PROMPT `{p-008}`
+### PROFILE_SYSTEM_PROMPT `{p-011}`
 
 - **位置**：app/api/memory/update/route.ts:9
 - **类型**：system
@@ -159,7 +190,7 @@
 没有变化时返回 {} 或只输出空 JSON。
 ```
 
-### NOTE_FAMILIARITY_SYSTEM_PROMPT `{p-009}`
+### NOTE_FAMILIARITY_SYSTEM_PROMPT `{p-012}`
 
 - **位置**：app/api/memory/update/route.ts:25
 - **类型**：system
@@ -182,7 +213,7 @@
 对话未涉及任何笔记时返回 {}。
 ```
 
-### DIGEST_SYSTEM_PROMPT `{p-010}`
+### DIGEST_SYSTEM_PROMPT `{p-013}`
 
 - **位置**：app/api/memory/update/route.ts:40
 - **类型**：system
@@ -199,7 +230,7 @@
 只关注本轮对话本身，不需要关联历史。
 ```
 
-### PREFERENCE_SYSTEM_PROMPT `{p-011}`
+### PREFERENCE_SYSTEM_PROMPT `{p-014}`
 
 - **位置**：app/api/memory/update/route.ts:49
 - **类型**：system
@@ -222,7 +253,7 @@
 不要猜测。没有明确偏好时返回 {}。
 ```
 
-### DISCUSSION_REGEN_SYSTEM_PROMPT `{p-012}`
+### DISCUSSION_REGEN_SYSTEM_PROMPT `{p-015}`
 
 - **位置**：app/api/memory/update/route.ts:64
 - **类型**：system
@@ -249,7 +280,7 @@
 
 ## lib/cognition/ingest.ts
 
-### buildExtractPrompt `{p-013}`
+### buildExtractPrompt `{p-016}`
 
 - **位置**：lib/cognition/ingest.ts:21
 - **类型**：system
@@ -279,7 +310,7 @@
 }
 ```
 
-### buildQAPrompt `{p-014}`
+### buildQAPrompt `{p-017}`
 
 - **位置**：lib/cognition/ingest.ts:45
 - **类型**：system
@@ -300,7 +331,7 @@
 }
 ```
 
-### buildLinkPrompt `{p-015}`
+### buildLinkPrompt `{p-018}`
 
 - **位置**：lib/cognition/ingest.ts:63
 - **类型**：system
@@ -312,7 +343,7 @@
 摘要：{n.summary}{facts}
 ```
 
-### buildLinkPrompt `{p-016}`
+### buildLinkPrompt `{p-019}`
 
 - **位置**：lib/cognition/ingest.ts:67
 - **类型**：system
@@ -336,7 +367,7 @@
 }
 ```
 
-### DIGEST_SYSTEM_PROMPT `{p-017}`
+### DIGEST_SYSTEM_PROMPT `{p-020}`
 
 - **位置**：lib/cognition/ingest.ts:257
 - **类型**：system
@@ -359,7 +390,7 @@
 - 只输出摘要文本，不要加标题、标签或任何额外格式
 ```
 
-### userPrompt `{p-018}`
+### userPrompt `{p-021}`
 
 - **位置**：lib/cognition/ingest.ts:274
 - **类型**：system
@@ -372,7 +403,7 @@
 {content.slice(0, 20000)}
 ```
 
-### hintSection `{p-019}`
+### hintSection `{p-022}`
 
 - **位置**：lib/cognition/ingest.ts:289
 - **类型**：system
@@ -390,7 +421,7 @@
 
 ```
 
-### userPrompt `{p-020}`
+### userPrompt `{p-023}`
 
 - **位置**：lib/cognition/ingest.ts:293
 - **类型**：system
@@ -407,7 +438,7 @@
 
 ## lib/cognition/relink.ts
 
-### buildRelinkPrompt `{p-021}`
+### buildRelinkPrompt `{p-024}`
 
 - **位置**：lib/cognition/relink.ts:11
 - **类型**：system
@@ -419,7 +450,7 @@
 摘要：{n.summary}{facts}
 ```
 
-### buildRelinkPrompt `{p-022}`
+### buildRelinkPrompt `{p-025}`
 
 - **位置**：lib/cognition/relink.ts:15
 - **类型**：system
@@ -443,7 +474,7 @@ JSON 格式如下：
 }{candidateHint}
 ```
 
-### userPrompt `{p-023}`
+### userPrompt `{p-026}`
 
 - **位置**：lib/cognition/relink.ts:43
 - **类型**：system
