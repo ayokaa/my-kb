@@ -24,7 +24,7 @@ vi.mock('@/lib/ingestion/web', () => ({
   }),
 }));
 
-import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidates } from '../ingest';
+import { processInboxEntry, validateLLMOutput, validateExtractOutput, validateQAOutput, validateLinkOutput, selectCandidates, generateDigest, fetchFullContent } from '../ingest';
 
 function anthropicResponse(text: string) {
   return {
@@ -381,5 +381,120 @@ describe('selectCandidates', () => {
     const source = { title: 'Test', content: 'hello' };
     const candidates = selectCandidates(source, []);
     expect(candidates).toEqual([]);
+  });
+});
+
+describe('generateDigest', () => {
+  beforeEach(() => {
+    mockCreate.mockReset();
+  });
+
+  it('returns plain text digest from LLM', async () => {
+    mockCreate.mockResolvedValue(anthropicResponse(
+      '这篇文章介绍了 Rust 异步运行时的设计理念，主要讨论了 Tokio 框架的任务调度策略。'
+    ));
+
+    const result = await generateDigest('Rust Async Runtime', 'full article content here');
+
+    expect(result).toBe(
+      '这篇文章介绍了 Rust 异步运行时的设计理念，主要讨论了 Tokio 框架的任务调度策略。'
+    );
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    // Verify system prompt contains digest instructions
+    const systemArg = mockCreate.mock.calls[0][0].system;
+    expect(systemArg).toContain('核心主题');
+    expect(systemArg).toContain('具体问题');
+  });
+
+  it('truncates long content before sending to LLM', async () => {
+    mockCreate.mockResolvedValue(anthropicResponse('short digest'));
+
+    const longContent = 'x'.repeat(30000);
+    await generateDigest('Title', longContent);
+
+    const userArg = mockCreate.mock.calls[0][0].messages[0].content;
+    expect(userArg.length).toBeLessThan(30000);
+  });
+
+  it('retries on LLM failure', async () => {
+    mockCreate
+      .mockRejectedValueOnce(new Error('transient error'))
+      .mockResolvedValueOnce(anthropicResponse('retried digest'));
+
+    const result = await generateDigest('Title', 'content');
+    expect(result).toBe('retried digest');
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetchFullContent', () => {
+  beforeEach(async () => {
+    // Ensure fetchWebContent mock is in default state
+    const { fetchWebContent } = await import('@/lib/ingestion/web');
+    (fetchWebContent as any).mockResolvedValue({
+      title: 'Zed Parallel Agents',
+      content: 'Zed now supports running multiple AI agents in parallel within the same window.',
+      excerpt: 'Parallel agents in Zed',
+    });
+  });
+
+  it('fetches web content when rss_link is present', async () => {
+    const entry = {
+      sourceType: 'web' as const,
+      title: 'Test',
+      content: 'fallback content',
+      rawMetadata: { rss_link: 'https://example.com/article' },
+    };
+
+    const result = await fetchFullContent(entry);
+    // The mock returns Zed content
+    expect(result).toContain('Zed');
+    expect(result).not.toBe('fallback content');
+  });
+
+  it('fetches web content when source_url is present', async () => {
+    const entry = {
+      sourceType: 'web' as const,
+      title: 'Test',
+      content: 'fallback',
+      rawMetadata: { source_url: 'https://example.com/page' },
+    };
+
+    const result = await fetchFullContent(entry);
+    expect(result).toContain('Zed');
+  });
+
+  it('falls back to entry content when no URL', async () => {
+    const entry = {
+      sourceType: 'text' as const,
+      title: 'Test',
+      content: 'original content',
+      rawMetadata: {},
+    };
+
+    const result = await fetchFullContent(entry);
+    expect(result).toBe('original content');
+  });
+
+  it('falls back to entry content when fetch fails', async () => {
+    const { fetchWebContent } = await import('@/lib/ingestion/web');
+    (fetchWebContent as any).mockRejectedValueOnce(new Error('network error'));
+
+    const entry = {
+      sourceType: 'web' as const,
+      title: 'Test',
+      content: 'fallback content',
+      rawMetadata: { rss_link: 'https://example.com/fail' },
+    };
+
+    const result = await fetchFullContent(entry);
+    expect(result).toBe('fallback content');
+
+    // Restore mock
+    (fetchWebContent as any).mockResolvedValue({
+      title: 'Zed Parallel Agents',
+      content: 'Zed now supports running multiple AI agents in parallel.',
+      excerpt: 'Parallel agents in Zed',
+    });
   });
 });
