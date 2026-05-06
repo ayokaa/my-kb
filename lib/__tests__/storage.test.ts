@@ -556,6 +556,63 @@ describe('FileSystemStorage', () => {
     });
   });
 
+  // ===== Digest =====
+
+  describe('updateInboxDigest', () => {
+    it('appends digest fields to frontmatter', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Test Article',
+        content: 'original content',
+        rawMetadata: { rss_link: 'https://example.com/a' },
+      });
+      expect(fileName).toBeTruthy();
+
+      await storage.updateInboxDigest(fileName!, '这是一篇关于测试的文章摘要');
+
+      const entries = await storage.listInbox();
+      expect(entries).toHaveLength(1);
+      expect(entries[0].digest).toBe('这是一篇关于测试的文章摘要');
+      expect(entries[0].digestGeneratedAt).toBeTruthy();
+    });
+
+    it('preserves existing frontmatter and body content', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Preserve Test',
+        content: 'body content that must survive',
+        rawMetadata: { rss_link: 'https://example.com/p', rss_source: 'Feed' },
+      });
+
+      await storage.updateInboxDigest(fileName!, 'new digest');
+
+      const entries = await storage.listInbox();
+      expect(entries[0].title).toBe('Preserve Test');
+      expect(entries[0].content).toBe('body content that must survive');
+      expect(entries[0].rawMetadata.rss_link).toBe('https://example.com/p');
+      expect(entries[0].rawMetadata.rss_source).toBe('Feed');
+    });
+
+    it('overwrites existing digest on second call', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Overwrite Test',
+        content: 'content',
+        rawMetadata: {},
+      });
+
+      await storage.updateInboxDigest(fileName!, 'first digest');
+      await storage.updateInboxDigest(fileName!, 'updated digest');
+
+      const entries = await storage.listInbox();
+      expect(entries[0].digest).toBe('updated digest');
+    });
+
+    it('throws on missing file', async () => {
+      await expect(storage.updateInboxDigest('nonexistent.md', 'digest')).rejects.toThrow();
+    });
+  });
+
   // ===== Git =====
 
   describe('commit', () => {
