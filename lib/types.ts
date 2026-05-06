@@ -84,6 +84,8 @@ export interface InboxEntry {
   extractedAt?: string;
   rawMetadata: Record<string, unknown>;
   filePath?: string;
+  digest?: string;
+  digestGeneratedAt?: string;
 }
 
 export interface InvertedIndexEntry {

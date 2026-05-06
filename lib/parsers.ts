@@ -30,7 +30,7 @@ export function parseInboxEntry(raw: string, path: string): InboxEntry {
   const content = raw.slice(endMarker + 4).trim();
 
   const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
-  const known = new Set(['source_type', 'source_path', 'title', 'extracted_at']);
+  const known = new Set(['source_type', 'source_path', 'title', 'extracted_at', 'digest', 'digest_generated_at']);
   const rawMetadata: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fm)) {
     if (!known.has(k)) rawMetadata[k] = v;
@@ -44,6 +44,8 @@ export function parseInboxEntry(raw: string, path: string): InboxEntry {
     extractedAt: fm.extracted_at as string | undefined,
     rawMetadata,
     filePath: path,
+    digest: fm.digest as string | undefined,
+    digestGeneratedAt: fm.digest_generated_at as string | undefined,
   };
 }
 
