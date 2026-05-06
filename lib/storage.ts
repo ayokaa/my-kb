@@ -391,7 +391,7 @@ export class FileSystemStorage implements Storage {
     return { rssLinks, sourceUrls };
   }
 
-  async writeInbox(entry: InboxEntry): Promise<boolean> {
+  async writeInbox(entry: InboxEntry): Promise<string | null> {
     // Acquire lock to prevent race-condition duplicates
     const prevLock = this.inboxWriteLock;
     let releaseLock: (() => void) | undefined;
@@ -418,11 +418,11 @@ export class FileSystemStorage implements Storage {
           const { rssLinks, sourceUrls } = await this._scanInboxSources();
           if (rssLink && rssLinks.has(rssLink)) {
             logger.info('Storage', `Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
-            return false;
+            return null;
           }
           if (sourceUrl && sourceUrls.has(sourceUrl)) {
             logger.info('Storage', `Skip duplicate inbox entry (source_url already exists): ${entry.title}`);
-            return false;
+            return null;
           }
         } catch {
           // Ignore scan errors, proceed with write
@@ -442,7 +442,7 @@ export class FileSystemStorage implements Storage {
       entry.filePath = path;
       // 通知客户端收件箱有新内容
       emitInboxEvent('new');
-      return true;
+      return fileName;
     } finally {
       releaseLock?.();
     }
