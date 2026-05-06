@@ -687,3 +687,197 @@ describe('/api/chat', () => {
     expect(toolUses[0].input).toEqual({}); // 截断的 JSON 降级为空对象
   });
 });
+
+
+describe('XML tool call compatibility (MiniMax-style)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mockMessagesCreate.mockReset();
+  });
+
+  it('parses XML invoke tags and executes web_fetch tool calls', async () => {
+    const mockFetchWebContent = vi.fn().mockResolvedValue({
+      title: 'Intel Stock News', content: 'Intel surged 25.6% this week', excerpt: 'surged',
+    });
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
+    }));
+
+    // MiniMax-style: tool calls embedded as XML in text, no standard tool_use blocks
+    const xmlPayload = 'minimax:tool_call <invoke name="web_fetch"><parameter name="url">https://example.com/intel-stock</parameter><parameter name="reason">获取英特尔股价信息</parameter></invoke>';
+
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: xmlPayload } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '英特尔本周涨了25.6%' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: '英特尔股价怎么样' }],
+      }),
+    });
+
+    const res = await POST(req);
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+
+    // fetchWebContent should have been called with the URL from XML
+    expect(mockFetchWebContent).toHaveBeenCalledWith('https://example.com/intel-stock');
+    // Final answer should contain the actual response
+    expect(text).toContain('英特尔本周涨了25.6%');
+  });
+
+  it('parses XML invoke tags and executes web_search tool calls', async () => {
+    const mockWebSearch = vi.fn().mockResolvedValue([
+      { title: 'Result 1', url: 'https://example.com/1', snippet: 'snippet 1' },
+    ]);
+    vi.doMock('@/lib/web-search', () => ({
+      webSearch: mockWebSearch,
+    }));
+
+    const xmlPayload = '<invoke name="web_search"><parameter name="query">最新 AI 新闻</parameter><parameter name="reason">用户想了解最新AI动态</parameter></invoke>';
+
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: xmlPayload } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '以下是最新AI新闻' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: '最近AI有什么新闻' }],
+      }),
+    });
+
+    const res = await POST(req);
+    await drainStream(res);
+
+    expect(mockWebSearch).toHaveBeenCalledWith('最新 AI 新闻');
+  });
+
+  it('parses multiple XML invoke tags in a single response', async () => {
+    const mockFetchWebContent = vi.fn().mockResolvedValue({
+      title: 'Page', content: 'content', excerpt: '',
+    });
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
+    }));
+
+    const xmlPayload = '<invoke name="web_fetch"><parameter name="url">https://a.com</parameter><parameter name="reason">test a</parameter></invoke> <invoke name="web_fetch"><parameter name="url">https://b.com</parameter><parameter name="reason">test b</parameter></invoke>';
+
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: xmlPayload } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'fetch both' }],
+      }),
+    });
+
+    const res = await POST(req);
+    await drainStream(res);
+
+    expect(mockFetchWebContent).toHaveBeenCalledTimes(2);
+    expect(mockFetchWebContent).toHaveBeenCalledWith('https://a.com');
+    expect(mockFetchWebContent).toHaveBeenCalledWith('https://b.com');
+  });
+
+  it('does not trigger XML parsing when standard tool_use blocks are present', async () => {
+    const mockFetchWebContent = vi.fn().mockResolvedValue({
+      title: 'Page', content: 'content', excerpt: '',
+    });
+    vi.doMock('@/lib/ingestion/web', () => ({
+      fetchWebContent: mockFetchWebContent,
+    }));
+
+    // Standard Anthropic tool_use format (not XML)
+    async function* mockStreamRound1() {
+      yield { type: 'message_start', message: { id: 'msg-1', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tc-1', name: 'web_fetch', input: {} } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ url: 'https://example.com', reason: 'test' }) } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    async function* mockStreamRound2() {
+      yield { type: 'message_start', message: { id: 'msg-2', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } };
+      yield { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } };
+      yield { type: 'content_block_stop', index: 0 };
+      yield { type: 'message_stop' };
+    }
+
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound1());
+    mockMessagesCreate.mockResolvedValueOnce(mockStreamRound2());
+
+    const { POST } = await import('../route');
+    const req = new Request('http://localhost:3000/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+    });
+
+    const res = await POST(req);
+    await drainStream(res);
+
+    // Should use standard path, not XML parsing
+    expect(mockFetchWebContent).toHaveBeenCalledTimes(1);
+    expect(mockFetchWebContent).toHaveBeenCalledWith('https://example.com');
+  });
+});

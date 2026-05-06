@@ -7,6 +7,7 @@ import { fetchWebContent } from '@/lib/ingestion/web';
 import { isValidHttpUrl } from '@/lib/ingestion/rss';
 import { getLLMClient, getLLMModel, getLLM } from '@/lib/llm';
 import { loadMemory, getChatContext } from '@/lib/memory';
+import { webSearch } from '@/lib/web-search';
 import { logger } from '@/lib/logger';
 
 const MAX_MESSAGE_LENGTH = 10000;
@@ -32,6 +33,25 @@ const anthropicTools: Anthropic.Messages.Tool[] = [
         },
       },
       required: ['url', 'reason'],
+    },
+  },
+  {
+    name: 'web_search',
+    description:
+      '当知识库内容不足以回答用户问题时，搜索互联网获取最新的相关信息。适用于需要最新资讯、事实核查、或知识库未覆盖的主题。',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string' as const,
+          description: '搜索关键词，使用用户提问的语言',
+        },
+        reason: {
+          type: 'string' as const,
+          description: '简要说明为什么需要搜索（1-2句话）',
+        },
+      },
+      required: ['query', 'reason'],
     },
   },
 ];
@@ -239,6 +259,37 @@ export async function processStreamRound(
 }
 
 /**
+ * 某些兼容端点（如 MiniMax）不返回标准 Anthropic tool_use content block，
+ * 而是将工具调用以 XML 格式嵌入文本流中（如 <invoke name="web_fetch">...）。
+ * 此函数检测并解析这类 XML 工具调用，转为标准格式。
+ */
+function extractXMLToolCalls(text: string): Array<{ id: string; name: string; input: Record<string, unknown> }> {
+  const results: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+  const invokeRegex = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = invokeRegex.exec(text)) !== null) {
+    const name = match[1];
+    const body = match[2];
+    const input: Record<string, unknown> = {};
+
+    const paramRegex = /<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/g;
+    let paramMatch: RegExpExecArray | null;
+    while ((paramMatch = paramRegex.exec(body)) !== null) {
+      input[paramMatch[1]] = paramMatch[2].trim();
+    }
+
+    results.push({
+      id: `xml-${results.length}-${Date.now()}`,
+      name,
+      input,
+    });
+  }
+
+  return results;
+}
+
+/**
  * 执行工具调用。
  */
 async function executeToolCalls(
@@ -250,29 +301,58 @@ async function executeToolCalls(
   }
 
   const tasks = limitedCalls.map(async (toolUse) => {
-    if (toolUse.name !== 'web_fetch') return null;
+    if (toolUse.name === 'web_fetch') {
+      const args = toolUse.input as { url?: string; reason?: string };
+      const url = args.url || '';
+      logger.info('Chat', `Tool call web_fetch: ${url} (${args.reason || ''})`);
 
-    const args = toolUse.input as { url?: string; reason?: string };
-    const url = args.url || '';
-    logger.info('Chat', `Tool call web_fetch: ${url} (${args.reason || ''})`);
+      if (!url || !isValidHttpUrl(url)) return null;
 
-    if (!url || !isValidHttpUrl(url)) return null;
-
-    try {
-      const webContent = await fetchWebContent(url);
-      return {
-        type: 'tool_result' as const,
-        tool_use_id: toolUse.id,
-        content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
-      };
-    } catch (err) {
-      logger.error('Chat', 'web_fetch failed', { error: err });
-      return {
-        type: 'tool_result' as const,
-        tool_use_id: toolUse.id,
-        content: `抓取失败: ${(err as Error).message}`,
-      };
+      try {
+        const webContent = await fetchWebContent(url);
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: toolUse.id,
+          content: `网页标题: ${webContent.title}\n摘要: ${webContent.excerpt || ''}\n正文:\n${webContent.content.slice(0, 10000)}`,
+        };
+      } catch (err) {
+        logger.error('Chat', 'web_fetch failed', { error: err });
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: toolUse.id,
+          content: `抓取失败: ${(err as Error).message}`,
+        };
+      }
     }
+
+    if (toolUse.name === 'web_search') {
+      const args = toolUse.input as { query?: string; reason?: string };
+      const query = args.query || '';
+      logger.info('Chat', `Tool call web_search: ${query} (${args.reason || ''})`);
+
+      if (!query) return null;
+
+      try {
+        const results = await webSearch(query);
+        const formatted = results
+          .map((r, i) => `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`)
+          .join('\n\n');
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: toolUse.id,
+          content: formatted || '未找到相关结果',
+        };
+      } catch (err) {
+        logger.error('Chat', 'web_search failed', { error: err });
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: toolUse.id,
+          content: `搜索失败: ${(err as Error).message}`,
+        };
+      }
+    }
+
+    return null;
   });
 
   const results = await Promise.all(tasks);
@@ -400,9 +480,10 @@ export async function POST(req: Request) {
 
   const toolsSection = `【可用工具】
 当知识库内容不足以回答问题时，你可以调用工具来获取更多信息。当前可用工具：
+- web_search(query, reason): 搜索互联网获取最新相关信息。适用于需要最新资讯、事实核查、或知识库未覆盖的主题。
 - web_fetch(url, reason): 抓取指定网页内容。你可以从知识库笔记的"来源"中选择 URL 进行抓取，不要编造不存在的 URL。
 
-调用规则：仅在知识库内容明显不足时调用工具。如果知识库内容已足够，直接回答，不要调用工具。`;
+调用规则：仅在知识库内容明显不足时调用工具。优先使用 web_search 获取概览信息；当用户明确提供了 URL 或需要深入阅读某篇网页时使用 web_fetch。如果知识库内容已足够，直接回答，不要调用工具。`;
 
   // 用户记忆上下文
   const memory = await loadMemory();
@@ -475,32 +556,57 @@ export async function POST(req: Request) {
 
           const { text, toolUses } = await processStreamRound(response, safeEnqueue, encoder, signal);
 
+          // 兼容非标准端点：检测文本中的 XML 工具调用（如 MiniMax 的 <invoke> 格式）
+          let finalToolUses = toolUses;
           if (toolUses.length === 0) {
+            const xmlCalls = extractXMLToolCalls(text);
+            if (xmlCalls.length > 0) {
+              logger.info('Chat', `Detected ${xmlCalls.length} XML tool calls from non-standard endpoint`);
+              finalToolUses = xmlCalls;
+            }
+          }
+
+          if (finalToolUses.length === 0) {
             // 没有工具调用，本轮就是最终回答
             break;
           }
 
           // 发送工具调用状态给前端（通过 text 事件，useChat 原生支持实时显示）
-          for (const tu of toolUses) {
-            const input = tu.input as { url?: string; reason?: string };
-            const url = input.url || '';
-            const reason = input.reason || '';
-            if (url) {
-              safeEnqueue(
-                encoder.encode(
-                  formatStreamPart('text', `\n\n> **[正在抓取网页]** ${reason || '获取更多信息'}  \n> ${url}\n\n`)
-                )
-              );
+          for (const tu of finalToolUses) {
+            const input = tu.input as { url?: string; reason?: string; query?: string };
+            if (tu.name === 'web_fetch') {
+              const url = input.url || '';
+              const reason = input.reason || '';
+              if (url) {
+                safeEnqueue(
+                  encoder.encode(
+                    formatStreamPart('text', `\n\n> **[正在抓取网页]** ${reason || '获取更多信息'}  \n> ${url}\n\n`)
+                  )
+                );
+              }
+            } else if (tu.name === 'web_search') {
+              const query = input.query || '';
+              if (query) {
+                safeEnqueue(
+                  encoder.encode(
+                    formatStreamPart('text', `\n\n> **[正在搜索]** ${query}\n\n`)
+                  )
+                );
+              }
             }
           }
 
           // 执行工具
-          const { blocks } = await executeToolCalls(toolUses);
+          const { blocks } = await executeToolCalls(finalToolUses);
 
           // 构建下一轮 Anthropic 消息
           const assistantBlocks: Anthropic.ContentBlockParam[] = [];
-          if (text) assistantBlocks.push({ type: 'text', text });
-          for (const tu of toolUses) {
+          // 对于 XML tool call，从文本中移除 XML 标签，只保留纯文本
+          const cleanText = finalToolUses !== toolUses
+            ? text.replace(/<invoke\s+name="[^"]+">[\s\S]*?<\/invoke>/g, '').replace(/minimax:tool_call\s*/g, '').trim()
+            : text;
+          if (cleanText) assistantBlocks.push({ type: 'text', text: cleanText });
+          for (const tu of finalToolUses) {
             assistantBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input });
           }
           currentMessages.push({ role: 'assistant', content: assistantBlocks });

@@ -45,3 +45,4 @@ attachments/
 test-results/
 playwright-report/
 tmp/
+.venv/
