@@ -61,7 +61,7 @@ export interface InboxEntry {
 
 ### 2.3 解析与存储层
 
-- `parseInboxEntry()`（`lib/parsers.ts`）：提取 `digest` 和 `digest_generated_at` 字段
+- `parseInboxEntry()`（`lib/parsers.ts`）：提取 `digest` 和 `digest_generated_at` 字段为一级属性（加入 known fields 集合，不放入 `rawMetadata`）
 - `writeInbox()`（`lib/storage.ts`）：序列化时包含这两个字段（如果存在）
 - 新增 `updateInboxDigest(fileName, digest)` 辅助函数：读取文件 → 解析 frontmatter → 追加 digest/digest_generated_at → 原子写入，避免破坏正文内容
 
@@ -71,7 +71,13 @@ export interface InboxEntry {
 
 ### 3.1 新增任务类型
 
-`TaskType` 联合类型新增 `'inbox_digest'`。
+`TaskType` 联合类型新增 `'inbox_digest'`。需同步更新 `queue.ts` 中的以下位置：
+
+1. `pendingByType` Record：新增 `inbox_digest: []`
+2. `workerRunningByType` Record：新增 `inbox_digest: false`
+3. `loadQueueState()` 中的类型数组：新增 `'inbox_digest'`
+4. `initQueue()` 中的类型数组：新增 `'inbox_digest'`
+5. 如果 `listPending()` 有类型过滤，需确认兼容性
 
 Payload：
 
@@ -85,20 +91,24 @@ Payload：
 
 1. **读取条目**：调用 storage 读取收件箱文件，解析为 `InboxEntry`
 2. **幂等检查**：如果条目已有 `digest` 字段，直接返回成功
-3. **内容获取**：
-   - 如果条目有 `rss_link` 或 `source_url`，调用 `enrichContent()` 抓取原文全文
+3. **文件存在检查**：如果收件箱文件不存在（已被审批/归档），任务标记为 done 并跳过
+4. **内容获取**：
+   - 如果条目有 `rss_link` 或 `source_url`，调用 `fetchFullContent(url)` 抓取原文全文
+   - `fetchFullContent` 是从 `ingest.ts` 中 `enrichContent` 提取出来的导出函数（仅负责抓取+解析，不含写入逻辑）
    - 抓取失败时回退使用条目现有的 `content` 字段
-4. **LLM 生成摘要**：调用 `callLLM()` 使用专用 prompt 生成摘要（详见 Section 5）
-5. **写入摘要**：调用 `updateInboxDigest(fileName, digest)` 将摘要追加到收件箱文件
-6. **发送事件**：调用 `emitInboxEvent('update')` 通知前端
+5. **LLM 生成摘要**：调用 `callLLM()` 使用专用 prompt 生成摘要（详见 Section 5）
+6. **写入摘要**：调用 `updateInboxDigest(fileName, digest)` 将摘要追加到收件箱文件
+7. **发送事件**：调用 `emitInboxEvent('new')` 通知前端刷新（复用现有 action 类型，前端收到后重新拉取列表即可）
 
 任何步骤失败，任务标记为 `failed`，可重试。
+
+**与 ingest 任务的竞态防护**：如果用户在 digest 生成期间审批了条目，ingest worker 会归档该文件。当 digest worker 到达步骤 3 时检测到文件不存在，安全跳过。两个 worker 分别由不同任务类型驱动，互不阻塞。
 
 ### 3.3 触发时机
 
 在 `lib/rss/manager.ts` 的 `processFeedItems()` 中：
 
-- 每个条目 `writeInbox()` 成功后，检查 `settings.autoDigest`
+- 每个条目 `writeInbox()` 成功后，调用 `loadSettings()` 获取当前 `autoDigest` 设置
 - 如果为 `true`，调用 `enqueue('inbox_digest', { fileName })`
 - 如果为 `false`，不生成摘要
 
@@ -184,7 +194,7 @@ autoDigest: true  # 是否自动为收件箱条目生成摘要
 | `lib/parsers.ts` | 修改 | parseInboxEntry 提取新字段 |
 | `lib/storage.ts` | 修改 | writeInbox 序列化新字段，新增 updateInboxDigest |
 | `lib/queue.ts` | 修改 | 新增 inbox_digest 任务类型和 worker |
-| `lib/cognition/ingest.ts` | 修改 | 新增 generateDigest 函数 |
+| `lib/cognition/ingest.ts` | 修改 | 提取 `fetchFullContent` 为导出函数，新增 `generateDigest` 函数 |
 | `lib/settings.ts` | 修改 | 默认设置新增 autoDigest |
 | `lib/rss/manager.ts` | 修改 | processFeedItems 触发 digest 任务 |
 | `app/api/settings/route.ts` | 修改 | 如果需要暴露新设置（视现有设置 API 而定） |
@@ -207,4 +217,5 @@ autoDigest: true  # 是否自动为收件箱条目生成摘要
 - **重复写入**：幂等检查（已有 digest 则跳过）防止重复生成
 - **并发安全**：队列 worker 天然串行执行，无需额外锁
 - **服务器重启**：队列持久化到 `queue.json`，pending 的 inbox_digest 任务会在重启后恢复执行
-- **条目被拒绝**：归档后 worker 如果还在执行，文件不存在则安全跳过
+- **条目被拒绝/审批**：归档后 digest worker 检测到文件不存在，安全跳过（步骤 3 的存在性检查）
+- **digest 与 ingest 并发**：两个任务类型独立 worker，互不阻塞。如果 ingest 先完成并归档文件，digest worker 到达步骤 3 时安全跳过。如果 digest 先完成，摘要已写入文件，ingest 处理时忽略 digest 字段（不影响 extract 流程）
