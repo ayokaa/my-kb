@@ -12,6 +12,8 @@ interface InboxEntry {
   extractedAt?: string;
   rawMetadata: Record<string, unknown>;
   filePath?: string;
+  digest?: string;
+  digestGeneratedAt?: string;
 }
 
 interface InboxPanelProps {
@@ -286,6 +288,20 @@ export default function InboxPanel({ count, onChange, taskCount = 0, isActive }:
                     </div>
                     <ExternalLink className="h-4 w-4 shrink-0 text-[var(--text-tertiary)] group-hover:text-[var(--accent)]" />
                   </a>
+
+                  {/* AI 摘要 */}
+                  {selected.digest && (
+                    <div className="rounded-xl border border-[var(--accent)]/20 bg-[var(--accent-dim)]/50 px-5 py-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-md bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--bg-primary)]">
+                          AI 摘要
+                        </span>
+                      </div>
+                      <p className="break-words text-sm leading-relaxed text-[var(--text-primary)]">
+                        {selected.digest}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Feed 摘要 */}
                   {selected.content && (
