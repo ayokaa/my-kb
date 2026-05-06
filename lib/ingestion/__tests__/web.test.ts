@@ -31,7 +31,7 @@ describe('fetchWebContent', () => {
     expect(result.content).toContain('main content extracted');
     expect(result.excerpt).toContain('main content extracted');
     expect(mockedRunCamoufox).toHaveBeenCalledWith(
-      'python3',
+      expect.stringContaining('python3'),
       expect.arrayContaining([expect.stringContaining('fetch_web.py'), 'https://example.com/article']),
       expect.any(Object),
       expect.any(Function)
@@ -118,5 +118,120 @@ describe('fetchWebContent', () => {
     await expect(fetchWebContent('https://example.com/blank')).rejects.toThrow(
       'returned empty content'
     );
+  });
+});
+
+describe('fetchWebContent — TinyFish primary path', () => {
+  const mockGetContents = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetBrowserForTesting();
+    process.env.TINYFISH_API_KEY = 'test-tf-key';
+
+    vi.doMock('@tiny-fish/sdk', () => ({
+      TinyFish: vi.fn().mockImplementation(function () {
+        return { fetch: { getContents: mockGetContents } };
+      }),
+    }));
+  });
+
+  afterEach(() => {
+    delete process.env.TINYFISH_API_KEY;
+    vi.resetModules();
+  });
+
+  it('uses TinyFish when TINYFISH_API_KEY is set', async () => {
+    mockGetContents.mockResolvedValue({
+      results: [{ url: 'https://example.com/a', title: 'TF Article', text: 'Content from TinyFish', format: 'markdown' }],
+      errors: [],
+    });
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/a');
+
+    expect(result.title).toBe('TF Article');
+    expect(result.content).toBe('Content from TinyFish');
+    expect(mockGetContents).toHaveBeenCalledWith({ urls: ['https://example.com/a'], format: 'markdown' });
+  });
+
+  it('falls back to Camoufox when TinyFish fails', async () => {
+    mockGetContents.mockRejectedValue(new Error('TinyFish timeout'));
+
+    // Also need to mock camoufox-runner for fallback
+    vi.doMock('../camoufox-runner', () => ({
+      runCamoufox: vi.fn().mockImplementation((_cmd: string, _args: string[], _opts: any, callback: any) => {
+        callback(null, JSON.stringify({ title: 'Fallback', content: 'from camoufox' }), '');
+      }),
+    }));
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/fallback');
+
+    expect(result.title).toBe('Fallback');
+    expect(result.content).toBe('from camoufox');
+    expect(mockGetContents).toHaveBeenCalled();
+  });
+
+  it('falls back to Camoufox when TinyFish returns empty content', async () => {
+    mockGetContents.mockResolvedValue({
+      results: [{ url: 'https://example.com/empty', title: null, text: null, format: 'markdown' }],
+      errors: [],
+    });
+
+    vi.doMock('../camoufox-runner', () => ({
+      runCamoufox: vi.fn().mockImplementation((_cmd: string, _args: string[], _opts: any, callback: any) => {
+        callback(null, JSON.stringify({ title: 'Camoufox', content: 'camoufox content' }), '');
+      }),
+    }));
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/empty');
+
+    expect(result.title).toBe('Camoufox');
+  });
+
+  it('handles TinyFish fetch errors in response', async () => {
+    mockGetContents.mockResolvedValue({
+      results: [],
+      errors: [{ url: 'https://example.com/err', error: 'page not found' }],
+    });
+
+    vi.doMock('../camoufox-runner', () => ({
+      runCamoufox: vi.fn().mockImplementation((_cmd: string, _args: string[], _opts: any, callback: any) => {
+        callback(null, JSON.stringify({ title: 'Fallback', content: 'ok' }), '');
+      }),
+    }));
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/err');
+
+    // Should fall back to Camoufox
+    expect(result.title).toBe('Fallback');
+  });
+
+  it('truncates TinyFish content to 10000 chars', async () => {
+    mockGetContents.mockResolvedValue({
+      results: [{ url: 'https://example.com/long', title: 'Long', text: 'y'.repeat(20000), format: 'markdown' }],
+      errors: [],
+    });
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/long');
+
+    expect(result.content.length).toBe(10000);
+    expect(result.excerpt!.length).toBe(200);
+  });
+
+  it('uses URL as title when TinyFish returns null title', async () => {
+    mockGetContents.mockResolvedValue({
+      results: [{ url: 'https://example.com/notitle', title: null, text: 'some text', format: 'markdown' }],
+      errors: [],
+    });
+
+    const { fetchWebContent } = await import('../web');
+    const result = await fetchWebContent('https://example.com/notitle');
+
+    expect(result.title).toBe('https://example.com/notitle');
   });
 });
