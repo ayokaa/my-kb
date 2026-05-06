@@ -239,7 +239,8 @@ export function selectCandidates(source: TextSource, existingNotes: Note[]): Not
 
 // ─── Pipeline Steps ───────────────────────────────────────────────
 
-async function enrichContent(entry: InboxEntry): Promise<string> {
+/** Fetch full content from the original URL if available, otherwise return existing content. */
+export async function fetchFullContent(entry: InboxEntry): Promise<string> {
   let content = entry.content;
   const originalUrl = (entry.rawMetadata?.rss_link || entry.rawMetadata?.source_url) as string | undefined;
   if (originalUrl) {
@@ -251,6 +252,27 @@ async function enrichContent(entry: InboxEntry): Promise<string> {
     }
   }
   return content;
+}
+
+const DIGEST_SYSTEM_PROMPT = `你是一位专业的内容摘要助手。你的任务是为技术、科学和知识类文章生成准确、信息密度高的中文摘要。
+
+摘要必须包含以下信息：
+1. 这篇文章的核心主题是什么（一句话）
+2. 文章在讨论或解决什么具体问题
+3. 关键结论、发现或观点（如果文章有明确结论）
+
+要求：
+- 用简洁清晰的中文撰写
+- 不要使用"本文"、"该文"等元指代，直接描述内容
+- 长度控制在 3-5 句话
+- 保持客观，不加个人评价
+- 如果文章包含技术细节，简要提及技术方向但不展开
+- 只输出摘要文本，不要加标题、标签或任何额外格式`;
+
+/** Generate a short Chinese summary for an inbox entry. */
+export async function generateDigest(title: string, content: string): Promise<string> {
+  const userPrompt = `标题：${title}\n\n${content.slice(0, 20000)}`;
+  return callLLM(DIGEST_SYSTEM_PROMPT, userPrompt);
 }
 
 async function extractStructure(entry: InboxEntry, content: string): Promise<ExtractResult> {
@@ -369,7 +391,7 @@ export interface ProcessResult {
 
 export async function processInboxEntry(entry: InboxEntry, existingNotes: Note[] = []): Promise<ProcessResult> {
   // 内容回取
-  const content = await enrichContent(entry);
+  const content = await fetchFullContent(entry);
 
   // 步骤 1：提取（失败则整体失败）
   const step1 = await extractStructure(entry, content);

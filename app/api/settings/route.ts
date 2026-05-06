@@ -32,6 +32,9 @@ export async function POST(req: Request) {
       memory: {
         taskIntervalMs: body.memory?.taskIntervalMs ?? current.memory.taskIntervalMs,
       },
+      digest: {
+        autoDigest: body.digest?.autoDigest ?? current.digest.autoDigest,
+      },
     };
 
     // Validate cron expression

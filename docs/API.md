@@ -140,7 +140,9 @@ List visible inbox entries (excludes files currently being processed by the task
       "title": "...",
       "content": "...",
       "rawMetadata": { "source_url": "..." },
-      "filePath": "..."
+      "filePath": "...",
+      "digest": "AI 生成的中文摘要（仅当 autoDigest 启用且摘要已生成时存在）",
+      "digestGeneratedAt": "2026-05-06T12:00:00.000Z"
     }
   ]
 }
@@ -501,6 +503,9 @@ Load runtime settings. The API key is masked (`sk-...xxxx`) for security.
   "cron": {
     "rssIntervalMinutes": 60,
     "relinkCronExpression": "0 3 * * *"
+  },
+  "digest": {
+    "autoDigest": true
   }
 }
 ```
@@ -520,6 +525,9 @@ Update runtime settings. Changes are persisted to `knowledge/meta/settings.yml` 
   "cron": {
     "rssIntervalMinutes": 60,
     "relinkCronExpression": "0 3 * * *"
+  },
+  "digest": {
+    "autoDigest": true
   }
 }
 ```
@@ -558,7 +566,7 @@ List tasks.
   "tasks": [
     {
       "id": "task-...",
-      "type": "ingest" | "rss_fetch" | "web_fetch" | "relink",
+      "type": "ingest" | "rss_fetch" | "web_fetch" | "relink" | "inbox_digest",
       "status": "pending" | "running" | "done" | "failed",
       "createdAt": "...",
       "startedAt": "...",

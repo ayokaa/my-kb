@@ -4,6 +4,8 @@ import yaml from 'js-yaml';
 import { fetchRSS, parseOPML, sortRSSItems, type RSSItem, type OPMLFeed } from '../ingestion/rss';
 import { FileSystemStorage } from '../storage';
 import { logger } from '../logger';
+import { enqueue } from '../queue';
+import { loadSettings } from '../settings';
 
 export interface RSSSubscription {
   url: string;
@@ -117,7 +119,7 @@ async function processFeedItems(
         continue;
       }
 
-      const written = await storage.writeInbox({
+      const writtenFileName = await storage.writeInbox({
         sourceType: 'web',
         title: item.title,
         content: `${item.description || ''}\n\n${item.content || ''}`.trim(),
@@ -132,7 +134,19 @@ async function processFeedItems(
       // Add to dedup set so we don't write the same link again in this batch
       if (item.link) existingLinks.add(item.link);
 
-      if (written) count++;
+      if (writtenFileName) {
+        count++;
+
+        // Trigger digest generation if autoDigest is enabled
+        try {
+          const settings = await loadSettings();
+          if (settings.digest?.autoDigest) {
+            enqueue('inbox_digest', { fileName: writtenFileName });
+          }
+        } catch (err) {
+          logger.warn('RSS', `Failed to enqueue digest task: ${(err as Error).message}`);
+        }
+      }
     }
 
     return { count, latestPubDate };

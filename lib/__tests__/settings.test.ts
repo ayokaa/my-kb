@@ -29,6 +29,7 @@ describe('loadSettings', () => {
     expect(settings.cron.rssIntervalMinutes).toBe(60);
     expect(settings.cron.relinkCronExpression).toBe('0 3 * * *');
     expect(settings.memory.taskIntervalMs).toBe(30_000);
+    expect(settings.digest.autoDigest).toBe(true);
   });
 
   it('reads saved settings from file', async () => {
@@ -36,6 +37,7 @@ describe('loadSettings', () => {
       llm: { model: 'gpt-4', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1' },
       cron: { rssIntervalMinutes: 30, relinkCronExpression: '0 0 * * *' },
       memory: { taskIntervalMs: 60_000 },
+      digest: { autoDigest: false },
     });
 
     const settings = await loadSettings();
@@ -44,6 +46,7 @@ describe('loadSettings', () => {
     expect(settings.cron.rssIntervalMinutes).toBe(30);
     expect(settings.cron.relinkCronExpression).toBe('0 0 * * *');
     expect(settings.memory.taskIntervalMs).toBe(60_000);
+    expect(settings.digest.autoDigest).toBe(false);
   });
 
   it('env variables override file values', async () => {
@@ -51,6 +54,7 @@ describe('loadSettings', () => {
       llm: { model: 'gpt-4', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1' },
       cron: { rssIntervalMinutes: 30, relinkCronExpression: '0 0 * * *' },
       memory: { taskIntervalMs: 60_000 },
+      digest: { autoDigest: false },
     });
 
     process.env.LLM_MODEL = 'env-model';
@@ -124,9 +128,49 @@ describe('safeSettings', () => {
       llm: { model: 'gpt-4', apiKey: 'sk-abcdefghijklmnopqrstuvwxyz1234', baseUrl: 'https://api.openai.com/v1' },
       cron: { rssIntervalMinutes: 60, relinkCronExpression: '0 3 * * *' },
       memory: { taskIntervalMs: 30_000 },
+      digest: { autoDigest: true },
     };
     const safe = safeSettings(settings);
     expect(safe.llm.apiKey).toBe('sk-...1234');
     expect(safe.llm.model).toBe('gpt-4');
+    expect(safe.digest.autoDigest).toBe(true);
+  });
+});
+
+describe('digest settings', () => {
+  it('defaults autoDigest to true', async () => {
+    const { unlink } = await import('fs/promises');
+    try { await unlink(getSettingsPath()); } catch { /* ok */ }
+    const settings = await loadSettings();
+    expect(settings.digest.autoDigest).toBe(true);
+  });
+
+  it('persists autoDigest false', async () => {
+    const original = await loadSettings();
+    await saveSettings({ ...original, digest: { autoDigest: false } });
+    const loaded = await loadSettings();
+    expect(loaded.digest.autoDigest).toBe(false);
+  });
+
+  it('falls back to default when digest block is missing in old settings', async () => {
+    const { writeFile, mkdir, unlink } = await import('fs/promises');
+    const settingsPath = getSettingsPath();
+    try { await unlink(settingsPath); } catch { /* ok */ }
+
+    const oldYaml = `llm:
+  model: test
+  apiKey: ''
+  baseUrl: http://test
+cron:
+  rssIntervalMinutes: 60
+  relinkCronExpression: '0 3 * * *'
+memory:
+  taskIntervalMs: 30000
+`;
+    await mkdir(settingsPath.replace(/settings\.yml$/, ''), { recursive: true });
+    await writeFile(settingsPath, oldYaml);
+
+    const settings = await loadSettings();
+    expect(settings.digest.autoDigest).toBe(true);
   });
 });

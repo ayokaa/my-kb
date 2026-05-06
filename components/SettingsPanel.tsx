@@ -13,6 +13,9 @@ interface SettingsData {
     rssIntervalMinutes: number;
     relinkCronExpression: string;
   };
+  digest: {
+    autoDigest: boolean;
+  };
 }
 
 export default function SettingsPanel() {
@@ -159,6 +162,31 @@ export default function SettingsPanel() {
               />
               <p className="mt-1 text-xs text-[var(--text-tertiary)]">默认每天凌晨 3 点运行</p>
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+            收件箱
+          </h3>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-[var(--text-secondary)]">自动生成摘要</p>
+              <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">RSS 条目写入收件箱后自动生成 AI 摘要</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettings((s) => s ? { ...s, digest: { autoDigest: !s.digest.autoDigest } } : s)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                settings?.digest?.autoDigest ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${
+                  settings?.digest?.autoDigest ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </section>
 

@@ -53,6 +53,8 @@ vi.mock('@/lib/cognition/ingest', () => ({
       content: '',
     },
   }),
+  fetchFullContent: vi.fn().mockResolvedValue('fetched full content'),
+  generateDigest: vi.fn().mockResolvedValue('AI generated summary'),
 }));
 
 vi.mock('@/lib/storage', () => ({
@@ -62,9 +64,10 @@ vi.mock('@/lib/storage', () => ({
       listNoteSources: vi.fn().mockResolvedValue([]),
       saveNote: vi.fn().mockResolvedValue(undefined),
       archiveInbox: vi.fn().mockResolvedValue(undefined),
-      writeInbox: vi.fn().mockResolvedValue(undefined),
+      writeInbox: vi.fn().mockResolvedValue(null),
       listInbox: vi.fn().mockResolvedValue([]),
       rebuildBacklinks: vi.fn().mockResolvedValue(undefined),
+      updateInboxDigest: vi.fn().mockResolvedValue(undefined),
     };
   }),
 }));
@@ -532,5 +535,170 @@ describe('queue branch coverage', () => {
     const id = enqueue('rss_fetch', { url: 'https://example.com/feed.xml', name: 'Feed', isSubscriptionCheck: true });
     await waitForStatus(id, 'done', 3000);
     expect(getTask(id)?.status).toBe('done');
+  });
+});
+
+/* ===== inbox_digest worker tests ===== */
+
+describe('inbox_digest worker', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('processes inbox_digest task successfully', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('Digest Test', { rss_link: 'https://example.com/a' }));
+    (stat as any).mockResolvedValue({} as any);
+
+    const id = enqueue('inbox_digest', { fileName: 'digest-test.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ ok: true, fileName: 'digest-test.md' });
+
+    // Verify generateDigest was called
+    const { generateDigest } = await import('@/lib/cognition/ingest');
+    expect(generateDigest).toHaveBeenCalledWith('Digest Test', 'fetched full content');
+
+    // Verify updateInboxDigest was called
+    const { FileSystemStorage } = await import('@/lib/storage');
+    const storageInstance = (FileSystemStorage as any).mock.results.at(-1)?.value;
+    expect(storageInstance.updateInboxDigest).toHaveBeenCalledWith('digest-test.md', 'AI generated summary');
+  });
+
+  it('skips when inbox file not found (already archived)', async () => {
+    const { stat } = await import('fs/promises');
+    const prevStat = (stat as any).getMockImplementation();
+    (stat as any).mockRejectedValue(new Error('not found'));
+
+    const id = enqueue('inbox_digest', { fileName: 'archived.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (stat as any).mockImplementation(prevStat as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ skipped: true, reason: 'file not found' });
+  });
+
+  it('skips when digest already exists (idempotency)', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('Already Digested', { digest: 'existing digest' }));
+    (stat as any).mockResolvedValue({} as any);
+
+    const id = enqueue('inbox_digest', { fileName: 'already-digested.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ skipped: true, reason: 'already digested' });
+
+    // generateDigest should NOT be called
+    const { generateDigest } = await import('@/lib/cognition/ingest');
+    expect(generateDigest).not.toHaveBeenCalled();
+  });
+
+  it('falls back to entry content when fetchFullContent fails', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const { fetchFullContent, generateDigest } = await import('@/lib/cognition/ingest');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('Fetch Fail'));
+    (stat as any).mockResolvedValue({} as any);
+    (fetchFullContent as any).mockRejectedValueOnce(new Error('network error'));
+
+    const id = enqueue('inbox_digest', { fileName: 'fetch-fail.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+      (fetchFullContent as any).mockResolvedValue('fetched full content');
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    // generateDigest should be called with the entry's own content
+    expect(generateDigest).toHaveBeenCalledWith('Fetch Fail', 'Content for Fetch Fail');
+  });
+
+  it('marks task failed when LLM throws', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const { generateDigest } = await import('@/lib/cognition/ingest');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    const prevDigest = (generateDigest as any).getMockImplementation();
+    (readFile as any).mockImplementation(async () => makeInboxMd('LLM Fail'));
+    (stat as any).mockResolvedValue({} as any);
+    (generateDigest as any).mockRejectedValue(new Error('LLM unavailable'));
+
+    const id = enqueue('inbox_digest', { fileName: 'llm-fail.md' });
+    try {
+      await waitForStatus(id, 'failed', 3000);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+      (generateDigest as any).mockImplementation(prevDigest as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('failed');
+    expect(task?.error).toContain('LLM unavailable');
+  });
+
+  it('handles file archived during processing gracefully', async () => {
+    const { readFile, stat } = await import('fs/promises');
+    const { FileSystemStorage } = await import('@/lib/storage');
+    const prevReadFile = (readFile as any).getMockImplementation();
+    const prevStat = (stat as any).getMockImplementation();
+    const prevImpl = (FileSystemStorage as any).getMockImplementation();
+
+    (readFile as any).mockImplementation(async () => makeInboxMd('Race Test'));
+
+    // stat succeeds on first call (file exists check), fails on second (after archive)
+    let statCallCount = 0;
+    (stat as any).mockImplementation(async () => {
+      statCallCount++;
+      // First call: file exists → succeed. Second call (after write failure): → fail
+      if (statCallCount <= 1) return {} as any;
+      throw new Error('not found');
+    });
+
+    // Storage mock: updateInboxDigest throws (simulating file moved during processing)
+    (FileSystemStorage as any).mockImplementation(function () {
+      return {
+        updateInboxDigest: vi.fn().mockRejectedValue(new Error('ENOENT: file not found')),
+      };
+    });
+
+    const id = enqueue('inbox_digest', { fileName: 'race.md' });
+    try {
+      await waitForStatus(id, 'done', 3000);
+    } finally {
+      (readFile as any).mockImplementation(prevReadFile as any);
+      (stat as any).mockImplementation(prevStat as any);
+      (FileSystemStorage as any).mockImplementation(prevImpl as any);
+    }
+
+    const task = getTask(id);
+    expect(task?.status).toBe('done');
+    expect(task?.result).toEqual({ skipped: true, reason: 'file archived during digest' });
   });
 });

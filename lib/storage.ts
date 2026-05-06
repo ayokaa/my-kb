@@ -391,7 +391,7 @@ export class FileSystemStorage implements Storage {
     return { rssLinks, sourceUrls };
   }
 
-  async writeInbox(entry: InboxEntry): Promise<boolean> {
+  async writeInbox(entry: InboxEntry): Promise<string | null> {
     // Acquire lock to prevent race-condition duplicates
     const prevLock = this.inboxWriteLock;
     let releaseLock: (() => void) | undefined;
@@ -418,11 +418,11 @@ export class FileSystemStorage implements Storage {
           const { rssLinks, sourceUrls } = await this._scanInboxSources();
           if (rssLink && rssLinks.has(rssLink)) {
             logger.info('Storage', `Skip duplicate inbox entry (rss_link already exists): ${entry.title}`);
-            return false;
+            return null;
           }
           if (sourceUrl && sourceUrls.has(sourceUrl)) {
             logger.info('Storage', `Skip duplicate inbox entry (source_url already exists): ${entry.title}`);
-            return false;
+            return null;
           }
         } catch {
           // Ignore scan errors, proceed with write
@@ -442,7 +442,7 @@ export class FileSystemStorage implements Storage {
       entry.filePath = path;
       // 通知客户端收件箱有新内容
       emitInboxEvent('new');
-      return true;
+      return fileName;
     } finally {
       releaseLock?.();
     }
@@ -496,6 +496,32 @@ export class FileSystemStorage implements Storage {
     const dst = join(this.root, 'archive', 'inbox', fileName);
     await mkdir(dirname(dst), { recursive: true });
     await rename(src, dst);
+  }
+
+  /** Append digest to an inbox file's frontmatter without modifying the body content. */
+  async updateInboxDigest(fileName: string, digest: string): Promise<void> {
+    const path = this.inboxPath(fileName);
+    const raw = await readFile(path, 'utf-8');
+
+    if (!raw.startsWith('---')) {
+      throw new Error(`Invalid inbox file format: ${fileName}`);
+    }
+
+    const endMarker = raw.indexOf('\n---', 3);
+    if (endMarker === -1) {
+      throw new Error(`Unclosed frontmatter in inbox file: ${fileName}`);
+    }
+
+    const fmRaw = raw.slice(3, endMarker).trim();
+    const fm = yaml.load(fmRaw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>;
+
+    fm.digest = digest;
+    fm.digest_generated_at = new Date().toISOString();
+
+    const body = raw.slice(endMarker + 4);
+    const updated = `---\n${yaml.dump(fm, { allowUnicode: true } as import('./types').YamlDumpOptions)}---${body}`;
+
+    await this.atomicWrite(path, updated);
   }
 
   // ===== Git =====

@@ -114,4 +114,59 @@ This is the RSS content for E2E testing.
     await expect(page.getByText('Feed 摘要')).toBeVisible();
     await expect(page.getByText('点击「加入知识库」后，系统将自动爬取原文并生成结构化笔记。')).toBeVisible();
   });
+
+  test('RSS entry with digest shows AI summary card', async ({ page }) => {
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = `1777300000000-Digest-E2E.md`;
+    const content = `---
+source_type: web
+title: Article With AI Digest
+extracted_at: '${new Date().toISOString()}'
+rss_source: Tech Blog
+rss_link: https://example.com/digest-article
+rss_pubDate: '${new Date().toISOString()}'
+digest: '这篇文章介绍了 Rust 语言在系统编程中的应用，主要讨论了内存安全和并发性能的优化策略。'
+digest_generated_at: '${new Date().toISOString()}'
+---
+
+Full article content here.
+`;
+    await writeFile(join(root, 'inbox', fileName), content);
+
+    await page.goto('/');
+    await page.getByTestId('nav-inbox').click();
+
+    await expect(page.getByText('Article With AI Digest').first()).toBeVisible();
+    await page.getByRole('button', { name: /Article With AI Digest/ }).click();
+
+    // Should show AI digest card
+    await expect(page.getByText('AI 摘要')).toBeVisible();
+    await expect(page.getByText(/Rust 语言在系统编程中的应用/)).toBeVisible();
+  });
+
+  test('RSS entry without digest does not show AI summary card', async ({ page }) => {
+    const root = join(process.cwd(), 'knowledge-test');
+    const fileName = `1777300000001-No-Digest.md`;
+    const content = `---
+source_type: web
+title: Article Without Digest
+extracted_at: '${new Date().toISOString()}'
+rss_source: Tech Blog
+rss_link: https://example.com/no-digest-article
+rss_pubDate: '${new Date().toISOString()}'
+---
+
+Article content without digest.
+`;
+    await writeFile(join(root, 'inbox', fileName), content);
+
+    await page.goto('/');
+    await page.getByTestId('nav-inbox').click();
+
+    await expect(page.getByText('Article Without Digest').first()).toBeVisible();
+    await page.getByRole('button', { name: /Article Without Digest/ }).click();
+
+    // Should NOT show AI digest card
+    await expect(page.getByText('AI 摘要')).not.toBeVisible();
+  });
 });

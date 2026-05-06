@@ -17,10 +17,15 @@ export interface MemorySettings {
   taskIntervalMs: number;
 }
 
+export interface DigestSettings {
+  autoDigest: boolean;
+}
+
 export interface RuntimeSettings {
   llm: LLMSettings;
   cron: CronSettings;
   memory: MemorySettings;
+  digest: DigestSettings;
 }
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
@@ -35,6 +40,9 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   },
   memory: {
     taskIntervalMs: 30_000,
+  },
+  digest: {
+    autoDigest: true,
   },
 };
 
@@ -55,6 +63,9 @@ function envOverride(settings: RuntimeSettings): RuntimeSettings {
     },
     memory: {
       taskIntervalMs: settings.memory?.taskIntervalMs ?? DEFAULT_SETTINGS.memory.taskIntervalMs,
+    },
+    digest: {
+      autoDigest: settings.digest?.autoDigest ?? DEFAULT_SETTINGS.digest.autoDigest,
     },
   };
 }
@@ -78,6 +89,9 @@ export async function loadSettings(): Promise<RuntimeSettings> {
       },
       memory: {
         taskIntervalMs: parsed.memory?.taskIntervalMs || DEFAULT_SETTINGS.memory.taskIntervalMs,
+      },
+      digest: {
+        autoDigest: parsed.digest?.autoDigest ?? DEFAULT_SETTINGS.digest.autoDigest,
       },
     };
     return envOverride(merged);

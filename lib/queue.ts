@@ -9,13 +9,14 @@ import { fetchRSS } from './ingestion/rss';
 import { fetchWebContent } from './ingestion/web';
 import { ingestRSSItems, checkFeed } from './rss/manager';
 import { parseInboxEntry } from './parsers';
-import { emitNoteEvent, emitTaskEvent } from './events';
+import { emitNoteEvent, emitTaskEvent, emitInboxEvent } from './events';
 
 // broadcastTaskChanged 已移除，改由 worker 中直接调用 emitTaskEvent
 import { runRelinkJob } from './cognition/relink';
+import { fetchFullContent, generateDigest } from './cognition/ingest';
 import { logger } from './logger';
 
-export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink';
+export type TaskType = 'ingest' | 'rss_fetch' | 'web_fetch' | 'relink' | 'inbox_digest';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -44,7 +45,11 @@ export interface WebFetchPayload {
 
 export interface RelinkPayload {}
 
-export type TaskPayload = IngestPayload | RSSFetchPayload | WebFetchPayload | RelinkPayload;
+export interface InboxDigestPayload {
+  fileName: string;
+}
+
+export type TaskPayload = IngestPayload | RSSFetchPayload | WebFetchPayload | RelinkPayload | InboxDigestPayload;
 
 export interface Task {
   id: string;
@@ -66,12 +71,14 @@ const pendingByType: Record<TaskType, string[]> = {
   rss_fetch: [],
   web_fetch: [],
   relink: [],
+  inbox_digest: [],
 };
 const workerRunningByType: Record<TaskType, boolean> = {
   ingest: false,
   rss_fetch: false,
   web_fetch: false,
   relink: false,
+  inbox_digest: false,
 };
 let saveInProgress = false;
 let saveRequested = false;
@@ -140,7 +147,7 @@ async function saveQueueState() {
 
         const state = {
           tasks: trimmedTasks,
-          pendingIds: (['ingest', 'rss_fetch', 'web_fetch', 'relink'] as TaskType[]).flatMap((t) => pendingByType[t]),
+          pendingIds: (['ingest', 'rss_fetch', 'web_fetch', 'relink', 'inbox_digest'] as TaskType[]).flatMap((t) => pendingByType[t]),
         };
         const tmp = `${queuePath}.tmp.${Date.now()}`;
         await writeFile(tmp, JSON.stringify(state, null, 2));
@@ -176,7 +183,7 @@ async function loadQueueState() {
         pendingByType[taskType].push(t.id);
       }
     }
-    const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length + pendingByType.relink.length;
+    const totalPending = pendingByType.ingest.length + pendingByType.rss_fetch.length + pendingByType.web_fetch.length + pendingByType.relink.length + pendingByType.inbox_digest.length;
     logger.info('Queue', `Restored ${totalPending} pending tasks`);
   } catch {
     // No state file, start fresh
@@ -290,6 +297,12 @@ async function startWorker(type: TaskType) {
         task.result = result;
         logger.info('Queue', `Task ${id} relink completed ${JSON.stringify(result)}`);
         emitTaskEvent('completed', id, type, undefined, result);
+      } else if (task.type === 'inbox_digest') {
+        const result = await runDigestTask(task.payload as InboxDigestPayload);
+        task.status = 'done';
+        task.result = result;
+        logger.info('Queue', `Task ${id} inbox digest completed`);
+        emitTaskEvent('completed', id, type, undefined, result);
       }
     } catch (err) {
       task.status = 'failed';
@@ -312,7 +325,7 @@ export function initQueue() {
   if (workerInitialized) return;
   workerInitialized = true;
   loadQueueState().then(() => {
-    for (const type of ['ingest', 'rss_fetch', 'web_fetch', 'relink'] as TaskType[]) {
+    for (const type of ['ingest', 'rss_fetch', 'web_fetch', 'relink', 'inbox_digest'] as TaskType[]) {
       if (pendingByType[type].length > 0) {
         logger.info('Queue', `Auto-starting worker for ${type} with ${pendingByType[type].length} restored tasks`);
         startWorker(type);
@@ -398,6 +411,57 @@ async function runRelinkTask() {
   );
   await storage.rebuildBacklinks();
   return result;
+}
+
+async function runDigestTask(payload: InboxDigestPayload) {
+  const { fileName } = payload;
+  const storage = new FileSystemStorage();
+  const filePath = join(process.cwd(), getKnowledgeRoot(), 'inbox', fileName);
+
+  // Check file exists (may have been approved/archived)
+  try {
+    await stat(filePath);
+  } catch {
+    logger.info('Queue', `Inbox file not found, skipping digest: ${fileName}`);
+    return { skipped: true, reason: 'file not found' };
+  }
+
+  const raw = await readFile(filePath, 'utf-8');
+  const entry = parseInboxEntry(raw, filePath);
+
+  // Idempotency: skip if already digested
+  if (entry.digest) {
+    logger.info('Queue', `Digest already exists for ${fileName}, skipping`);
+    return { skipped: true, reason: 'already digested' };
+  }
+
+  // Fetch full content (fallback to existing content)
+  let content: string;
+  try {
+    content = await fetchFullContent(entry);
+  } catch {
+    content = entry.content;
+  }
+
+  // Generate digest via LLM
+  const digest = await generateDigest(entry.title, content);
+
+  // Write digest to file (may fail if file was archived during processing)
+  try {
+    await storage.updateInboxDigest(fileName, digest);
+  } catch (err) {
+    // Check if file was archived during processing
+    try {
+      await stat(filePath);
+    } catch {
+      logger.info('Queue', `Inbox file archived during digest generation, skipping: ${fileName}`);
+      return { skipped: true, reason: 'file archived during digest' };
+    }
+    throw err;
+  }
+  emitInboxEvent('new');
+
+  return { ok: true, fileName };
 }
 
 async function runIngestTask(payload: IngestPayload) {

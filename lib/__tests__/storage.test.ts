@@ -278,7 +278,7 @@ describe('FileSystemStorage', () => {
       };
 
       const written = await storage.writeInbox(entry);
-      expect(written).toBe(true);
+      expect(written).toBeTruthy();
       expect(entry.filePath).toBeDefined();
 
       const entries = await storage.listInbox();
@@ -316,7 +316,7 @@ describe('FileSystemStorage', () => {
         rawMetadata: { rss_link: 'https://example.com/dup' },
       };
       const written1 = await storage.writeInbox(entry1);
-      expect(written1).toBe(true);
+      expect(written1).toBeTruthy();
 
       const entry2: InboxEntry = {
         sourceType: 'web',
@@ -325,7 +325,7 @@ describe('FileSystemStorage', () => {
         rawMetadata: { rss_link: 'https://example.com/dup' },
       };
       const written2 = await storage.writeInbox(entry2);
-      expect(written2).toBe(false);
+      expect(written2).toBeNull();
 
       const entries = await storage.listInbox();
       expect(entries).toHaveLength(1);
@@ -339,7 +339,7 @@ describe('FileSystemStorage', () => {
         content: 'content1',
         rawMetadata: { source_url: 'https://example.com/article' },
       };
-      expect(await storage.writeInbox(entry1)).toBe(true);
+      expect(await storage.writeInbox(entry1)).toBeTruthy();
 
       const entry2: InboxEntry = {
         sourceType: 'web',
@@ -347,7 +347,7 @@ describe('FileSystemStorage', () => {
         content: 'content2',
         rawMetadata: { source_url: 'https://example.com/article' },
       };
-      expect(await storage.writeInbox(entry2)).toBe(false);
+      expect(await storage.writeInbox(entry2)).toBeNull();
 
       const entries = await storage.listInbox();
       expect(entries).toHaveLength(1);
@@ -360,7 +360,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { rss_link: 'https://example.com/archived', source_url: 'https://example.com/s' },
       };
-      expect(await storage.writeInbox(entry)).toBe(true);
+      expect(await storage.writeInbox(entry)).toBeTruthy();
       const fileName = entry.filePath!.split('/').pop()!;
       await storage.archiveInbox(fileName);
 
@@ -371,7 +371,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { rss_link: 'https://example.com/archived' },
       };
-      expect(await storage.writeInbox(dupRss)).toBe(false);
+      expect(await storage.writeInbox(dupRss)).toBeNull();
 
       // source_url duplicate should also be rejected
       const dupUrl: InboxEntry = {
@@ -380,7 +380,7 @@ describe('FileSystemStorage', () => {
         content: 'content',
         rawMetadata: { source_url: 'https://example.com/s' },
       };
-      expect(await storage.writeInbox(dupUrl)).toBe(false);
+      expect(await storage.writeInbox(dupUrl)).toBeNull();
     });
 
     it('sorts inbox entries by extractedAt descending (newest first)', async () => {
@@ -553,6 +553,63 @@ describe('FileSystemStorage', () => {
 
       expect(convs).toHaveLength(1);
       expect(warnLogs.some(l => l.includes('bad'))).toBe(true);
+    });
+  });
+
+  // ===== Digest =====
+
+  describe('updateInboxDigest', () => {
+    it('appends digest fields to frontmatter', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Test Article',
+        content: 'original content',
+        rawMetadata: { rss_link: 'https://example.com/a' },
+      });
+      expect(fileName).toBeTruthy();
+
+      await storage.updateInboxDigest(fileName!, '这是一篇关于测试的文章摘要');
+
+      const entries = await storage.listInbox();
+      expect(entries).toHaveLength(1);
+      expect(entries[0].digest).toBe('这是一篇关于测试的文章摘要');
+      expect(entries[0].digestGeneratedAt).toBeTruthy();
+    });
+
+    it('preserves existing frontmatter and body content', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Preserve Test',
+        content: 'body content that must survive',
+        rawMetadata: { rss_link: 'https://example.com/p', rss_source: 'Feed' },
+      });
+
+      await storage.updateInboxDigest(fileName!, 'new digest');
+
+      const entries = await storage.listInbox();
+      expect(entries[0].title).toBe('Preserve Test');
+      expect(entries[0].content).toBe('body content that must survive');
+      expect(entries[0].rawMetadata.rss_link).toBe('https://example.com/p');
+      expect(entries[0].rawMetadata.rss_source).toBe('Feed');
+    });
+
+    it('overwrites existing digest on second call', async () => {
+      const fileName = await storage.writeInbox({
+        sourceType: 'web',
+        title: 'Overwrite Test',
+        content: 'content',
+        rawMetadata: {},
+      });
+
+      await storage.updateInboxDigest(fileName!, 'first digest');
+      await storage.updateInboxDigest(fileName!, 'updated digest');
+
+      const entries = await storage.listInbox();
+      expect(entries[0].digest).toBe('updated digest');
+    });
+
+    it('throws on missing file', async () => {
+      await expect(storage.updateInboxDigest('nonexistent.md', 'digest')).rejects.toThrow();
     });
   });
 

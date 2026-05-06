@@ -4,6 +4,11 @@ import { join } from 'path';
 
 import { describe, it, expect, vi, afterAll } from 'vitest';
 
+const { mockEnqueue, mockLoadSettings } = vi.hoisted(() => ({
+  mockEnqueue: vi.fn(),
+  mockLoadSettings: vi.fn(),
+}));
+
 vi.mock('../../ingestion/rss', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../ingestion/rss')>();
   return {
@@ -16,11 +21,23 @@ vi.mock('../../ingestion/rss', async (importOriginal) => {
 vi.mock('../../storage', () => ({
   FileSystemStorage: vi.fn().mockImplementation(function () {
     return {
-      writeInbox: vi.fn().mockResolvedValue(true),
+      writeInbox: vi.fn().mockResolvedValue('1234567890-test.md'),
       listInbox: vi.fn().mockResolvedValue([]),
       listNoteSources: vi.fn().mockResolvedValue([]),
     };
   }),
+}));
+
+vi.mock('../../queue', () => ({
+  enqueue: mockEnqueue,
+}));
+
+vi.mock('../../settings', () => ({
+  loadSettings: mockLoadSettings,
+  saveSettings: vi.fn(),
+  safeSettings: vi.fn(),
+  getSettingsPath: vi.fn(),
+  maskApiKey: vi.fn(),
 }));
 
 const testDirs: string[] = [];
@@ -169,7 +186,7 @@ describe('RSS Manager', () => {
 
     (FileSystemStorage as any).mockImplementationOnce(function () {
       return {
-        writeInbox: vi.fn().mockResolvedValue(undefined),
+        writeInbox: vi.fn().mockResolvedValue(null),
         listInbox: vi.fn().mockResolvedValue([
           { rawMetadata: { rss_link: 'https://example.com/dup' } },
         ]),
@@ -226,5 +243,64 @@ describe('RSS Manager', () => {
     expect(result.added).toBe(0);
     expect(result.errors.length).toBeGreaterThan(0);
     expect(result.errors[0]).toContain('Invalid OPML');
+  });
+
+  it('enqueues inbox_digest when autoDigest is enabled', async () => {
+    const dir = createTestDir();
+    const manager = await loadManager(dir);
+    const { fetchRSS } = await import('../../ingestion/rss');
+
+    mockLoadSettings.mockResolvedValue({ digest: { autoDigest: true } });
+    mockEnqueue.mockReturnValue('task-digest-1');
+    (fetchRSS as any).mockResolvedValue([makeItem({ link: 'https://example.com/digest-test' })]);
+
+    const url = uniqueUrl();
+    await manager.addSubscription(url, 'Feed');
+    const result = await manager.checkFeed(url);
+    expect(result.newItems).toBe(1);
+
+    expect(mockEnqueue).toHaveBeenCalledWith('inbox_digest', { fileName: '1234567890-test.md' });
+  });
+
+  it('does not enqueue inbox_digest when autoDigest is disabled', async () => {
+    const dir = createTestDir();
+    const manager = await loadManager(dir);
+    const { fetchRSS } = await import('../../ingestion/rss');
+
+    mockLoadSettings.mockResolvedValue({ digest: { autoDigest: false } });
+    mockEnqueue.mockClear();
+    (fetchRSS as any).mockResolvedValue([makeItem({ link: 'https://example.com/no-digest' })]);
+
+    const url = uniqueUrl();
+    await manager.addSubscription(url, 'Feed');
+    const result = await manager.checkFeed(url);
+    expect(result.newItems).toBe(1);
+
+    expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+
+  it('does not enqueue inbox_digest when writeInbox returns null (duplicate)', async () => {
+    const dir = createTestDir();
+    const manager = await loadManager(dir);
+    const { fetchRSS } = await import('../../ingestion/rss');
+    const { FileSystemStorage } = await import('../../storage');
+
+    mockLoadSettings.mockResolvedValue({ digest: { autoDigest: true } });
+    mockEnqueue.mockClear();
+
+    (FileSystemStorage as any).mockImplementationOnce(function () {
+      return {
+        writeInbox: vi.fn().mockResolvedValue(null),
+        listInbox: vi.fn().mockResolvedValue([]),
+        listNoteSources: vi.fn().mockResolvedValue([]),
+      };
+    });
+    (fetchRSS as any).mockResolvedValue([makeItem({ link: 'https://example.com/skipped' })]);
+
+    const url = uniqueUrl();
+    await manager.addSubscription(url, 'Feed');
+    const result = await manager.checkFeed(url);
+    expect(result.newItems).toBe(0);
+    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 });
